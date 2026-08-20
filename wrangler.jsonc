@@ -1,0 +1,39 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fleet-portal",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2026-08-20",
+  "compatibility_flags": ["nodejs_compat"],
+  // No "directory" here: the Vite plugin builds the client and points this
+  // at dist/client itself. Setting it by hand silently disagrees with the
+  // build output.
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "fleet",
+      "database_id": "PLACEHOLDER_REPLACE_WITH_REAL_ID",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  // Access is enabled on the Worker itself from the dashboard, not from here.
+  // This block ONLY simulates an identity for `wrangler dev` and tests, and is
+  // ignored in production. It means ctx.access.getIdentity() behaves the same
+  // locally as deployed, so there is no dev-only code branch in auth.ts at all.
+  "access": {
+    "dev": {
+      "aud": "fleet-portal-dev",
+      "identity": {
+        "email": "hazriq.fitri95@gmail.com",
+        "name": "Dev User"
+      }
+    }
+  },
+  "vars": {
+    "ENVIRONMENT": "production"
+  }
+}

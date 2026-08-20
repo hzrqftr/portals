@@ -1,0 +1,293 @@
+import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { as, migrate, resetDb } from "./helpers";
+
+/**
+ * THE MOST IMPORTANT TEST IN THIS PROJECT. Spec 5.2, CLAUDE.md.
+ *
+ * D1 has no row-level security. Supabase would have refused to return
+ * another tenant's rows; D1 will hand them over the moment a `WHERE
+ * garage_id = ?` goes missing, and nothing else in the stack will notice.
+ * This suite is what stands in for that missing database guarantee.
+ *
+ * It seeds two garages, then calls every read endpoint as user A and asserts
+ * that nothing belonging to user B comes back -- not in a list, not by
+ * direct ID, and not anywhere in the response body.
+ *
+ * WHEN YOU ADD AN ENDPOINT, ADD IT HERE. No exceptions.
+ */
+
+const A = "alice@example.com";
+const B = "bob@example.com";
+
+// Every string here is unique to B. If one of them ever appears in a
+// response to A, isolation is broken -- whichever endpoint leaked it.
+const B_MARKERS = [
+  "BOB_VEHICLE_NICKNAME",
+  "BOB_PLATE_9999",
+  "BOB_WORKSHOP",
+  "BOB_BRAND",
+  "BOB_INSURER",
+  "BOB_POLICY_REF",
+];
+
+interface Seeded {
+  vehicleId: string;
+  serviceId: string;
+  renewalId: string;
+}
+
+async function seed(email: string, tag: string): Promise<Seeded> {
+  const call = as(email);
+
+  const vehicle = await call("/api/vehicles", {
+    method: "POST",
+    json: {
+      nickname: `${tag}_VEHICLE_NICKNAME`,
+      plate: tag === "BOB" ? "BOB_PLATE_9999" : "ALICE_PLATE_1111",
+      fuelType: "petrol",
+      currentOdometerKm: 50_000,
+    },
+  });
+  expect(vehicle.status).toBe(201);
+  const vehicleId = vehicle.body.id as string;
+
+  const service = await call(`/api/vehicles/${vehicleId}/services`, {
+    method: "POST",
+    json: {
+      servicedOn: "2026-02-10",
+      odometerKm: 45_000,
+      workshopName: `${tag}_WORKSHOP`,
+      totalCost: 38_000,
+      items: [
+        {
+          partTypeId: "pt_engine_oil",
+          brand: `${tag}_BRAND`,
+          quantityMilli: 4_500,
+          unitCost: 4_200,
+        },
+      ],
+    },
+  });
+  expect(service.status).toBe(201);
+
+  const renewal = await call(`/api/vehicles/${vehicleId}/renewals`, {
+    method: "POST",
+    json: {
+      type: "insurance",
+      provider: `${tag}_INSURER`,
+      referenceNo: `${tag}_POLICY_REF`,
+      expiresOn: "2026-09-15",
+      cost: 145_000,
+    },
+  });
+  expect(renewal.status).toBe(201);
+
+  await call(`/api/vehicles/${vehicleId}/odometer`, {
+    method: "POST",
+    json: { readingKm: 52_000, recordedOn: "2026-08-01" },
+  });
+
+  return {
+    vehicleId,
+    serviceId: service.body.id as string,
+    renewalId: renewal.body.id as string,
+  };
+}
+
+describe("cross-tenant isolation", () => {
+  let alice: Seeded;
+  let bob: Seeded;
+
+  beforeAll(async () => {
+    await migrate();
+  });
+
+  beforeEach(async () => {
+    await resetDb();
+    alice = await seed(A, "ALICE");
+    bob = await seed(B, "BOB");
+  });
+
+  it("gives the two users separate garages", async () => {
+    const a = await as(A)("/api/me");
+    const b = await as(B)("/api/me");
+    expect(a.status).toBe(200);
+    expect(a.body.activeGarageId).not.toBe(b.body.activeGarageId);
+  });
+
+  /**
+   * The broad sweep. Every read endpoint, called as A, scanned for any of
+   * B's marker strings. This is the assertion that catches an endpoint
+   * someone added without thinking about scoping -- provided they added it
+   * to the list below, which is the one manual step this suite cannot
+   * automate away.
+   */
+  it("never returns any of B's data from any read endpoint", async () => {
+    const call = as(A);
+
+    const readEndpoints = [
+      "/api/me",
+      "/api/dashboard",
+      "/api/vehicles",
+      `/api/vehicles/${alice.vehicleId}`,
+      `/api/vehicles/${alice.vehicleId}/odometer`,
+      `/api/vehicles/${alice.vehicleId}/maintenance`,
+      `/api/vehicles/${alice.vehicleId}/services`,
+      `/api/vehicles/${alice.vehicleId}/renewals`,
+      `/api/vehicles/${alice.vehicleId}/renewals/status`,
+      "/api/part-types",
+      "/api/part-types/pt_engine_oil/brands",
+      // B's own IDs, guessed by A. These must 404 or come back empty --
+      // never 403, which would confirm the ID exists somewhere.
+      `/api/vehicles/${bob.vehicleId}`,
+      `/api/vehicles/${bob.vehicleId}/odometer`,
+      `/api/vehicles/${bob.vehicleId}/maintenance`,
+      `/api/vehicles/${bob.vehicleId}/services`,
+      `/api/vehicles/${bob.vehicleId}/renewals`,
+      `/api/vehicles/${bob.vehicleId}/renewals/status`,
+    ];
+
+    for (const path of readEndpoints) {
+      const res = await call(path);
+      expect([200, 404]).toContain(res.status);
+      for (const marker of B_MARKERS) {
+        expect(res.text, `${marker} leaked from GET ${path}`).not.toContain(marker);
+      }
+    }
+  });
+
+  it("404s rather than 403s on another garage's IDs", async () => {
+    const call = as(A);
+    // A 403 would confirm the row exists in someone else's garage, which is
+    // itself the information we are protecting.
+    expect((await call(`/api/vehicles/${bob.vehicleId}`)).status).toBe(404);
+    expect((await call(`/api/vehicles/${bob.vehicleId}/services`)).status).toBe(404);
+    expect((await call(`/api/vehicles/${bob.vehicleId}/renewals`)).status).toBe(404);
+  });
+
+  it("returns empty, not another garage's rows, from list endpoints", async () => {
+    const call = as(A);
+    const vehicles = await call("/api/vehicles");
+    expect(vehicles.body).toHaveLength(1);
+    expect(vehicles.body[0].nickname).toBe("ALICE_VEHICLE_NICKNAME");
+
+    const maintenance = await call(`/api/vehicles/${bob.vehicleId}/maintenance`);
+    expect(maintenance.body).toEqual([]);
+  });
+
+  it("does not suggest another garage's brands", async () => {
+    // Autocomplete is a quiet leak route: it aggregates, so it looks like
+    // reference data rather than someone else's records.
+    const res = await as(A)("/api/part-types/pt_engine_oil/brands");
+    expect(res.body.map((r: { brand: string }) => r.brand)).toEqual(["ALICE_BRAND"]);
+  });
+
+  describe("write path", () => {
+    // Spec 5.3: reads are not the only exposure. An ID from the client is a
+    // claim, not a fact, and a write that trusts it attaches A's records to
+    // B's vehicle -- where the read path will then hide them from A.
+    it("rejects writes against another garage's vehicle", async () => {
+      const call = as(A);
+
+      expect(
+        (
+          await call(`/api/vehicles/${bob.vehicleId}`, {
+            method: "PATCH",
+            json: { nickname: "hijacked" },
+          })
+        ).status,
+      ).toBe(404);
+
+      expect(
+        (
+          await call(`/api/vehicles/${bob.vehicleId}/odometer`, {
+            method: "POST",
+            json: { readingKm: 999_999, recordedOn: "2026-08-19" },
+          })
+        ).status,
+      ).toBe(404);
+
+      expect(
+        (
+          await call(`/api/vehicles/${bob.vehicleId}/services`, {
+            method: "POST",
+            json: { servicedOn: "2026-08-19", odometerKm: 60_000, items: [] },
+          })
+        ).status,
+      ).toBe(404);
+
+      expect(
+        (
+          await call(`/api/vehicles/${bob.vehicleId}/renewals`, {
+            method: "POST",
+            json: { type: "road_tax", expiresOn: "2027-01-01" },
+          })
+        ).status,
+      ).toBe(404);
+
+      expect(
+        (await call(`/api/vehicles/${bob.vehicleId}`, { method: "DELETE" })).status,
+      ).toBe(404);
+    });
+
+    it("rejects edits to another garage's records by ID", async () => {
+      const call = as(A);
+      expect(
+        (
+          await call(`/api/services/${bob.serviceId}`, {
+            method: "PATCH",
+            json: { workshopName: "hijacked" },
+          })
+        ).status,
+      ).toBe(404);
+
+      expect(
+        (await call(`/api/services/${bob.serviceId}`, { method: "DELETE" })).status,
+      ).toBe(404);
+
+      expect(
+        (
+          await call(`/api/renewals/${bob.renewalId}`, {
+            method: "PATCH",
+            json: { provider: "hijacked" },
+          })
+        ).status,
+      ).toBe(404);
+    });
+
+    it("leaves B's data untouched after every rejected write", async () => {
+      const b = as(B);
+      const vehicle = await b(`/api/vehicles/${bob.vehicleId}`);
+      expect(vehicle.body.nickname).toBe("BOB_VEHICLE_NICKNAME");
+      expect(vehicle.body.isActive).toBe(1);
+
+      const services = await b(`/api/vehicles/${bob.vehicleId}/services`);
+      expect(services.body).toHaveLength(1);
+      expect(services.body[0].workshopName).toBe("BOB_WORKSHOP");
+    });
+  });
+
+  it("shares global part types but not another garage's custom ones", async () => {
+    // part_types is the one deliberate exception to the garage predicate:
+    // garage_id IS NULL means shared. The exception must not widen.
+    await env_insertCustomPartType(bob.vehicleId);
+    const res = await as(A)("/api/part-types");
+    const codes = res.body.map((p: { code: string }) => p.code);
+    expect(codes).toContain("engine_oil");
+    expect(codes).not.toContain("bob_custom_part");
+  });
+});
+
+/** Inserts a garage-scoped part type for B, bypassing the API. */
+async function env_insertCustomPartType(bobVehicleId: string): Promise<void> {
+  const { env } = await import("cloudflare:test");
+  const garage = await env.DB.prepare(`SELECT garage_id FROM vehicles WHERE id = ?`)
+    .bind(bobVehicleId)
+    .first<{ garage_id: string }>();
+  await env.DB.prepare(
+    `INSERT INTO part_types (id, garage_id, code, name, category, default_interval_km)
+     VALUES ('pt_bob_custom', ?, 'bob_custom_part', 'BOB_CUSTOM', 'other', 10000)`,
+  )
+    .bind(garage!.garage_id)
+    .run();
+}

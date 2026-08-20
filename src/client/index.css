@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Designed at 375px first. Everything else is a progressive enhancement. */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  @apply bg-stone-50 text-stone-900 antialiased;
+}
