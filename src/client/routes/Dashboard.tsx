@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useDashboard, type VehicleCard } from "../api/hooks";
 import { StatusPill } from "../components/StatusPill";
 import { OdometerSheet } from "../components/OdometerSheet";
+import { VehicleSheet } from "../components/VehicleSheet";
 import { relativeDays, formatKm } from "../lib/format";
 
 /**
@@ -12,6 +13,7 @@ import { relativeDays, formatKm } from "../lib/format";
 export default function Dashboard() {
   const { data, isLoading, isError } = useDashboard();
   const [logging, setLogging] = useState<VehicleCard | null>(null);
+  const [adding, setAdding] = useState(false);
 
   if (isLoading) return <p className="p-4 text-stone-500">Loading&hellip;</p>;
   if (isError || !data) return <p className="p-4 text-red-700">Could not load your fleet.</p>;
@@ -71,7 +73,32 @@ export default function Dashboard() {
       </section>
 
       <section className="mt-8">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-stone-500">Vehicles</h2>
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-sm font-medium uppercase tracking-wide text-stone-500">Vehicles</h2>
+          {data.vehicles.length > 0 && (
+            <button onClick={() => setAdding(true)} className="text-sm font-medium underline">
+              Add
+            </button>
+          )}
+        </div>
+
+        {data.vehicles.length === 0 && (
+          // Without this the heading sits above an empty list, which reads as
+          // a broken screen rather than an empty one (spec 9).
+          <div className="mt-3 rounded-xl bg-white p-4 ring-1 ring-stone-200">
+            <p className="text-stone-600">
+              No vehicles yet. Add your first one and its maintenance schedule is built
+              from the seeded defaults.
+            </p>
+            <button
+              onClick={() => setAdding(true)}
+              className="mt-4 w-full rounded-xl bg-stone-900 py-3 font-medium text-white"
+            >
+              Add a vehicle
+            </button>
+          </div>
+        )}
+
         <ul className="mt-3 space-y-2">
           {data.vehicles.map((v) => (
             <li key={v.id} className="rounded-xl bg-white p-3 ring-1 ring-stone-200">
@@ -107,6 +134,8 @@ export default function Dashboard() {
           onClose={() => setLogging(null)}
         />
       )}
+
+      {adding && <VehicleSheet onClose={() => setAdding(false)} />}
     </div>
   );
 }

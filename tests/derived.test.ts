@@ -411,4 +411,35 @@ describe("vehicle seeding (spec 8.3)", () => {
     expect(codes).toContain("pt_brake_pad_front");
     expect(codes).toContain("pt_cabin_filter");
   });
+
+  /**
+   * The add-vehicle form sends only what was typed, and every field except
+   * the name is optional. If the API ever starts requiring one of them, the
+   * form breaks for exactly the user who has just arrived with nothing filled
+   * in -- the worst possible moment for it.
+   */
+  it("accepts a vehicle with nothing but a name", async () => {
+    const res = await call("/api/vehicles", {
+      method: "POST",
+      json: { nickname: "Myvi" },
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.nickname).toBe("Myvi");
+    expect(res.body.currentOdometerKm).toBe(0);
+
+    // Unknown fuel type means no filtering, so it inherits every interval
+    // rather than none -- a vehicle with an empty schedule would look fine
+    // and silently never come due.
+    const maintenance = await call(`/api/vehicles/${res.body.id}/maintenance`);
+    expect(maintenance.body.length).toBeGreaterThan(0);
+    expect(
+      maintenance.body.map((r: { part_type_id: string }) => r.part_type_id),
+    ).toContain("pt_engine_oil");
+  });
+
+  it("rejects a vehicle with no name", async () => {
+    const res = await call("/api/vehicles", { method: "POST", json: { plate: "WXY 1234" } });
+    expect(res.status).toBe(422);
+  });
 });

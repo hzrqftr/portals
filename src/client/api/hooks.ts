@@ -63,6 +63,32 @@ export function useMaintenance(id: string) {
   });
 }
 
+export interface VehicleDraft {
+  nickname: string;
+  plate?: string;
+  make?: string;
+  model?: string;
+  year?: number;
+  fuelType?: "petrol" | "diesel" | "hybrid" | "ev";
+  transmission?: "manual" | "auto";
+  currentOdometerKm?: number;
+}
+
+/**
+ * Deliberately not optimistic, unlike odometer logging. The server assigns
+ * the id and seeds this vehicle's maintenance intervals from the part-type
+ * defaults, filtered by fuel type -- none of which the client can predict, so
+ * there is nothing honest to render until it replies.
+ */
+export function useCreateVehicle() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: VehicleDraft) =>
+      api<VehicleCard>("/vehicles", { method: "POST", json: input }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
+  });
+}
+
 /**
  * The single most important write in the app (spec 11.7). It is optimistic
  * because the user is standing at a pump and will close the tab the instant
