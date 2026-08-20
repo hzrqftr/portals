@@ -8,6 +8,8 @@ A personal vehicle fleet portal: maintenance status, road tax and insurance rene
 
 Full design lives in `docs/fleet-portal-spec.md`. **That spec is authoritative.** This file lists the rules that are easy to break without noticing.
 
+**Resuming work? Read `docs/status.md` first.** It records what is actually built, what is not, and what to pick up next — the spec describes the destination, not the current position.
+
 ## Working with the owner
 
 The owner is comfortable with product decisions but **not deeply familiar with Cloudflare Workers, D1, Drizzle, or Hono.** This changes how you should work:

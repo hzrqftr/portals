@@ -502,14 +502,21 @@ Mobile-first, designed at 375px. Status colours green, amber, red, grey, always 
 
 ## 10. Phasing
 
+> Current progress, and what to pick up next, live in `docs/status.md`. This
+> section defines the phases; that file records how far they have got.
+
 **Phase 1 — Core.** Access setup, user and garage bootstrap, vehicle CRUD, odometer logging, intervals with seeded defaults, service records and items, renewals, dashboard status computation, and the isolation test suite from §5.2.
 *Done when you can stop using your current spreadsheet.*
+**In progress.** Every API endpoint and the isolation suite are built. The
+client is missing service records (§8.4), renewals, vehicle edit and delete,
+and interval inline editing, so the "stop using the spreadsheet" bar is not
+met yet.
 
-**Phase 2 — Money.** Cost estimates, forecast, run rate, spend breakdowns, derived estimates.
+**Phase 2 — Money.** Cost estimates, forecast, run rate, spend breakdowns, derived estimates. *Not started.*
 
-**Phase 3 — Multi-user.** Invitations, role enforcement in UI, garage switching.
+**Phase 3 — Multi-user.** Invitations, role enforcement in UI, garage switching. *Not started.*
 
-**Phase 4 — Automation.** Cron reminder emails, R2 document upload, scheduled database export (§11.6).
+**Phase 4 — Automation.** Cron reminder emails, R2 document upload, scheduled database export (§11.6). *Not started — but see §11.6, the export is worth pulling forward before bulk-entering historical records.*
 
 ---
 
