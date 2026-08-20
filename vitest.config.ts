@@ -15,7 +15,12 @@ export default defineConfig({
         compatibilityDate: "2026-08-20",
         compatibilityFlags: ["nodejs_compat"],
         d1Databases: ["DB"],
-        bindings: { TEST_MIGRATIONS: migrations, ENVIRONMENT: "test" },
+        bindings: {
+          TEST_MIGRATIONS: migrations,
+          ENVIRONMENT: "test",
+          ACCESS_TEAM_DOMAIN: "fleet.cloudflareaccess.test",
+          ACCESS_AUD: "test-aud-tag",
+        },
       },
     }),
   ],

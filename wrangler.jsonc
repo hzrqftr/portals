@@ -16,7 +16,7 @@
     {
       "binding": "DB",
       "database_name": "fleet",
-      "database_id": "PLACEHOLDER_REPLACE_WITH_REAL_ID",
+      "database_id": "e4bdd9c3-e885-42de-a709-4daf8f4a6edb",
       "migrations_dir": "./migrations"
     }
   ],
@@ -33,7 +33,14 @@
       }
     }
   },
+  // ACCESS_* are not secrets: the team domain is public and the audience tag
+  // is an identifier, not a credential. They are only used to verify the
+  // Access assertion header when the runtime does not populate ctx.access.
+  // ACCESS_AUD must match the Application Audience (AUD) Tag shown under
+  // Cloudflare One > Access controls > Applications > fleet-portal.
   "vars": {
-    "ENVIRONMENT": "production"
+    "ENVIRONMENT": "production",
+    "ACCESS_TEAM_DOMAIN": "effortless-hf95.cloudflareaccess.com",
+    "ACCESS_AUD": "8589de21f29cca2879237ed5187c945a0861fc16becd764662e1b6d6905008b5"
   }
 }

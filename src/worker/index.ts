@@ -20,7 +20,11 @@ const app = new Hono<AppContext>();
  * unscoped -- that is the whole design, since D1 will not stop them.
  */
 app.use("/api/*", async (c, next) => {
-  const user = await getAuthenticatedUser(c.executionCtx as ExecutionContext, c.env);
+  const user = await getAuthenticatedUser(
+    c.executionCtx as ExecutionContext,
+    c.env,
+    c.req.raw,
+  );
   const scope = await resolveScope(c.env, user);
   c.set("scope", scope);
   c.set("repos", makeRepos(c.env, scope));

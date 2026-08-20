@@ -3,6 +3,15 @@ export interface Env {
   ASSETS: Fetcher;
   ENVIRONMENT: string;
   DEV_USER_EMAIL?: string;
+
+  /**
+   * Access team domain and application audience tag, used only to verify the
+   * Cf-Access-Jwt-Assertion header when the runtime does not populate
+   * ctx.access. See auth.ts. Both must be set for that fallback to engage;
+   * with either missing, requests without a runtime identity are rejected.
+   */
+  ACCESS_TEAM_DOMAIN?: string;
+  ACCESS_AUD?: string;
 }
 
 export type Role = "owner" | "editor" | "viewer";
