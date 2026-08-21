@@ -3,7 +3,7 @@ import { ScopedRepo } from "./base";
 import { serviceRecords, serviceItems } from "../schema";
 import { NotFoundError } from "../errors";
 import { nowIso } from "@shared/dates";
-import type { ServiceInput, ServicePatch } from "@shared/zod";
+import type { ServiceInput, ServicePatch, ServiceType } from "@shared/zod";
 
 export class ServiceRepo extends ScopedRepo {
   async list(vehicleId: string) {
@@ -12,11 +12,24 @@ export class ServiceRepo extends ScopedRepo {
     // One query with a join, not one query per record to fetch its items.
     const { results } = await this.raw
       .prepare(
-        `SELECT sr.id, sr.serviced_on, sr.odometer_km, sr.workshop_name,
-                sr.total_cost, sr.notes, sr.created_at,
+        `SELECT sr.id, sr.serviced_on, sr.odometer_km, sr.service_type,
+                sr.workshop_name, sr.total_cost, sr.notes, sr.created_at,
                 si.id AS item_id, si.part_type_id, pt.name AS part_name,
                 si.brand, si.spec, si.quantity_milli, si.unit_cost,
-                si.line_total_cost, si.warranty_months
+                si.line_total_cost, si.warranty_months,
+                si.interval_km_override, si.interval_months_override,
+                -- Warranty expiry is derived here rather than stored, for the
+                -- same reason due dates are: it is a function of the service
+                -- date and the term, and correcting either must move it.
+                -- Display only -- no status band, no attention item.
+                CASE WHEN si.warranty_months IS NOT NULL
+                     THEN date(sr.serviced_on, '+' || si.warranty_months || ' months')
+                END AS warranty_expires_on,
+                -- The absolute figure the owner typed, reconstructed from the
+                -- interval that was actually stored.
+                CASE WHEN si.interval_km_override IS NOT NULL
+                     THEN sr.odometer_km + si.interval_km_override
+                END AS next_due_km
            FROM service_records sr
            LEFT JOIN service_items si ON si.service_record_id = sr.id
            LEFT JOIN part_types pt ON pt.id = si.part_type_id
@@ -49,9 +62,9 @@ export class ServiceRepo extends ScopedRepo {
       this.raw
         .prepare(
           `INSERT INTO service_records
-             (id, garage_id, vehicle_id, serviced_on, odometer_km, workshop_name,
-              total_cost, notes, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?)`,
+             (id, garage_id, vehicle_id, serviced_on, odometer_km, service_type,
+              workshop_name, total_cost, notes, created_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)`,
         )
         .bind(
           recordId,
@@ -59,6 +72,10 @@ export class ServiceRepo extends ScopedRepo {
           vehicleId,
           input.servicedOn,
           input.odometerKm,
+          // A label only. Whether any clock resets is decided entirely by the
+          // line items below (invariant 7): a "major" with no items resets
+          // nothing, and that is the correct outcome, not a bug to paper over.
+          input.serviceType ?? null,
           input.workshopName ?? null,
           input.totalCost ?? null,
           input.notes ?? null,
@@ -75,8 +92,9 @@ export class ServiceRepo extends ScopedRepo {
           .prepare(
             `INSERT INTO service_items
                (id, garage_id, service_record_id, part_type_id, brand, spec,
-                quantity_milli, unit_cost, warranty_months)
-             VALUES (?,?,?,?,?,?,?,?,?)`,
+                quantity_milli, unit_cost, warranty_months,
+                interval_km_override, interval_months_override)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
           )
           .bind(
             crypto.randomUUID(),
@@ -88,8 +106,45 @@ export class ServiceRepo extends ScopedRepo {
             item.quantityMilli,
             item.unitCost ?? null,
             item.warrantyMonths ?? null,
+            item.intervalKmOverride ?? null,
+            item.intervalMonthsOverride ?? null,
           ),
       );
+
+      // An override needs somewhere to land.
+      //
+      // v_maintenance_due starts FROM maintenance_intervals, so a part with
+      // no active interval row is absent from the view entirely -- and the
+      // "next due" the owner just typed would have no visible effect at all.
+      // Silently doing nothing is the worst option here, so: create the
+      // interval if it is missing, reactivate it if it was switched off.
+      //
+      // DO UPDATE deliberately does not overwrite an existing configured
+      // interval. The override already wins for this cycle through the view;
+      // clobbering the vehicle's own setting would make a one-off permanent,
+      // which is the opposite of what "just this once" means.
+      const hasOverride =
+        item.intervalKmOverride != null || item.intervalMonthsOverride != null;
+      if (hasOverride) {
+        statements.push(
+          this.raw
+            .prepare(
+              `INSERT INTO maintenance_intervals
+                 (id, garage_id, vehicle_id, part_type_id,
+                  interval_km, interval_months, is_active)
+               VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, 1)
+               ON CONFLICT(vehicle_id, part_type_id)
+               DO UPDATE SET is_active = 1`,
+            )
+            .bind(
+              this.garageId,
+              vehicleId,
+              item.partTypeId,
+              item.intervalKmOverride ?? null,
+              item.intervalMonthsOverride ?? null,
+            ),
+        );
+      }
     }
 
     statements.push(
@@ -160,6 +215,7 @@ interface ServiceJoinRow {
   id: string;
   serviced_on: string;
   odometer_km: number;
+  service_type: ServiceType | null;
   workshop_name: string | null;
   total_cost: number | null;
   notes: string | null;
@@ -173,6 +229,10 @@ interface ServiceJoinRow {
   unit_cost: number | null;
   line_total_cost: number | null;
   warranty_months: number | null;
+  warranty_expires_on: string | null;
+  interval_km_override: number | null;
+  interval_months_override: number | null;
+  next_due_km: number | null;
 }
 
 /**
@@ -199,6 +259,10 @@ function groupItems(rows: ServiceJoinRow[]) {
         unitCost: r.unit_cost,
         lineTotalCost: r.line_total_cost,
         warrantyMonths: r.warranty_months,
+        warrantyExpiresOn: r.warranty_expires_on,
+        intervalKmOverride: r.interval_km_override,
+        intervalMonthsOverride: r.interval_months_override,
+        nextDueKm: r.next_due_km,
       });
     }
   }
@@ -210,6 +274,7 @@ function shell(r: ServiceJoinRow) {
     id: r.id,
     servicedOn: r.serviced_on,
     odometerKm: r.odometer_km,
+    serviceType: r.service_type,
     workshopName: r.workshop_name,
     totalCost: r.total_cost,
     notes: r.notes,
@@ -224,6 +289,10 @@ function shell(r: ServiceJoinRow) {
       unitCost: number | null;
       lineTotalCost: number | null;
       warrantyMonths: number | null;
+      warrantyExpiresOn: string | null;
+      intervalKmOverride: number | null;
+      intervalMonthsOverride: number | null;
+      nextDueKm: number | null;
     }[],
   };
 }

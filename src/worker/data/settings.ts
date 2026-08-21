@@ -55,6 +55,8 @@ export class SettingsRepo {
     dateFormat?: string;
     dueSoonDays?: number;
     dueSoonKm?: number;
+    fallbackKmPerDay?: number;
+    staleOdometerDays?: number;
   }) {
     const { timezone, ...rest } = patch;
     if (timezone !== undefined) {

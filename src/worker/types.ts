@@ -27,6 +27,9 @@ export interface Scope {
   timezone: string;
   dueSoonDays: number;
   dueSoonKm: number;
+  /** Divisor in the km->date projection. Guaranteed >= 1 by settingsPatch. */
+  fallbackKmPerDay: number;
+  staleOdometerDays: number;
 }
 
 export interface AuthUser {

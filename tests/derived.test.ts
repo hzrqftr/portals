@@ -166,6 +166,274 @@ describe("due status handles missing halves of an interval (spec 6.2 step 5)", (
   });
 });
 
+/**
+ * The "next scheduled mileage" the owner types on a service is stored as an
+ * INTERVAL from that service, never as an absolute due point (invariant 6).
+ *
+ * Every test here is really the same assertion from a different angle: the
+ * due point is a function of the baseline, so it moves when the baseline
+ * moves. A stored due point passes the first test and fails all the rest,
+ * silently, while continuing to display a plausible number.
+ */
+describe("per-service interval overrides (invariant 6)", () => {
+  const findOil = (body: { part_type_id: string }[]) =>
+    body.find((r) => r.part_type_id === "pt_engine_oil") as never as {
+      due_km: number | null;
+      interval_km: number | null;
+      configured_interval_km: number | null;
+      interval_is_override: number;
+      due_date_by_time: string | null;
+      status: string;
+    };
+
+  it("uses the override instead of the vehicle's configured interval", async () => {
+    const vehicleId = await makeVehicle();
+    // Engine oil is seeded at 10,000 km. Cheap mineral oil this time, so the
+    // workshop says come back at 55,000 -- a 5,000 km interval, just once.
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 50_000,
+        items: [{ partTypeId: "pt_engine_oil", intervalKmOverride: 5_000 }],
+      },
+    });
+
+    const oil = findOil((await call(`/api/vehicles/${vehicleId}/maintenance`)).body);
+    expect(oil.due_km).toBe(55_000);
+    expect(oil.interval_km).toBe(5_000);
+    expect(oil.interval_is_override).toBe(1);
+    // The vehicle's own setting is untouched and still visible, so the UI can
+    // say where each number came from.
+    expect(oil.configured_interval_km).toBe(10_000);
+  });
+
+  it("derives the due point from the baseline rather than storing it", async () => {
+    const vehicleId = await makeVehicle();
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 50_000,
+        items: [{ partTypeId: "pt_engine_oil", intervalKmOverride: 5_000 }],
+      },
+    });
+    expect(findOil((await call(`/api/vehicles/${vehicleId}/maintenance`)).body).due_km).toBe(
+      55_000,
+    );
+
+    // Same part, same 5,000 km override, but 8,000 km later. A stored due
+    // point would still read 55,000 -- a figure now in the past.
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-06-10",
+        odometerKm: 58_000,
+        items: [{ partTypeId: "pt_engine_oil", intervalKmOverride: 5_000 }],
+      },
+    });
+
+    expect(findOil((await call(`/api/vehicles/${vehicleId}/maintenance`)).body).due_km).toBe(
+      63_000,
+    );
+  });
+
+  it("lets the override expire when the part is next serviced without one", async () => {
+    const vehicleId = await makeVehicle();
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 50_000,
+        items: [{ partTypeId: "pt_engine_oil", intervalKmOverride: 5_000 }],
+      },
+    });
+
+    // Back on normal oil. The one-off must not have become permanent.
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-06-10",
+        odometerKm: 55_000,
+        items: [{ partTypeId: "pt_engine_oil" }],
+      },
+    });
+
+    const oil = findOil((await call(`/api/vehicles/${vehicleId}/maintenance`)).body);
+    expect(oil.interval_km).toBe(10_000); // the vehicle's setting, back in charge
+    expect(oil.interval_is_override).toBe(0);
+    expect(oil.due_km).toBe(65_000);
+  });
+
+  it("keeps a km-only override from nulling out the time clock", async () => {
+    const vehicleId = await makeVehicle();
+    // Engine oil is seeded 10,000 km AND 12 months. Overriding only the km
+    // half must leave the months half alone, not blank it.
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 50_000,
+        items: [{ partTypeId: "pt_engine_oil", intervalKmOverride: 5_000 }],
+      },
+    });
+
+    const oil = findOil((await call(`/api/vehicles/${vehicleId}/maintenance`)).body);
+    expect(oil.due_km).toBe(55_000);
+    expect(oil.due_date_by_time).toBe("2027-02-10"); // +12 months, unchanged
+  });
+
+  it("gives an override somewhere to land when the part has no active interval", async () => {
+    const vehicleId = await makeVehicle();
+
+    // Timing chain ships with no default intervals, so the seeder skips it
+    // and there is no maintenance_intervals row at all. Without the upsert in
+    // ServiceRepo.create the override would be stored and never displayed:
+    // v_maintenance_due starts FROM maintenance_intervals.
+    const before = await call(`/api/vehicles/${vehicleId}/maintenance`);
+    expect(
+      before.body.find((r: { part_type_id: string }) => r.part_type_id === "pt_timing_chain"),
+    ).toBeUndefined();
+
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 50_000,
+        items: [{ partTypeId: "pt_timing_chain", intervalKmOverride: 150_000 }],
+      },
+    });
+
+    const after = await call(`/api/vehicles/${vehicleId}/maintenance`);
+    const chain = after.body.find(
+      (r: { part_type_id: string }) => r.part_type_id === "pt_timing_chain",
+    );
+    expect(chain).toBeDefined();
+    expect(chain.due_km).toBe(200_000);
+    expect(chain.status).toBe("ok");
+  });
+});
+
+describe("per-vehicle interval configuration (spec 8.2)", () => {
+  it("starts tracking a part the seeder skipped", async () => {
+    // The belt-versus-chain case. Timing chain has no default intervals, so
+    // no interval row exists and there is nothing on screen to switch on.
+    const vehicleId = await makeVehicle();
+    const res = await call(`/api/vehicles/${vehicleId}/intervals/pt_timing_chain`, {
+      method: "PATCH",
+      json: { intervalKm: 150_000 },
+    });
+    expect(res.status).toBe(200);
+
+    const rows = (await call(`/api/vehicles/${vehicleId}/maintenance`)).body;
+    const chain = rows.find(
+      (r: { part_type_id: string }) => r.part_type_id === "pt_timing_chain",
+    );
+    expect(chain.interval_km).toBe(150_000);
+    expect(chain.status).toBe("unknown"); // tracked, but no baseline yet
+  });
+
+  it("hides a part switched off, and brings it back when switched on", async () => {
+    const vehicleId = await makeVehicle();
+    const present = (body: { part_type_id: string }[]) =>
+      body.some((r) => r.part_type_id === "pt_timing_belt");
+
+    expect(present((await call(`/api/vehicles/${vehicleId}/maintenance`)).body)).toBe(true);
+
+    await call(`/api/vehicles/${vehicleId}/intervals/pt_timing_belt`, {
+      method: "PATCH",
+      json: { isActive: 0 },
+    });
+    expect(present((await call(`/api/vehicles/${vehicleId}/maintenance`)).body)).toBe(false);
+
+    await call(`/api/vehicles/${vehicleId}/intervals/pt_timing_belt`, {
+      method: "PATCH",
+      json: { isActive: 1 },
+    });
+    expect(present((await call(`/api/vehicles/${vehicleId}/maintenance`)).body)).toBe(true);
+  });
+
+  it("refuses an interval with neither a distance nor a time", async () => {
+    const vehicleId = await makeVehicle();
+    const res = await call(`/api/vehicles/${vehicleId}/intervals/pt_engine_oil`, {
+      method: "PATCH",
+      json: { intervalKm: null, intervalMonths: null },
+    });
+    expect(res.status).toBe(422);
+  });
+});
+
+describe("service type is a label, not a clock (invariant 7)", () => {
+  it("resets nothing when a typed service has no line items", async () => {
+    const vehicleId = await makeVehicle();
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 50_000,
+        serviceType: "major",
+        items: [],
+      },
+    });
+
+    // Calling it a major service does not make it one. Only items count.
+    const res = await call(`/api/vehicles/${vehicleId}/maintenance`);
+    for (const row of res.body) {
+      expect(row.status).toBe("unknown");
+    }
+
+    const services = await call(`/api/vehicles/${vehicleId}/services`);
+    expect(services.body[0].serviceType).toBe("major");
+  });
+
+  it("rejects a service type outside the allowed set", async () => {
+    const vehicleId = await makeVehicle();
+    const res = await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: { servicedOn: "2026-02-10", odometerKm: 50_000, serviceType: "supermajor" },
+    });
+    expect(res.status).toBe(422);
+  });
+});
+
+describe("warranty is derived and display-only", () => {
+  it("expires the warranty months after the service date", async () => {
+    const vehicleId = await makeVehicle();
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 50_000,
+        items: [{ partTypeId: "pt_battery", warrantyMonths: 18 }],
+      },
+    });
+
+    const item = (await call(`/api/vehicles/${vehicleId}/services`)).body[0].items[0];
+    expect(item.warrantyExpiresOn).toBe("2027-08-10");
+
+    // Display only: a warranty never becomes an attention item.
+    const dashboard = await call("/api/dashboard");
+    expect(dashboard.body.attention.every((a: { kind: string }) => a.kind !== "warranty")).toBe(
+      true,
+    );
+  });
+
+  it("leaves the expiry null when no warranty was recorded", async () => {
+    const vehicleId = await makeVehicle();
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 50_000,
+        items: [{ partTypeId: "pt_battery" }],
+      },
+    });
+
+    const item = (await call(`/api/vehicles/${vehicleId}/services`)).body[0].items[0];
+    expect(item.warrantyExpiresOn).toBeNull();
+  });
+});
+
 describe("usage rate survives integer division (spec 6.1)", () => {
   it("does not truncate a low-usage vehicle to zero km/day", async () => {
     vi.useFakeTimers();
@@ -216,6 +484,64 @@ describe("usage rate survives integer division (spec 6.1)", () => {
     const res = await call(`/api/vehicles/${vehicleId}/maintenance`);
     const pads = res.body.find((r: { part_type_id: string }) => r.part_type_id === "pt_brake_pad_front");
     expect(pads.low_confidence).toBe(1);
+  });
+});
+
+/**
+ * These two were hard-coded literals. They are settings now because neither
+ * has a defensible universal value -- how far you drive in a day, and how
+ * long a reading stays trustworthy, are properties of the owner.
+ */
+describe("assumed usage rate and staleness come from settings", () => {
+  it("projects the km due date using the configured fallback rate", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-20T04:00:00Z")); // 2026-08-20 in UTC+8
+
+    const vehicleId = await makeVehicle({ currentOdometerKm: 50_000 });
+    // Front brake pads: km-only, 40,000 km. Serviced at 45,000, so due at
+    // 85,000 -- 35,000 km beyond the current 50,000.
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-01-05",
+        odometerKm: 45_000,
+        items: [{ partTypeId: "pt_brake_pad_front" }],
+      },
+    });
+
+    await call("/api/me/settings", { method: "PATCH", json: { fallbackKmPerDay: 100 } });
+
+    const res = await call(`/api/vehicles/${vehicleId}/maintenance`);
+    const pads = res.body.find(
+      (r: { part_type_id: string }) => r.part_type_id === "pt_brake_pad_front",
+    );
+    // 35,000 km at 100 km/day = 350 days, not the 1,166 the old literal gave.
+    expect(pads.low_confidence).toBe(1);
+    expect(pads.days_remaining).toBe(350);
+  });
+
+  it("flags a stale odometer against the configured threshold", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-20T04:00:00Z"));
+
+    // No opening odometer: otherwise the vehicle is created with
+    // odometer_updated_on = today, and the backdated reading below correctly
+    // refuses to move that date backwards, leaving the age at zero.
+    const vehicleId = await makeVehicle({ currentOdometerKm: undefined });
+    await call(`/api/vehicles/${vehicleId}/odometer`, {
+      method: "POST",
+      json: { readingKm: 51_000, recordedOn: "2026-08-10" },
+    });
+
+    // Ten days old: quiet at the 45-day default.
+    expect((await call("/api/dashboard")).body.staleOdometers).toEqual([]);
+
+    await call("/api/me/settings", { method: "PATCH", json: { staleOdometerDays: 7 } });
+
+    const after = await call("/api/dashboard");
+    expect(after.body.staleOdometers).toHaveLength(1);
+    expect(after.body.staleOdometers[0].vehicleId).toBe(vehicleId);
+    expect(after.body.staleOdometers[0].daysSince).toBe(10);
   });
 });
 

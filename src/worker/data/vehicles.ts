@@ -231,7 +231,38 @@ export class VehicleRepo extends ScopedRepo {
         ),
       )
       .returning();
-    if (!row) throw new NotFoundError("Interval not found");
-    return row;
+    if (row) return row;
+
+    /**
+     * No row yet, so create one.
+     *
+     * The seeder only creates intervals for part types that ship with a
+     * default, which leaves two parts permanently unreachable from the UI:
+     * anything deliberately intervalless (Timing chain is inspect-on-symptom,
+     * so both its defaults are NULL) and any part type the owner added
+     * themselves. Without this branch, "start tracking this part" is a
+     * 404 forever and the belt-versus-chain case has no answer.
+     *
+     * A patch carrying only isActive still 404s: there is genuinely nothing
+     * to switch on or off, and inventing a row with no interval in it would
+     * fail the table's CHECK constraint anyway.
+     */
+    if (patch.intervalKm == null && patch.intervalMonths == null) {
+      throw new NotFoundError("Interval not found");
+    }
+
+    const [created] = await this.db
+      .insert(maintenanceIntervals)
+      .values({
+        id: crypto.randomUUID(),
+        garageId: this.garageId,
+        vehicleId,
+        partTypeId,
+        intervalKm: patch.intervalKm ?? null,
+        intervalMonths: patch.intervalMonths ?? null,
+        isActive: patch.isActive ?? 1,
+      })
+      .returning();
+    return created;
   }
 }

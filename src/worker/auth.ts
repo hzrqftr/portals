@@ -218,7 +218,9 @@ export async function resolveScope(env: Env, user: AuthUser): Promise<Scope> {
             gm.garage_id    AS garage_id,
             gm.role         AS role,
             s.due_soon_days AS due_soon_days,
-            s.due_soon_km   AS due_soon_km
+            s.due_soon_km   AS due_soon_km,
+            s.fallback_km_per_day AS fallback_km_per_day,
+            s.stale_odometer_days AS stale_odometer_days
        FROM users u
        JOIN garage_members gm ON gm.user_id = u.id
        LEFT JOIN user_settings s ON s.user_id = u.id
@@ -234,6 +236,8 @@ export async function resolveScope(env: Env, user: AuthUser): Promise<Scope> {
       role: Role;
       due_soon_days: number | null;
       due_soon_km: number | null;
+      fallback_km_per_day: number | null;
+      stale_odometer_days: number | null;
     }>();
 
   if (existing) {
@@ -244,6 +248,11 @@ export async function resolveScope(env: Env, user: AuthUser): Promise<Scope> {
       timezone: existing.timezone,
       dueSoonDays: existing.due_soon_days ?? 30,
       dueSoonKm: existing.due_soon_km ?? 1000,
+      // The LEFT JOIN means a user with no settings row yields NULLs here.
+      // A NULL fallback rate would divide by zero in the km projection, so
+      // the coalesce is load-bearing, not defensive noise.
+      fallbackKmPerDay: existing.fallback_km_per_day ?? 30,
+      staleOdometerDays: existing.stale_odometer_days ?? 45,
     };
   }
 
@@ -271,6 +280,24 @@ async function bootstrapUser(env: Env, user: AuthUser): Promise<Scope> {
     env.DB.prepare(
       `INSERT INTO user_settings (user_id) VALUES (?)`,
     ).bind(userId),
+
+    // Starter parts templates for the two service types that have a
+    // conventional shape. They are only a pre-fill -- the log-service form
+    // lets any of it be removed -- and Settings edits them. Seeding here
+    // rather than in the migration keeps them per-garage and editable,
+    // instead of a global set every garage would fight with.
+    env.DB.prepare(
+      `INSERT INTO service_templates
+         (id, garage_id, vehicle_id, service_type, part_type_id, sort_order)
+       VALUES
+         (lower(hex(randomblob(16))), ?, NULL, 'minor', 'pt_engine_oil',   0),
+         (lower(hex(randomblob(16))), ?, NULL, 'minor', 'pt_oil_filter',   1),
+         (lower(hex(randomblob(16))), ?, NULL, 'major', 'pt_engine_oil',   0),
+         (lower(hex(randomblob(16))), ?, NULL, 'major', 'pt_oil_filter',   1),
+         (lower(hex(randomblob(16))), ?, NULL, 'major', 'pt_air_filter',   2),
+         (lower(hex(randomblob(16))), ?, NULL, 'major', 'pt_cabin_filter', 3),
+         (lower(hex(randomblob(16))), ?, NULL, 'major', 'pt_brake_fluid',  4)`,
+    ).bind(garageId, garageId, garageId, garageId, garageId, garageId, garageId),
   ]);
 
   return {
@@ -280,6 +307,8 @@ async function bootstrapUser(env: Env, user: AuthUser): Promise<Scope> {
     timezone: "Asia/Kuala_Lumpur",
     dueSoonDays: 30,
     dueSoonKm: 1000,
+    fallbackKmPerDay: 30,
+    staleOdometerDays: 45,
   };
 }
 

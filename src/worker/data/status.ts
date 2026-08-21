@@ -22,8 +22,13 @@ export interface MaintenanceDueRow {
   part_type_id: string;
   part_name: string;
   part_category: string;
+  /** Effective interval: the last service's override if it set one. */
   interval_km: number | null;
   interval_months: number | null;
+  /** 1 when the two above came from the last service rather than the vehicle. */
+  interval_is_override: number;
+  configured_interval_km: number | null;
+  configured_interval_months: number | null;
   baseline_date: string | null;
   baseline_km: number | null;
   current_odometer_km: number;
@@ -59,9 +64,9 @@ export interface RenewalStatusRow {
  *    one covering 20 km in 30 days would compute as 0 -- and then divide by
  *    zero in the projection below.
  * 2. The rate is NULL, not zero, when there is too little history. NULL
- *    means "unknown, fall back to 30 km/day and tell the user the
- *    projection is low confidence". Zero means "this car genuinely is not
- *    moving", which is a real answer and must not be overwritten.
+ *    means "unknown, fall back to the configured assumed rate and tell the
+ *    user the projection is low confidence". Zero means "this car genuinely
+ *    is not moving", which is a real answer and must not be overwritten.
  *
  * Bind order: garageId, today.
  */
@@ -85,7 +90,14 @@ const USAGE_CTE = `
   )`;
 
 /**
- * Bind order: garageId, today, garageId, today, today, today, dueSoonDays, dueSoonKm.
+ * Bind order: garageId, today, fallbackKmPerDay, garageId, today, today,
+ * today, today, dueSoonDays, dueSoonKm.
+ *
+ * Parameters bind by POSITION IN THE STATEMENT TEXT, not by CTE. The fallback
+ * rate sits in the `base` SELECT list, which the parser reaches before that
+ * CTE's WHERE clause -- so it binds before garageId, not after. Getting this
+ * pair the wrong way round silently compares garage_id against a number and
+ * returns an empty dashboard.
  *
  * The status CASE is ordered deliberately:
  *   unknown first  -- a part with no service history has no baseline, so it
@@ -100,10 +112,12 @@ WITH ${USAGE_CTE},
   base AS (
     SELECT md.interval_id, md.vehicle_id, md.part_type_id, md.part_name,
            md.part_category, md.interval_km, md.interval_months,
+           md.interval_is_override, md.configured_interval_km,
+           md.configured_interval_months,
            md.baseline_date, md.baseline_km, md.due_km, md.due_date_by_time,
            md.is_unknown,
            v.nickname, v.current_odometer_km,
-           COALESCE(u.avg_km_per_day, 30.0) AS eff_rate,
+           COALESCE(u.avg_km_per_day, ? * 1.0) AS eff_rate,
            CASE WHEN u.avg_km_per_day IS NULL THEN 1 ELSE 0 END AS low_confidence
       FROM v_maintenance_due md
       JOIN vehicles v ON v.id = md.vehicle_id
@@ -136,7 +150,9 @@ WITH ${USAGE_CTE},
   classified AS (
     SELECT
       interval_id, vehicle_id, nickname, part_type_id, part_name, part_category,
-      interval_km, interval_months, baseline_date, baseline_km,
+      interval_km, interval_months, interval_is_override,
+      configured_interval_km, configured_interval_months,
+      baseline_date, baseline_km,
       current_odometer_km, due_km, due_date_by_time, projected_date_by_km,
       effective_due_date, low_confidence,
       CASE WHEN due_km IS NOT NULL THEN due_km - current_odometer_km END AS km_remaining,
@@ -204,7 +220,8 @@ export class StatusRepo extends ScopedRepo {
 
     const binds: unknown[] = [
       this.garageId, today, // usage CTE
-      this.garageId, // base
+      this.scope.fallbackKmPerDay, // base: eff_rate, in the SELECT list
+      this.garageId, // base: WHERE
       today, // proj
       today, // days_remaining
       today, // overdue

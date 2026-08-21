@@ -28,6 +28,23 @@ export const fuelType = z.enum(["petrol", "diesel", "hybrid", "ev"]);
 export const transmission = z.enum(["manual", "auto"]);
 export const renewalType = z.enum(["road_tax", "insurance", "inspection", "warranty"]);
 
+/**
+ * What kind of visit this was. A label, and the key the parts template is
+ * looked up by -- it never resets a maintenance clock itself (invariant 7).
+ */
+export const serviceType = z.enum(["minor", "major", "repair", "inspection", "other"]);
+
+export const partCategory = z.enum([
+  "fluid",
+  "filter",
+  "brake",
+  "tyre",
+  "battery",
+  "belt",
+  "electrical",
+  "other",
+]);
+
 export const vehicleInput = z.object({
   nickname: z.string().min(1, "A nickname is required").max(60),
   plate: z.string().max(20).optional(),
@@ -59,11 +76,23 @@ export const serviceItemInput = z.object({
   quantityMilli: quantityMilli.default(1000),
   unitCost: sen.nonnegative().optional(),
   warrantyMonths: z.number().int().nonnegative().max(240).optional(),
+  /**
+   * "Next due N km / N months from THIS service."
+   *
+   * An INTERVAL, deliberately, not the absolute odometer figure the user
+   * types into the form. The client subtracts the service odometer before
+   * sending, so the API cannot be handed a due point at all -- which is what
+   * keeps invariant 6 true rather than merely intended. Bounds match
+   * intervalPatch below, since these values can become an interval.
+   */
+  intervalKmOverride: z.number().int().positive().max(1_000_000).nullable().optional(),
+  intervalMonthsOverride: z.number().int().positive().max(600).nullable().optional(),
 });
 
 export const serviceInput = z.object({
   servicedOn: calendarDate,
   odometerKm: km,
+  serviceType: serviceType.optional(),
   workshopName: z.string().max(120).optional(),
   // Entered separately from the line items: labour and sundries are real
   // costs but not parts, so total_cost may legitimately exceed their sum.
@@ -128,6 +157,28 @@ export const settingsPatch = z.object({
   dateFormat: z.string().max(20).optional(),
   dueSoonDays: z.number().int().min(1).max(365).optional(),
   dueSoonKm: z.number().int().min(1).max(100_000).optional(),
+  // Only used while a vehicle has too little odometer history to measure a
+  // real rate. Must stay positive: it is a divisor in the km projection.
+  fallbackKmPerDay: z.number().int().min(1).max(1000).optional(),
+  staleOdometerDays: z.number().int().min(1).max(365).optional(),
+});
+
+/**
+ * The full parts list for one service type, replacing whatever was there.
+ * A PUT rather than a PATCH because the natural edit is "these are the parts
+ * in a minor service now" -- expressing a removal as a diff would be worse.
+ * An empty array is valid and means the template no longer pre-fills.
+ */
+export const serviceTemplatePut = z.object({
+  partTypeIds: z.array(z.string().min(1)).max(40),
+});
+
+/** A garage's own part type, for anything the 20 seeded ones do not cover. */
+export const partTypeInput = z.object({
+  name: z.string().min(1, "A name is required").max(60),
+  category: partCategory,
+  defaultIntervalKm: z.number().int().positive().max(1_000_000).nullable().optional(),
+  defaultIntervalMonths: z.number().int().positive().max(600).nullable().optional(),
 });
 
 export type VehicleInput = z.infer<typeof vehicleInput>;
@@ -139,3 +190,6 @@ export type RenewalInput = z.infer<typeof renewalInput>;
 export type RenewalPatch = z.infer<typeof renewalPatch>;
 export type IntervalPatch = z.infer<typeof intervalPatch>;
 export type SettingsPatch = z.infer<typeof settingsPatch>;
+export type ServiceType = z.infer<typeof serviceType>;
+export type ServiceTemplatePut = z.infer<typeof serviceTemplatePut>;
+export type PartTypeInput = z.infer<typeof partTypeInput>;

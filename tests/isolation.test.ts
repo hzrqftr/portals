@@ -28,12 +28,14 @@ const B_MARKERS = [
   "BOB_BRAND",
   "BOB_INSURER",
   "BOB_POLICY_REF",
+  "BOB_SPARE_PART",
 ];
 
 interface Seeded {
   vehicleId: string;
   serviceId: string;
   renewalId: string;
+  partTypeId: string;
 }
 
 async function seed(email: string, tag: string): Promise<Seeded> {
@@ -87,10 +89,27 @@ async function seed(email: string, tag: string): Promise<Seeded> {
     json: { readingKm: 52_000, recordedOn: "2026-08-01" },
   });
 
+  // A garage-owned part type, and a service template that references it.
+  // Both are garage-scoped reference data, which is the category most likely
+  // to be treated as global by accident.
+  const partType = await call("/api/part-types", {
+    method: "POST",
+    json: { name: `${tag}_SPARE_PART`, category: "other", defaultIntervalKm: 30_000 },
+  });
+  expect(partType.status).toBe(201);
+  const partTypeId = partType.body.id as string;
+
+  const template = await call("/api/service-templates/minor", {
+    method: "PUT",
+    json: { partTypeIds: ["pt_engine_oil", partTypeId] },
+  });
+  expect(template.status).toBe(200);
+
   return {
     vehicleId,
     serviceId: service.body.id as string,
     renewalId: renewal.body.id as string,
+    partTypeId,
   };
 }
 
@@ -137,6 +156,7 @@ describe("cross-tenant isolation", () => {
       `/api/vehicles/${alice.vehicleId}/renewals/status`,
       "/api/part-types",
       "/api/part-types/pt_engine_oil/brands",
+      "/api/service-templates",
       // B's own IDs, guessed by A. These must 404 or come back empty --
       // never 403, which would confirm the ID exists somewhere.
       `/api/vehicles/${bob.vehicleId}`,
@@ -173,6 +193,30 @@ describe("cross-tenant isolation", () => {
 
     const maintenance = await call(`/api/vehicles/${bob.vehicleId}/maintenance`);
     expect(maintenance.body).toEqual([]);
+  });
+
+  it("shows only this garage's service templates", async () => {
+    // Both users PUT a 'minor' template. A must see its own two parts, not
+    // four, and not B's custom one.
+    const res = await as(A)("/api/service-templates");
+    const minor = res.body.filter(
+      (r: { serviceType: string }) => r.serviceType === "minor",
+    );
+    expect(minor).toHaveLength(2);
+    expect(minor.map((r: { partName: string }) => r.partName)).toContain(
+      "ALICE_SPARE_PART",
+    );
+  });
+
+  it("shows the global part types plus only this garage's custom ones", async () => {
+    const res = await as(A)("/api/part-types");
+    const names = res.body.map((r: { name: string }) => r.name);
+    // The global seed rows are shared on purpose (garage_id IS NULL)...
+    expect(names).toContain("Engine oil");
+    expect(names).toContain("Timing chain");
+    // ...the custom ones are not.
+    expect(names).toContain("ALICE_SPARE_PART");
+    expect(names).not.toContain("BOB_SPARE_PART");
   });
 
   it("does not suggest another garage's brands", async () => {
@@ -228,6 +272,57 @@ describe("cross-tenant isolation", () => {
       expect(
         (await call(`/api/vehicles/${bob.vehicleId}`, { method: "DELETE" })).status,
       ).toBe(404);
+
+      // setInterval creates a row when none exists, so this is an INSERT
+      // against another garage's vehicle, not just a no-op UPDATE.
+      expect(
+        (
+          await call(`/api/vehicles/${bob.vehicleId}/intervals/pt_timing_chain`, {
+            method: "PATCH",
+            json: { intervalKm: 150_000 },
+          })
+        ).status,
+      ).toBe(404);
+    });
+
+    it("rejects another garage's part type as a line item or a template entry", async () => {
+      const call = as(A);
+
+      // A part type ID is exactly the kind of value that looks like harmless
+      // reference data. Using B's would attach a row in A's garage that
+      // points at B's row, and would leak B's part name back through every
+      // join that resolves it.
+      expect(
+        (
+          await call(`/api/vehicles/${alice.vehicleId}/services`, {
+            method: "POST",
+            json: {
+              servicedOn: "2026-08-19",
+              odometerKm: 60_000,
+              items: [{ partTypeId: bob.partTypeId, quantityMilli: 1_000 }],
+            },
+          })
+        ).status,
+      ).toBe(404);
+
+      expect(
+        (
+          await call("/api/service-templates/major", {
+            method: "PUT",
+            json: { partTypeIds: [bob.partTypeId] },
+          })
+        ).status,
+      ).toBe(404);
+
+      // ...and the rejected template write left the existing one intact.
+      // put() deletes before it inserts, so a validation failure that landed
+      // mid-batch would show up here as an emptied template rather than as
+      // an error. The bootstrap seeds 'major' with five parts.
+      const after = await call("/api/service-templates");
+      expect(after.text).not.toContain("BOB_SPARE_PART");
+      expect(
+        after.body.filter((r: { serviceType: string }) => r.serviceType === "major"),
+      ).toHaveLength(5);
     });
 
     it("rejects edits to another garage's records by ID", async () => {

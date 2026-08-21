@@ -42,9 +42,6 @@ export interface VehicleCard {
   worstStatus: Status;
 }
 
-/** Spec 8.1: warn when readings stop arriving, before projections rot. */
-const STALE_ODOMETER_DAYS = 45;
-
 const STATUS_RANK: Record<Status, number> = {
   overdue: 0,
   due_soon: 1,
@@ -73,8 +70,14 @@ export class DashboardRepo extends ScopedRepo {
         ...renewals.map(toRenewalItem),
       ].sort(byUrgency),
       vehicles,
+      // Spec 8.1: warn when readings stop arriving, before projections rot.
+      // The threshold is a user setting, since how long a reading stays
+      // trustworthy depends entirely on how much the car is driven.
       staleOdometers: vehicles
-        .filter((v) => v.odometerAgeDays !== null && v.odometerAgeDays > STALE_ODOMETER_DAYS)
+        .filter(
+          (v) =>
+            v.odometerAgeDays !== null && v.odometerAgeDays > this.scope.staleOdometerDays,
+        )
         .map((v) => ({
           vehicleId: v.id,
           nickname: v.nickname,
@@ -118,9 +121,9 @@ export class DashboardRepo extends ScopedRepo {
                       OR (md.due_km IS NOT NULL
                           AND md.due_km - v.current_odometer_km <= ?)
                       OR (md.due_km IS NOT NULL
-                          AND COALESCE(u.avg_km_per_day, 30.0) > 0
+                          AND COALESCE(u.avg_km_per_day, ? * 1.0) > 0
                           AND MAX(0, md.due_km - v.current_odometer_km)
-                              / COALESCE(u.avg_km_per_day, 30.0) <= ?) THEN 1
+                              / COALESCE(u.avg_km_per_day, ? * 1.0) <= ?) THEN 1
                     ELSE 2
                   END) AS rank
              FROM v_maintenance_due md
@@ -155,6 +158,8 @@ export class DashboardRepo extends ScopedRepo {
         today,
         this.scope.dueSoonDays, // item due_soon by date
         this.scope.dueSoonKm, // item due_soon by km
+        this.scope.fallbackKmPerDay, // projection guard: rate > 0
+        this.scope.fallbackKmPerDay, // projection divisor
         this.scope.dueSoonDays, // item due_soon by projection
         this.garageId, // item_rank scope
         today, // renewal overdue

@@ -39,6 +39,10 @@ export const userSettings = sqliteTable("user_settings", {
   dateFormat: text("date_format").notNull().default("DD/MM/YYYY"),
   dueSoonDays: integer("due_soon_days").notNull().default(30),
   dueSoonKm: integer("due_soon_km").notNull().default(1000),
+  // Assumed daily distance used only while a vehicle has too little odometer
+  // history to measure one. See USAGE_CTE in data/status.ts.
+  fallbackKmPerDay: integer("fallback_km_per_day").notNull().default(30),
+  staleOdometerDays: integer("stale_odometer_days").notNull().default(45),
 });
 
 export const partTypes = sqliteTable("part_types", {
@@ -116,6 +120,11 @@ export const serviceRecords = sqliteTable(
     vehicleId: text("vehicle_id").notNull(),
     servicedOn: text("serviced_on").notNull(),
     odometerKm: integer("odometer_km").notNull(),
+    // A label and a template trigger. Resets no clock on its own -- only
+    // service_items do (invariant 7).
+    serviceType: text("service_type", {
+      enum: ["minor", "major", "repair", "inspection", "other"],
+    }),
     workshopName: text("workshop_name"),
     totalCost: integer("total_cost"), // sen; may exceed the sum of items
     invoiceKey: text("invoice_key"),
@@ -138,6 +147,11 @@ export const serviceItems = sqliteTable(
     quantityMilli: integer("quantity_milli").notNull().default(1000),
     unitCost: integer("unit_cost"), // sen
     warrantyMonths: integer("warranty_months"),
+    // "Next due N km / N months from THIS service", not an odometer figure.
+    // Overrides the vehicle's configured interval for exactly one cycle; see
+    // the header of migrations/0004 for why this is not a stored due point.
+    intervalKmOverride: integer("interval_km_override"),
+    intervalMonthsOverride: integer("interval_months_override"),
     // GENERATED ALWAYS in SQL. Read-only: never include it in an insert.
     lineTotalCost: integer("line_total_cost").generatedAlwaysAs(
       sql`((unit_cost * quantity_milli + 500) / 1000)`,
@@ -145,6 +159,22 @@ export const serviceItems = sqliteTable(
     ),
   },
   (t) => ({ recordIdx: index("idx_items_record").on(t.serviceRecordId) }),
+);
+
+export const serviceTemplates = sqliteTable(
+  "service_templates",
+  {
+    id: text("id").primaryKey(),
+    garageId: text("garage_id").notNull(),
+    // NULL = applies to every vehicle in the garage.
+    vehicleId: text("vehicle_id"),
+    serviceType: text("service_type", {
+      enum: ["minor", "major", "repair", "inspection", "other"],
+    }).notNull(),
+    partTypeId: text("part_type_id").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (t) => ({ lookupIdx: index("idx_service_templates_lookup").on(t.garageId, t.serviceType) }),
 );
 
 export const renewals = sqliteTable(

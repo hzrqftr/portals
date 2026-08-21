@@ -70,9 +70,15 @@ The Worker runs in UTC; the owner is at UTC+8. "Today" in UTC is yesterday for e
 
 Compute from `last service + interval rule`. There is no "next service mileage" column and there must never be one. If you find yourself wanting to cache a due date, cache it in a view.
 
+**`service_items.interval_km_override` is not that column.** It stores an *interval* — "next due N km from this service" — and the due point is still computed as `baseline + COALESCE(override, configured interval)` in `v_maintenance_due`. The user types an absolute figure because that is what the workshop sticker says; the client subtracts the service odometer before sending, so the API never receives a due point at all. The test for whether something is a due date: correct the service odometer, and see whether the number moves. It must.
+
+The override rides on the baseline row, so it applies to exactly one cycle and is superseded when that part is next serviced. That is what makes "just this once" possible without making it permanent.
+
 ### 7. A `service_item` resets the maintenance clock, not the `service_record`
 
 A service visit with no line items resets nothing. The baseline for any part type is the most recent `service_item` of that type.
+
+`service_records.service_type` ("minor", "major", …) is a **label and a template key**, never a clock. It pre-fills the parts list in the log-service form and is used for filtering and cost breakdown. A "major" saved with no line items resets nothing, exactly like an untyped one.
 
 ### 8. Renewals are immutable
 
@@ -151,6 +157,9 @@ You cannot do these. Ask, and give exact steps:
 - **`wrangler dev` has no Access.** `ctx.access.getIdentity()` returns nothing locally; the dev shim in `auth.ts` covers this. Do not work around it elsewhere.
 - **Foreign keys are not enforced by default in D1.** Ensure `PRAGMA foreign_keys = ON`.
 - **SQLite has no enums or booleans.** Use `TEXT` with `CHECK` constraints, and `INTEGER` 0/1.
+- **D1's SQLite has a low `SQLITE_MAX_COMPOUND_SELECT`.** A seven-term `UNION ALL` chain fails with `too many terms in compound SELECT`. Write repeated `INSERT ... SELECT` statements instead. Multi-row `VALUES` in an `INSERT` is fine — it is only compound `SELECT` that is capped.
+- **`UNIQUE` does not constrain NULLs in SQLite.** `UNIQUE (garage_id, vehicle_id, ...)` allows unlimited duplicates whenever `vehicle_id IS NULL`, which is exactly the case a nullable "applies to everything" column makes common. Use two partial unique indexes (`WHERE col IS NULL` / `WHERE col IS NOT NULL`) — see `service_templates` in migration 0004.
+- **Parameters bind by position in the statement text, not by clause.** Adding a `?` to a CTE's SELECT list shifts every later bind, including the `garage_id` in its own `WHERE`. The result is a silently empty response, not an error.
 - **Odometer readings can be entered out of order.** Discard readings that decrease relative to an earlier date rather than producing negative usage rates.
 - **A vehicle with no service history is `unknown`, not `overdue`.** Never alert on items that have no baseline.
 

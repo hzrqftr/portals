@@ -20,7 +20,12 @@ export default function Dashboard() {
 
   return (
     <div className="mx-auto max-w-lg p-4 pb-24">
-      <h1 className="text-2xl font-semibold">Fleet</h1>
+      <div className="flex items-baseline justify-between gap-2">
+        <h1 className="text-2xl font-semibold">Fleet</h1>
+        <Link to="/settings" className="text-sm text-stone-500">
+          Settings
+        </Link>
+      </div>
 
       {data.staleOdometers.length > 0 && (
         // Spec 8.1 / 11.7: every projection decays silently without fresh

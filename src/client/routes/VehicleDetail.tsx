@@ -1,16 +1,26 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useVehicle, useMaintenance } from "../api/hooks";
-import { StatusPill } from "../components/StatusPill";
-import { relativeDays, formatKm } from "../lib/format";
+import { useVehicle, useMaintenance, useDashboard } from "../api/hooks";
+import { MaintenanceList } from "../components/MaintenanceList";
+import { ServiceHistory } from "../components/ServiceHistory";
+import { ServiceSheet } from "../components/ServiceSheet";
+import { formatKm } from "../lib/format";
 
-/** Spec 8.2, Phase 1 slice: overview plus the maintenance table. */
+/** Spec 8.2: overview, maintenance, and service history. */
 export default function VehicleDetail() {
   const { id = "" } = useParams();
   const vehicle = useVehicle(id);
   const maintenance = useMaintenance(id);
+  // `today` is the owner's calendar date, computed server-side from their
+  // timezone. Never new Date() here: the browser's idea of today and the
+  // one every due date was derived from must be the same day (invariant 5).
+  const dashboard = useDashboard();
+  const [logging, setLogging] = useState(false);
 
   if (vehicle.isLoading) return <p className="p-4 text-stone-500">Loading&hellip;</p>;
   if (vehicle.isError) return <p className="p-4 text-red-700">Vehicle not found.</p>;
+
+  const today = dashboard.data?.today;
 
   return (
     <div className="mx-auto max-w-lg p-4 pb-24">
@@ -20,38 +30,37 @@ export default function VehicleDetail() {
       <h1 className="mt-2 text-2xl font-semibold">{vehicle.data?.nickname}</h1>
       <p className="text-stone-600">{formatKm(vehicle.data?.currentOdometerKm ?? null)}</p>
 
+      <button
+        onClick={() => setLogging(true)}
+        disabled={!today}
+        className="mt-4 w-full rounded-xl bg-stone-900 py-3 font-medium text-white disabled:opacity-40"
+      >
+        Log a service
+      </button>
+
       <section className="mt-6">
         <h2 className="text-sm font-medium uppercase tracking-wide text-stone-500">
           Maintenance
         </h2>
-        <ul className="mt-3 space-y-2">
-          {maintenance.data?.map((row) => (
-            <li key={row.interval_id} className="rounded-xl bg-white p-3 ring-1 ring-stone-200">
-              <div className="flex items-start justify-between gap-2">
-                <p className="min-w-0 truncate font-medium">{row.part_name}</p>
-                <StatusPill status={row.status} />
-              </div>
-              {row.status === "unknown" ? (
-                // A part with no history is unmeasured, not overdue. The row
-                // asks for a baseline instead of raising a false alarm.
-                <p className="mt-1 text-sm text-stone-600">
-                  No service on record yet &mdash; log one to start this clock.
-                </p>
-              ) : (
-                <p className="mt-1 text-sm text-stone-700">
-                  {relativeDays(row.days_remaining)}
-                  {row.due_km !== null && (
-                    <span className="text-stone-500"> &middot; at {formatKm(row.due_km)}</span>
-                  )}
-                  {row.low_confidence === 1 && (
-                    <span className="text-stone-500"> &middot; estimated</span>
-                  )}
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
+        <MaintenanceList vehicleId={id} rows={maintenance.data ?? []} />
       </section>
+
+      <section className="mt-8">
+        <h2 className="text-sm font-medium uppercase tracking-wide text-stone-500">
+          Service history
+        </h2>
+        {today && <ServiceHistory vehicleId={id} today={today} />}
+      </section>
+
+      {logging && today && (
+        <ServiceSheet
+          vehicleId={id}
+          nickname={vehicle.data?.nickname ?? ""}
+          currentKm={vehicle.data?.currentOdometerKm ?? 0}
+          today={today}
+          onClose={() => setLogging(false)}
+        />
+      )}
     </div>
   );
 }

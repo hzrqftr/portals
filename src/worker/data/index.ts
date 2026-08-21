@@ -5,6 +5,7 @@ import { RenewalRepo } from "./renewals";
 import { StatusRepo } from "./status";
 import { PartTypeRepo } from "./partTypes";
 import { SettingsRepo } from "./settings";
+import { ServiceTemplateRepo } from "./serviceTemplates";
 import { DashboardRepo } from "./dashboard";
 import type { Env, Scope } from "../types";
 
@@ -15,6 +16,7 @@ export interface Repos {
   status: StatusRepo;
   partTypes: PartTypeRepo;
   settings: SettingsRepo;
+  serviceTemplates: ServiceTemplateRepo;
   dashboard: DashboardRepo;
 }
 
@@ -32,8 +34,17 @@ export function makeRepos(env: Env, scope: Scope): Repos {
     status: new StatusRepo(db, raw, scope),
     partTypes: new PartTypeRepo(db, raw, scope),
     settings: new SettingsRepo(env, scope),
+    serviceTemplates: new ServiceTemplateRepo(db, raw, scope),
     dashboard: new DashboardRepo(db, raw, scope),
   };
 }
 
-export { VehicleRepo, ServiceRepo, RenewalRepo, StatusRepo, PartTypeRepo, SettingsRepo };
+export {
+  VehicleRepo,
+  ServiceRepo,
+  RenewalRepo,
+  StatusRepo,
+  PartTypeRepo,
+  SettingsRepo,
+  ServiceTemplateRepo,
+};

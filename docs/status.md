@@ -3,7 +3,7 @@
 Where the project actually is, and what to pick up next. `fleet-portal-spec.md`
 says what to build; this file says how much of it exists.
 
-**Last updated:** 2026-08-20
+**Last updated:** 2026-08-21
 
 ---
 
@@ -19,13 +19,21 @@ says what to build; this file says how much of it exists.
 | Access app | "fleet-portal - Cloudflare Workers", policy `fleet-portal-allowlist` |
 | Identity provider | Google (not Google Workspace) |
 
-Deployed and working end to end. Migrations are applied locally and remotely:
-14 tables, 4 views, 19 seeded part types, foreign keys enforced.
+Deployed and working end to end. Migrations 0001–0003 are applied locally and
+remotely. **Migration 0004 is applied locally only** — it must be applied
+remotely before the next deploy:
+
+```bash
+npm run db:apply:remote
+```
+
+After 0004: 15 tables, 4 views, 20 seeded part types, foreign keys enforced.
 
 Data currently in production: one user, one garage, two vehicles (Waja, City),
 **no odometer readings and no service history**. Every maintenance row is
 therefore `unknown`, which is correct rather than broken — see the "no
-baseline" trap in CLAUDE.md.
+baseline" trap in CLAUDE.md. Services can now be logged, so this is fixable
+from the UI rather than being a permanent state.
 
 ---
 
@@ -38,9 +46,20 @@ Verified against the deployed app, not just the test suite.
 - Dashboard: attention list, vehicle cards, stale-odometer warnings
 - Add a vehicle, with intervals seeded from part-type defaults filtered by fuel
 - Quick odometer update from the dashboard (§8.5)
-- Vehicle detail: nickname, odometer, maintenance list (a "Phase 1 slice")
+- Vehicle detail: nickname, odometer, maintenance list, service history
+- **Log a service** (§8.4): date, odometer, service type, workshop, line items,
+  separate total cost, part picker pinning the vehicle's due parts, brand
+  autocomplete, and a save confirmation naming which clocks were reset
+- **Per-service interval overrides**: "next due at 140,000 km" typed on a
+  service, stored as an interval so the due point stays derived
+- **Per-vehicle interval editing** inline on the maintenance list, including
+  switching a part off and tracking one the seeder skipped — this is how the
+  Waja's timing belt and the City's timing chain are told apart
+- **Settings** (§8.7): due-soon thresholds, stale-odometer threshold, assumed
+  km/day fallback, timezone, currency, and the minor/major parts templates
+- Part warranty in months, shown as a badge on the service history line item
 - Every Phase 1 API endpoint
-- 40 tests: tenant isolation, derived logic, and the Access JWT fallback
+- 57 tests: tenant isolation, derived logic, and the Access JWT fallback
 
 ---
 
@@ -51,54 +70,48 @@ the endpoints exist and are covered by the isolation suite.
 
 | Gap | Spec | Why it matters |
 |---|---|---|
-| Service records and line items | §8.4 | Without it no maintenance can be recorded at all, so every clock stays `unknown` forever |
 | Renewals | §4.6, §6.3 | Road tax and insurance are half the reason the app exists |
 | Vehicle edit and delete | §10 | A typo in a plate is currently permanent |
-| Interval inline editing | §8.2 | Cannot override a manufacturer default |
 | Add-vehicle baseline prompt | §8.3 | Spec says prompt for baselines after saving; it currently saves and dismisses, which is how both vehicles ended up with no odometer |
 | Vehicle detail overview | §8.2 | Missing specs, inline odometer edit, and usage rate with confidence indicator |
-| Settings | §8.7 | Not in the Phase 1 list; `GET /api/me` and `PATCH /api/me/settings` exist |
+| Editing a service after saving | §8.4 | `servicePatch` omits `items`, `odometerKm` and `servicedOn`, so fixing a line item means deleting and re-logging the visit |
+| Custom part types in the UI | — | `POST /api/part-types` exists and is isolation-tested, but nothing calls it yet; the 20 seeded types cover the common cases |
+| Per-vehicle service templates | §8.4 | `service_templates.vehicle_id` exists and is always NULL; templates are garage-wide for now |
 
 Deferred by design: Budgets (§8.6) is Phase 2, multi-user is Phase 3, backups
 and reminders are Phase 4.
 
 ---
 
-## Next: service records (§8.4)
+## Next: renewals (§4.6, §6.3)
 
-The highest-value remaining work, and the most intricate thing in Phase 1.
-Worth building on its own rather than bundling with renewals.
+Road tax and insurance. Comparatively simple, and it mirrors what already
+exists — with one rule that is easy to get wrong:
 
-The spec calls this "the highest-friction flow, needing the most care" and asks
-for behaviour that does not fall out of a plain form:
+**Renewing inserts a new row. It never updates `expires_on` in place**
+(invariant 8). The active renewal per `(vehicle, type)` is the greatest
+`expires_on`; superseded rows stay as the cost history the forecast is built
+from. `renewalPatch` is `.strict()` and omits every date and cost field, so an
+attempt to re-date a renewal is a 422 rather than a silent rewrite.
 
-1. Vehicle → date (default today) → odometer (prefilled, validated ≥ current)
-   → workshop → line items.
-2. **The part picker pins the vehicle's overdue and due-soon items to the top.**
-   This is the feature that makes the flow fast; without it the user hunts
-   through 19 part types while standing in a workshop.
-3. Brand and spec autocomplete from the garage's own history —
-   `GET /api/part-types/:id/brands` already returns this.
-4. Total cost is entered **separately** from item costs. Labour and sundries
-   are real costs but not line items, so the total may legitimately exceed the
-   sum of the parts. Do not compute one from the other.
-5. On save, confirm which clocks were reset.
+Endpoints, all built and isolation-tested: `GET /api/vehicles/:id/renewals`,
+`GET /api/vehicles/:id/renewals/status`, `POST /api/vehicles/:id/renewals`,
+`PATCH /api/renewals/:id`.
 
-Endpoints, all built: `POST /api/vehicles/:id/services`,
-`GET /api/vehicles/:id/services`, `PATCH /api/services/:id`,
-`DELETE /api/services/:id`, `GET /api/part-types`,
-`GET /api/part-types/:id/brands`.
+A missing renewal type is a setup prompt, not an alert — the same reasoning as
+a maintenance part with no baseline.
 
-Invariant to keep in view while building it: **a `service_item` resets the
-maintenance clock, not the `service_record`.** A visit saved with no line items
-resets nothing, and that is deliberate. `tests/derived.test.ts` already asserts
-both halves of this.
+### Before deploying the current work
 
-Money is `INTEGER` sen throughout. Convert at the UI boundary only.
+```bash
+npm run db:apply:remote   # migration 0004 has not been applied remotely
+npm run deploy
+```
 
-**Then renewals**, which is comparatively simple and mirrors what already
-exists — with the caveat that renewing **inserts a new row** and never updates
-`expires_on` in place.
+Migration 0004 backfills the minor/major parts templates for garages that
+already exist. `bootstrapUser()` only runs on a user's first ever login, so
+without that backfill the production garage would have no templates and
+picking "Minor service" would pre-fill nothing.
 
 ---
 

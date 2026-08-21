@@ -10,6 +10,9 @@ import {
   renewalPatch,
   intervalPatch,
   settingsPatch,
+  serviceType,
+  serviceTemplatePut,
+  partTypeInput,
 } from "@shared/zod";
 import { assertCanWrite } from "../auth";
 
@@ -140,4 +143,26 @@ export function registerRoutes(app: Hono<AppContext>): void {
   app.get("/api/part-types/:id/brands", async (c) =>
     c.json(await c.get("repos").services.brandSuggestions(c.req.param("id"))),
   );
+
+  app.post("/api/part-types", async (c) => {
+    assertCanWrite(c.get("scope"));
+    const input = partTypeInput.parse(await c.req.json());
+    return c.json(await c.get("repos").partTypes.create(input), 201);
+  });
+
+  // --- service templates -----------------------------------------------
+  // Pre-fill lists for the log-service form. These decide what the form
+  // starts with and nothing else; no maintenance clock reads this table.
+  app.get("/api/service-templates", async (c) =>
+    c.json(await c.get("repos").serviceTemplates.list()),
+  );
+
+  app.put("/api/service-templates/:type", async (c) => {
+    assertCanWrite(c.get("scope"));
+    // The type comes from the URL, so it is parsed too -- an unrecognised
+    // one would otherwise reach the CHECK constraint as a 500.
+    const type = serviceType.parse(c.req.param("type"));
+    const { partTypeIds } = serviceTemplatePut.parse(await c.req.json());
+    return c.json(await c.get("repos").serviceTemplates.put(type, partTypeIds));
+  });
 }
