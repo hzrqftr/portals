@@ -3,6 +3,7 @@ import type { MaintenanceRow, VehicleType } from "../api/hooks";
 import { MaintenanceGroups } from "./MaintenanceGroups";
 import { UntrackedParts } from "./UntrackedParts";
 import { PartDetailSheet } from "./PartDetailSheet";
+import { INPUT } from "./form";
 
 /** Spec 8.2: intervals with last done, next due, status, and inline editing. */
 
@@ -24,18 +25,23 @@ export function MaintenanceList({
   rows: MaintenanceRow[];
 }) {
   const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
   const [open, setOpen] = useState<MaintenanceRow | null>(null);
+
+  const q = query.trim().toLowerCase();
 
   // Presentation only, over an array already in memory -- not aggregation, so
   // invariant 4 is untouched. The server has already ordered these
   // overdue -> due_soon -> ok -> unknown, and nothing here re-sorts.
-  const shown = rows.filter((r) =>
-    filter === "attention"
-      ? r.status === "overdue" || r.status === "due_soon"
-      : filter === "unset"
-        ? r.status === "unknown"
-        : true,
-  );
+  const shown = rows
+    .filter((r) =>
+      filter === "attention"
+        ? r.status === "overdue" || r.status === "due_soon"
+        : filter === "unset"
+          ? r.status === "unknown"
+          : true,
+    )
+    .filter((r) => q === "" || r.part_name.toLowerCase().includes(q));
 
   const count = (f: Filter) =>
     f === "attention"
@@ -46,6 +52,14 @@ export function MaintenanceList({
 
   return (
     <>
+      <input
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search parts…"
+        className={INPUT + " mt-3"}
+      />
+
       <div className="mt-3 flex flex-wrap gap-2">
         {FILTERS.map((f) => (
           <button
@@ -67,9 +81,11 @@ export function MaintenanceList({
       {shown.length === 0 ? (
         // Empty states guide rather than showing a blank area (spec 9).
         <p className="mt-4 rounded-xl border border-edge bg-surface p-4 text-sm text-ink-muted">
-          {filter === "attention"
-            ? "Nothing is due or overdue on this vehicle."
-            : "Every part on this vehicle has a service on record."}
+          {q !== ""
+            ? `No tracked parts match "${query.trim()}".`
+            : filter === "attention"
+              ? "Nothing is due or overdue on this vehicle."
+              : "Every part on this vehicle has a service on record."}
         </p>
       ) : (
         <MaintenanceGroups rows={shown} onOpen={setOpen} />
@@ -79,6 +95,7 @@ export function MaintenanceList({
         vehicleId={vehicleId}
         vehicleType={vehicleType}
         tracked={rows.map((r) => r.part_type_id)}
+        query={query}
       />
 
       {open && (

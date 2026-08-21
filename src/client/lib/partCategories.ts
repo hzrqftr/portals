@@ -33,7 +33,6 @@ export const CATEGORY_ORDER = [
   "suspension",
   "drivetrain",
   "tyre",
-  "battery",
   "other",
 ] as const;
 
@@ -48,12 +47,24 @@ export const CATEGORY_LABEL: Record<string, string> = {
   suspension: "Suspension & steering",
   drivetrain: "Drivetrain",
   tyre: "Tyres & wheels",
-  battery: "Battery",
   other: "Other",
 };
 
 export function categoryLabel(category: string): string {
   return CATEGORY_LABEL[category] ?? "Other";
+}
+
+/**
+ * The `spec` field on a service line item is free text (e.g. oil viscosity),
+ * so its placeholder is the only hint of what belongs there. "5W-40" is
+ * meaningless next to a battery replacement, where the equivalent fact is a
+ * battery code like "NS50L". Keyed by part code, not category: battery lives
+ * under 'electrical' alongside spark plugs and ignition coils, which want the
+ * generic hint, not the battery one.
+ */
+export function specPlaceholder(partTypeCode: string): string {
+  if (partTypeCode === "battery") return "Spec (e.g. NS50L)";
+  return "Spec (5W-40)";
 }
 
 /**

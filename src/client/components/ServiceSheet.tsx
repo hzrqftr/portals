@@ -245,6 +245,7 @@ export function ServiceSheet({
                   <ServiceItemRow
                     key={item.key}
                     item={item}
+                    partTypeCode={partTypes.data?.find((p) => p.id === item.partTypeId)?.code ?? ""}
                     odometerKm={odo}
                     defaultNextDueKm={defaultNextDueKm(item.partTypeId)}
                     onChange={(next) =>

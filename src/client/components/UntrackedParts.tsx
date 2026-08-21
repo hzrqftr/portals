@@ -21,10 +21,13 @@ export function UntrackedParts({
   vehicleId,
   vehicleType,
   tracked,
+  query,
 }: {
   vehicleId: string;
   vehicleType: VehicleType;
   tracked: string[];
+  /** Lifted from MaintenanceList, so one search box covers tracked and untracked parts alike. */
+  query: string;
 }) {
   const [openList, setOpenList] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
@@ -38,18 +41,35 @@ export function UntrackedParts({
 
   if (untracked.length === 0) return null;
 
-  const groups = groupByCategory(untracked, (p) => p.category);
+  // Searching implies wanting the match visible, not another click to reveal
+  // it -- so a query forces this section open regardless of the manual toggle.
+  const q = query.trim().toLowerCase();
+  const searching = q !== "";
+  const filtered = searching ? untracked.filter((p) => p.name.toLowerCase().includes(q)) : untracked;
+  const isOpen = searching ? true : openList;
+
+  const groups = groupByCategory(filtered, (p) => p.category);
 
   return (
     <div className="mt-8">
-      <button
-        onClick={() => setOpenList(!openList)}
-        className="text-sm text-ink-muted underline hover:text-ink"
-      >
-        {openList ? "Hide" : `Not tracked on this vehicle (${untracked.length})`}
-      </button>
+      {searching ? (
+        <p className="text-sm text-ink-muted">
+          Not tracked on this vehicle ({filtered.length} match{filtered.length === 1 ? "" : "es"})
+        </p>
+      ) : (
+        <button
+          onClick={() => setOpenList(!openList)}
+          className="text-sm text-ink-muted underline hover:text-ink"
+        >
+          {openList ? "Hide" : `Not tracked on this vehicle (${untracked.length})`}
+        </button>
+      )}
 
-      {openList && (
+      {isOpen && groups.length === 0 && (
+        <p className="mt-3 text-sm text-ink-faint">No untracked parts match "{query.trim()}".</p>
+      )}
+
+      {isOpen && groups.length > 0 && (
         <div className="mt-3 space-y-5">
           {groups.map(({ category, rows }) => (
             <section key={category}>

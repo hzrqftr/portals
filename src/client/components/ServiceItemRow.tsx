@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useBrandSuggestions } from "../api/hooks";
 import { INPUT, digitsOnly } from "./form";
 import { formatKm } from "../lib/format";
+import { specPlaceholder } from "../lib/partCategories";
 
 /**
  * One line item on a service. Spec 8.4.
@@ -27,12 +28,14 @@ export interface ItemDraft {
 
 export function ServiceItemRow({
   item,
+  partTypeCode,
   defaultNextDueKm,
   odometerKm,
   onChange,
   onRemove,
 }: {
   item: ItemDraft;
+  partTypeCode: string;
   /** odometer + this part's configured interval, or null if it has none. */
   defaultNextDueKm: number | null;
   odometerKm: number | null;
@@ -84,7 +87,7 @@ export function ServiceItemRow({
         <input
           value={item.spec}
           onChange={(e) => set({ spec: e.target.value })}
-          placeholder="Spec (5W-40)"
+          placeholder={specPlaceholder(partTypeCode)}
           className={INPUT + " mt-0 py-2"}
         />
       </div>
