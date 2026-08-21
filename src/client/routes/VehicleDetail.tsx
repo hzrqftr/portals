@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { useVehicle, useMaintenance, useDashboard } from "../api/hooks";
+import { useVehicle, useMaintenance, useDashboard, useServices } from "../api/hooks";
 import { Page, AppHeader, SectionTitle } from "../components/Layout";
 import { MaintenanceList } from "../components/MaintenanceList";
 import { ServiceHistory } from "../components/ServiceHistory";
@@ -8,6 +8,13 @@ import { ServiceSheet } from "../components/ServiceSheet";
 import { VehicleSheet } from "../components/VehicleSheet";
 import { VehicleSpec } from "../components/VehicleSpec";
 import { formatKm } from "../lib/format";
+
+type Tab = "maintenance" | "history";
+
+const TABS: { value: Tab; label: string }[] = [
+  { value: "maintenance", label: "Maintenance" },
+  { value: "history", label: "Service history" },
+];
 
 /** Spec 8.2: overview, maintenance, and service history. */
 export default function VehicleDetail() {
@@ -20,6 +27,8 @@ export default function VehicleDetail() {
   const dashboard = useDashboard();
   const [logging, setLogging] = useState(false);
   const [editing, setEditing] = useState(false);
+  const services = useServices(id);
+  const [tab, setTab] = useState<Tab>("maintenance");
 
   if (vehicle.isLoading) return <p className="p-6 text-ink-muted">Loading&hellip;</p>;
   if (vehicle.isError) return <p className="p-6 text-status-overdue-fg">Vehicle not found.</p>;
@@ -59,15 +68,48 @@ export default function VehicleDetail() {
           )}
         </section>
 
-        <section className="mt-10">
-          <SectionTitle>Maintenance</SectionTitle>
-          <MaintenanceList vehicleId={id} rows={maintenance.data ?? []} />
-        </section>
+        {/*
+          A switcher, not two stacked sections.
+          
+          Once a vehicle tracks forty parts the maintenance grid is roughly
+          2,500px tall, and service history sat below all of it -- reachable
+          only by scrolling past every tile. Anchor links would fix getting
+          there and not getting back. Spec 8.2 already calls for five sections
+          on this page (Renewals and Costs still to come), so the switcher is
+          the shape this page was heading for anyway.
+        */}
+        <div className="sticky top-14 z-20 -mx-4 mt-10 border-b border-edge bg-page/90 px-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="flex gap-1">
+            {TABS.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => setTab(t.value)}
+                aria-current={tab === t.value ? "page" : undefined}
+                className={
+                  "-mb-px border-b-2 px-3 py-3 text-sm transition " +
+                  (tab === t.value
+                    ? "border-ink font-medium text-ink"
+                    : "border-transparent text-ink-muted hover:text-ink")
+                }
+              >
+                {t.label}
+                <span className="ml-1.5 text-xs text-ink-faint">
+                  {t.value === "maintenance"
+                    ? (maintenance.data?.length ?? 0)
+                    : (services.data?.length ?? 0)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
 
-        <section className="mt-10">
-          <SectionTitle>Service history</SectionTitle>
-          {today && <ServiceHistory vehicleId={id} today={today} />}
-        </section>
+        {tab === "maintenance" ? (
+          <MaintenanceList vehicleId={id} rows={maintenance.data ?? []} />
+        ) : (
+          <section className="mt-4">
+            {today && <ServiceHistory vehicleId={id} today={today} />}
+          </section>
+        )}
       </Page>
 
       {editing && vehicle.data && (

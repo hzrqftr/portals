@@ -79,7 +79,7 @@ export function VehicleSpec({
       <p className="mt-3 text-xs text-ink-faint">
         Fuel type decides which parts this vehicle tracks by default. Which parts it
         actually tracks &mdash; a timing belt rather than a chain, say &mdash; is set per
-        part under Maintenance below.
+        part in the Maintenance tab.
       </p>
     </div>
   );
