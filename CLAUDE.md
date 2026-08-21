@@ -117,14 +117,35 @@ Lives in `tests/isolation.test.ts` and is the most important test in this projec
 npm run dev                              # Vite + Worker, local
 npm run build                            # Production build
 npm test                                 # Vitest
-npx wrangler deploy                      # Deploy
+npm run deploy                           # Ship it. See below.
 
 npx wrangler d1 migrations create fleet <name>
-npx wrangler d1 migrations apply fleet --local
-npx wrangler d1 migrations apply fleet --remote
+npm run db:apply:local
+npm run db:apply:remote
 npx wrangler d1 execute fleet --local --command "SELECT ..."
 npx wrangler tail                        # Live logs, incl. CPU warnings
+npm run deploy:worker                    # Worker only, no tests, no migration
 ```
+
+### `npm run deploy` is ordered deliberately
+
+`npm test && npm run build && npm run db:apply:remote && wrangler deploy`
+
+Two orderings in there are load-bearing, and both were learned the hard way:
+
+- **The migration runs before the deploy.** The new Worker reads columns the
+  production database does not have until the migration lands. Deploying first
+  is a live 500 for however long the gap is. It has happened.
+- **The migration runs after the tests and the build.** A migration is the one
+  step that cannot be rolled back by redeploying, so nothing touches the
+  production database until the code that needs it is known to compile and pass.
+
+`deploy:worker` skips all of it, for redeploying unchanged code (a rollback, a
+binding change). Do not reach for it to skip a failing test.
+
+**Check what a migration will do to real data before running it against
+`--remote`.** Row counts before and after, and `PRAGMA foreign_key_check` after
+anything that rebuilds a table.
 
 ## Layout
 

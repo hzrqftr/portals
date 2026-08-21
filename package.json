@@ -9,9 +9,10 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint:isolation": "node scripts/check-db-imports.mjs",
-    "deploy": "npm run build && wrangler deploy",
+    "deploy": "npm test && npm run build && npm run db:apply:remote && wrangler deploy",
     "db:apply:local": "wrangler d1 migrations apply fleet --local",
-    "db:apply:remote": "wrangler d1 migrations apply fleet --remote"
+    "db:apply:remote": "wrangler d1 migrations apply fleet --remote",
+    "deploy:worker": "wrangler deploy"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.0",
