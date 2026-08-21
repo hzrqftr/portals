@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useCreateVehicle, type VehicleDraft } from "../api/hooks";
 import { INPUT, Field, Choice, digitsOnly } from "./form";
+import { Sheet, SheetActions } from "./Sheet";
 
 /**
  * Spec 10, Phase 1: vehicle CRUD. This is the first thing a new user must be
@@ -65,108 +66,95 @@ export function VehicleSheet({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/40" onClick={onClose}>
-      <div
-        className="max-h-[88vh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 pb-8"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-lg font-semibold">Add a vehicle</h2>
-        <p className="mt-1 text-sm text-stone-600">
-          Only the name is required. You can fill in the rest later.
-        </p>
+    <Sheet title="Add a vehicle" onClose={onClose}>
+      <h2 className="text-lg font-semibold">Add a vehicle</h2>
+      <p className="mt-1 text-sm text-ink-muted">
+        Only the name is required. You can fill in the rest later.
+      </p>
 
-        <Field label="Name">
+      <Field label="Name">
+        <input
+          autoFocus
+          value={nickname}
+          onChange={(e) => setNickname(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && save()}
+          placeholder="Myvi"
+          maxLength={60}
+          className={INPUT}
+        />
+      </Field>
+
+      <Field label="Plate">
+        <input
+          value={plate}
+          onChange={(e) => setPlate(e.target.value)}
+          placeholder="WXY 1234"
+          maxLength={20}
+          className={INPUT + " uppercase"}
+        />
+      </Field>
+
+      <div className="flex gap-3">
+        <Field label="Make" className="flex-1">
           <input
-            autoFocus
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && save()}
-            placeholder="Myvi"
+            value={make}
+            onChange={(e) => setMake(e.target.value)}
+            placeholder="Perodua"
+            maxLength={40}
+            className={INPUT}
+          />
+        </Field>
+        <Field label="Model" className="flex-1">
+          <input
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="Myvi 1.5"
             maxLength={60}
             className={INPUT}
           />
         </Field>
+      </div>
 
-        <Field label="Plate">
+      <div className="flex gap-3">
+        <Field label="Year" className="flex-1">
           <input
-            value={plate}
-            onChange={(e) => setPlate(e.target.value)}
-            placeholder="WXY 1234"
-            maxLength={20}
-            className={INPUT + " uppercase"}
+            inputMode="numeric"
+            value={year}
+            onChange={(e) => setYear(digitsOnly(e.target.value).slice(0, 4))}
+            placeholder="2019"
+            className={INPUT + " tabular-nums"}
           />
         </Field>
-
-        <div className="flex gap-3">
-          <Field label="Make" className="flex-1">
-            <input
-              value={make}
-              onChange={(e) => setMake(e.target.value)}
-              placeholder="Perodua"
-              maxLength={40}
-              className={INPUT}
-            />
-          </Field>
-          <Field label="Model" className="flex-1">
-            <input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="Myvi 1.5"
-              maxLength={60}
-              className={INPUT}
-            />
-          </Field>
-        </div>
-
-        <div className="flex gap-3">
-          <Field label="Year" className="flex-1">
-            <input
-              inputMode="numeric"
-              value={year}
-              onChange={(e) => setYear(digitsOnly(e.target.value).slice(0, 4))}
-              placeholder="2019"
-              className={INPUT + " tabular-nums"}
-            />
-          </Field>
-          <Field label="Odometer now (km)" className="flex-1">
-            <input
-              inputMode="numeric"
-              value={odometer}
-              onChange={(e) => setOdometer(digitsOnly(e.target.value))}
-              placeholder="86000"
-              className={INPUT + " tabular-nums"}
-            />
-          </Field>
-        </div>
-
-        <Choice label="Fuel" value={fuelType} options={FUEL_TYPES} onChange={setFuelType} />
-        <Choice
-          label="Transmission"
-          value={transmission}
-          options={TRANSMISSIONS}
-          onChange={setTransmission}
-        />
-
-        {create.isError && (
-          <p className="mt-3 text-sm text-red-700">{(create.error as Error).message}</p>
-        )}
-
-        <div className="mt-5 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 rounded-xl border border-stone-300 py-3 font-medium"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={save}
-            disabled={!valid || create.isPending}
-            className="flex-1 rounded-xl bg-stone-900 py-3 font-medium text-white disabled:opacity-40"
-          >
-            {create.isPending ? "Saving…" : "Save"}
-          </button>
-        </div>
+        <Field label="Odometer now (km)" className="flex-1">
+          <input
+            inputMode="numeric"
+            value={odometer}
+            onChange={(e) => setOdometer(digitsOnly(e.target.value))}
+            placeholder="86000"
+            className={INPUT + " tabular-nums"}
+          />
+        </Field>
       </div>
-    </div>
+
+      <Choice label="Fuel" value={fuelType} options={FUEL_TYPES} onChange={setFuelType} />
+      <Choice
+        label="Transmission"
+        value={transmission}
+        options={TRANSMISSIONS}
+        onChange={setTransmission}
+      />
+
+      {create.isError && (
+      <p className="mt-3 text-sm text-status-overdue-fg">{(create.error as Error).message}</p>
+      )}
+
+      <SheetActions
+        onCancel={onClose}
+        onConfirm={save}
+        confirmLabel="Save"
+        busy={create.isPending}
+        disabled={!valid}
+      />
+    </Sheet>
   );
 }

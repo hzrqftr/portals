@@ -83,7 +83,7 @@ describe("money stays an integer (invariant 1)", () => {
       json: {
         servicedOn: "2026-02-10",
         odometerKm: 45_000,
-        totalCost: 38_050,
+        labourCost: 38_050,
         items: [{ partTypeId: "pt_engine_oil", quantityMilli: 4_500, unitCost: 4_200 }],
       },
     });
@@ -98,7 +98,7 @@ describe("money stays an integer (invariant 1)", () => {
     // in scripts/check-db-imports.mjs.)
     const columns: [string, string][] = [
       ["vehicles", "purchase_price"],
-      ["service_records", "total_cost"],
+      ["service_records", "labour_cost"],
       ["service_items", "unit_cost"],
       ["service_items", "quantity_milli"],
       ["service_items", "line_total_cost"],
@@ -116,6 +116,102 @@ describe("money stays an integer (invariant 1)", () => {
         "integer",
       );
     });
+  });
+});
+
+/**
+ * Labour is its own cost, and the grand total is derived from it plus the
+ * parts (migration 0006). The owner's usual pattern is the motivating case:
+ * buy the oil and filter, then pay a workshop for the fitting alone.
+ */
+describe("labour and the derived total (invariant 1)", () => {
+  const fetchRecord = async (vehicleId: string) =>
+    (await call(`/api/vehicles/${vehicleId}/services`)).body[0] as {
+      partsCost: number | null;
+      labourCost: number | null;
+      totalCost: number | null;
+    };
+
+  it("adds labour to the parts to make the total", async () => {
+    const vehicleId = await makeVehicle();
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 45_000,
+        labourCost: 6_000, // RM 60.00
+        items: [
+          { partTypeId: "pt_engine_oil", unitCost: 12_000 },
+          { partTypeId: "pt_oil_filter", unitCost: 2_500 },
+        ],
+      },
+    });
+
+    const rec = await fetchRecord(vehicleId);
+    expect(rec.partsCost).toBe(14_500);
+    expect(rec.labourCost).toBe(6_000);
+    expect(rec.totalCost).toBe(20_500);
+  });
+
+  it("handles the owner-supplied-parts case: labour only, no part costs", async () => {
+    const vehicleId = await makeVehicle();
+    // Parts bought elsewhere, so they carry no cost here. The workshop
+    // charged for the change alone -- the total is the labour.
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 45_000,
+        labourCost: 4_500,
+        items: [{ partTypeId: "pt_engine_oil" }, { partTypeId: "pt_oil_filter" }],
+      },
+    });
+
+    const rec = await fetchRecord(vehicleId);
+    expect(rec.partsCost).toBeNull();
+    expect(rec.labourCost).toBe(4_500);
+    expect(rec.totalCost).toBe(4_500);
+  });
+
+  it("leaves the total blank when no cost was recorded at all", async () => {
+    const vehicleId = await makeVehicle();
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 45_000,
+        items: [{ partTypeId: "pt_engine_oil" }],
+      },
+    });
+
+    // Not RM 0.00. "I did not record what this cost" and "this was free" are
+    // different statements, and the UI shows nothing rather than a false zero.
+    const rec = await fetchRecord(vehicleId);
+    expect(rec.totalCost).toBeNull();
+    expect(rec.labourCost).toBeNull();
+  });
+
+  it("does not multiply the parts by the number of line items", async () => {
+    const vehicleId = await makeVehicle();
+    // The read query joins items onto the record, so a naive SUM() over that
+    // join counts each part once per row. Three items is enough to catch it.
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 45_000,
+        labourCost: 1_000,
+        items: [
+          { partTypeId: "pt_engine_oil", unitCost: 10_000 },
+          { partTypeId: "pt_oil_filter", unitCost: 2_000 },
+          { partTypeId: "pt_air_filter", unitCost: 3_000 },
+        ],
+      },
+    });
+
+    const rec = await fetchRecord(vehicleId);
+    expect(rec.partsCost).toBe(15_000);
+    expect(rec.totalCost).toBe(16_000);
   });
 });
 
@@ -174,22 +270,24 @@ describe("due status handles missing halves of an interval (spec 6.2 step 5)", (
  * due point is a function of the baseline, so it moves when the baseline
  * moves. A stored due point passes the first test and fails all the rest,
  * silently, while continuing to display a plausible number.
+ *
+ * The interval keyed in at a service also BECOMES the vehicle's interval --
+ * one number per part, set by the most recent service. See CLAUDE.md
+ * invariant 6.
  */
-describe("per-service interval overrides (invariant 6)", () => {
+describe("per-service intervals (invariant 6)", () => {
   const findOil = (body: { part_type_id: string }[]) =>
     body.find((r) => r.part_type_id === "pt_engine_oil") as never as {
       due_km: number | null;
       interval_km: number | null;
-      configured_interval_km: number | null;
-      interval_is_override: number;
       due_date_by_time: string | null;
       status: string;
     };
 
-  it("uses the override instead of the vehicle's configured interval", async () => {
+  it("makes the interval keyed at a service the vehicle's interval", async () => {
     const vehicleId = await makeVehicle();
     // Engine oil is seeded at 10,000 km. Cheap mineral oil this time, so the
-    // workshop says come back at 55,000 -- a 5,000 km interval, just once.
+    // workshop says come back at 55,000 -- a 5,000 km interval from here on.
     await call(`/api/vehicles/${vehicleId}/services`, {
       method: "POST",
       json: {
@@ -202,10 +300,6 @@ describe("per-service interval overrides (invariant 6)", () => {
     const oil = findOil((await call(`/api/vehicles/${vehicleId}/maintenance`)).body);
     expect(oil.due_km).toBe(55_000);
     expect(oil.interval_km).toBe(5_000);
-    expect(oil.interval_is_override).toBe(1);
-    // The vehicle's own setting is untouched and still visible, so the UI can
-    // say where each number came from.
-    expect(oil.configured_interval_km).toBe(10_000);
   });
 
   it("derives the due point from the baseline rather than storing it", async () => {
@@ -238,7 +332,7 @@ describe("per-service interval overrides (invariant 6)", () => {
     );
   });
 
-  it("lets the override expire when the part is next serviced without one", async () => {
+  it("keeps the last keyed interval when a later service sets none", async () => {
     const vehicleId = await makeVehicle();
     await call(`/api/vehicles/${vehicleId}/services`, {
       method: "POST",
@@ -249,7 +343,9 @@ describe("per-service interval overrides (invariant 6)", () => {
       },
     });
 
-    // Back on normal oil. The one-off must not have become permanent.
+    // A service that names the part but sets no interval. The schedule is
+    // not re-opened for negotiation: 5,000 km stands until something says
+    // otherwise, it just counts from the new baseline.
     await call(`/api/vehicles/${vehicleId}/services`, {
       method: "POST",
       json: {
@@ -260,9 +356,36 @@ describe("per-service interval overrides (invariant 6)", () => {
     });
 
     const oil = findOil((await call(`/api/vehicles/${vehicleId}/maintenance`)).body);
-    expect(oil.interval_km).toBe(10_000); // the vehicle's setting, back in charge
-    expect(oil.interval_is_override).toBe(0);
-    expect(oil.due_km).toBe(65_000);
+    expect(oil.interval_km).toBe(5_000);
+    expect(oil.due_km).toBe(60_000); // 55,000 baseline + 5,000
+  });
+
+  it("lets editing the interval take effect on the cycle already running", async () => {
+    const vehicleId = await makeVehicle();
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 50_000,
+        items: [{ partTypeId: "pt_engine_oil", intervalKmOverride: 5_000 }],
+      },
+    });
+    expect(findOil((await call(`/api/vehicles/${vehicleId}/maintenance`)).body).due_km).toBe(
+      55_000,
+    );
+
+    // The owner corrects the schedule to 6,000 km. This is the regression
+    // that started it all: the edit used to be stored but outranked by the
+    // last service's number, so the due point never moved and the save read
+    // as having silently failed.
+    await call(`/api/vehicles/${vehicleId}/intervals/pt_engine_oil`, {
+      method: "PATCH",
+      json: { intervalKm: 6_000 },
+    });
+
+    const oil = findOil((await call(`/api/vehicles/${vehicleId}/maintenance`)).body);
+    expect(oil.interval_km).toBe(6_000);
+    expect(oil.due_km).toBe(56_000); // 50,000 baseline + 6,000, immediately
   });
 
   it("keeps a km-only override from nulling out the time clock", async () => {

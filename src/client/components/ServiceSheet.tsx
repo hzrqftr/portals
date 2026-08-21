@@ -11,6 +11,7 @@ import {
 import { parseSen, toQuantityMilli, formatSen } from "@shared/money";
 import { INPUT, Field, digitsOnly } from "./form";
 import { formatKm } from "../lib/format";
+import { Sheet } from "./Sheet";
 import { PartPicker } from "./PartPicker";
 import { ServiceItemRow, type ItemDraft } from "./ServiceItemRow";
 
@@ -50,7 +51,7 @@ export function ServiceSheet({
   const [odometer, setOdometer] = useState(String(currentKm || ""));
   const [serviceType, setServiceType] = useState<ServiceTypeName | "">("");
   const [workshop, setWorkshop] = useState("");
-  const [totalCost, setTotalCost] = useState("");
+  const [labourCost, setLabourCost] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<ItemDraft[]>([]);
   const [saved, setSaved] = useState<string[] | null>(null);
@@ -63,7 +64,7 @@ export function ServiceSheet({
     if (odo === null) return null;
     const row = maintenance.data?.find((r) => r.part_type_id === partTypeId);
     const interval = row
-      ? row.configured_interval_km
+      ? row.interval_km
       : (partTypes.data?.find((p) => p.id === partTypeId)?.default_interval_km ?? null);
     return interval === null ? null : odo + interval;
   }
@@ -103,11 +104,17 @@ export function ServiceSheet({
     }
   }
 
+  // Sen throughout, rounded once per line (invariant 1). Mirrors the
+  // line_total_cost generated column so the running total shown while typing
+  // matches what the server computes on save, to the sen.
   const partsSubtotal = items.reduce((sum, i) => {
     const unit = parseSen(i.unitCost);
     const qty = Number(i.quantity) > 0 ? Number(i.quantity) : 1;
     return unit === null ? sum : sum + Math.round(unit * qty);
   }, 0);
+
+  const labourSen = parseSen(labourCost);
+  const grandTotal = partsSubtotal + (labourSen ?? 0);
 
   // The single headline the owner asked for, derived from the lines rather
   // than stored beside them: the soonest of whatever this visit set.
@@ -136,23 +143,27 @@ export function ServiceSheet({
       if (unit !== null) draft.unitCost = unit;
       if (i.warrantyMonths !== "") draft.warrantyMonths = Number(i.warrantyMonths);
 
-      // Absolute figure in, interval out. Only when it differs from the
-      // default, so an untouched field never writes a pointless override.
-      const typed = i.nextDueKm === "" ? null : Number(i.nextDueKm);
-      if (typed !== null && typed !== defaultNextDueKm(i.partTypeId)) {
-        draft.intervalKmOverride = typed - odo;
+      // Absolute figure in, interval out -- and always, not only when it
+      // differs from the default. Every service sets the schedule for its
+      // part, so leaving the field at the pre-filled figure is an answer
+      // ("same as before"), not an absence of one. Sending it every time is
+      // what keeps one number in charge: the line item and the vehicle's
+      // setting cannot drift apart if each service writes both.
+      const due = i.nextDueKm === "" ? defaultNextDueKm(i.partTypeId) : Number(i.nextDueKm);
+      if (due !== null && due > odo) {
+        draft.intervalKmOverride = due - odo;
       }
       return draft;
     });
 
-    const total = parseSen(totalCost);
+
     log.mutate(
       {
         servicedOn,
         odometerKm: Math.round(odo),
         ...(serviceType ? { serviceType } : {}),
         ...(workshop.trim() ? { workshopName: workshop.trim() } : {}),
-        ...(total !== null ? { totalCost: total } : {}),
+        ...(labourSen !== null ? { labourCost: labourSen } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
         items: drafts,
       },
@@ -161,150 +172,153 @@ export function ServiceSheet({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/40" onClick={onClose}>
-      <div
-        className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 pb-8"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {saved ? (
-          <SavedConfirmation parts={saved} onClose={onClose} />
-        ) : (
-          <>
-            <h2 className="text-lg font-semibold">Log service &mdash; {nickname}</h2>
+    <Sheet title={`Log service — ${nickname}`} onClose={onClose} wide>
+      {saved ? (
+        <SavedConfirmation parts={saved} onClose={onClose} />
+      ) : (
+        <>
+          <h2 className="text-lg font-semibold">Log service &mdash; {nickname}</h2>
 
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Date">
-                <input
-                  type="date"
-                  value={servicedOn}
-                  onChange={(e) => setServicedOn(e.target.value)}
-                  className={INPUT}
-                />
-              </Field>
-              <Field label="Odometer (km)">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={odometer}
-                  onChange={(e) => setOdometer(digitsOnly(e.target.value))}
-                  className={INPUT + " tabular-nums"}
-                />
-              </Field>
-            </div>
-
-            <Field label="Type of service">
-              <select
-                value={serviceType}
-                onChange={(e) => chooseType(e.target.value as ServiceTypeName | "")}
-                className={INPUT}
-              >
-                <option value="">Not specified</option>
-                {SERVICE_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Workshop">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Date">
               <input
-                value={workshop}
-                onChange={(e) => setWorkshop(e.target.value)}
+                type="date"
+                value={servicedOn}
+                onChange={(e) => setServicedOn(e.target.value)}
                 className={INPUT}
               />
             </Field>
-
-            <h3 className="mt-6 text-sm font-medium uppercase tracking-wide text-stone-500">
-              Parts replaced
-            </h3>
-            {items.length === 0 ? (
-              <p className="mt-2 text-sm text-stone-600">
-                None yet. A visit with no parts is a valid record &mdash; it just resets no
-                maintenance clocks.
-              </p>
-            ) : (
-              <>
-                {nextService !== undefined && (
-                  <p className="mt-2 text-sm text-stone-700">
-                    Next service at <strong>{formatKm(nextService)}</strong>
-                  </p>
-                )}
-                <ul className="mt-2 space-y-2">
-                  {items.map((item) => (
-                    <ServiceItemRow
-                      key={item.key}
-                      item={item}
-                      odometerKm={odo}
-                      defaultNextDueKm={defaultNextDueKm(item.partTypeId)}
-                      onChange={(next) =>
-                        setItems((prev) => prev.map((p) => (p.key === next.key ? next : p)))
-                      }
-                      onRemove={() =>
-                        setItems((prev) => prev.filter((p) => p.key !== item.key))
-                      }
-                    />
-                  ))}
-                </ul>
-              </>
-            )}
-
-            <PartPicker
-              partTypes={partTypes.data ?? []}
-              maintenance={maintenance.data ?? []}
-              exclude={items.map((i) => i.partTypeId)}
-              onAdd={addPart}
-            />
-
-            <Field label="Total paid (RM)">
+            <Field label="Odometer (km)">
               <input
                 type="text"
-                inputMode="decimal"
-                value={totalCost}
-                onChange={(e) => setTotalCost(e.target.value.replace(/[^0-9.]/g, ""))}
-                placeholder="0.00"
+                inputMode="numeric"
+                value={odometer}
+                onChange={(e) => setOdometer(digitsOnly(e.target.value))}
                 className={INPUT + " tabular-nums"}
               />
             </Field>
-            {partsSubtotal > 0 && (
-              <p className="mt-1 text-xs text-stone-500">
-                Parts add up to {formatSen(partsSubtotal)}. Labour and sundries are not line
-                items, so the total is usually higher.
-              </p>
-            )}
+          </div>
 
-            <Field label="Notes">
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                className={INPUT}
-              />
-            </Field>
+          <Field label="Type of service">
+            <select
+              value={serviceType}
+              onChange={(e) => chooseType(e.target.value as ServiceTypeName | "")}
+              className={INPUT}
+            >
+              <option value="">Not specified</option>
+              {SERVICE_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </Field>
 
-            {log.isError && (
-              <p className="mt-2 text-sm text-red-700">{(log.error as Error).message}</p>
-            )}
+          <Field label="Workshop">
+            <input
+              value={workshop}
+              onChange={(e) => setWorkshop(e.target.value)}
+              className={INPUT}
+            />
+          </Field>
 
-            <div className="mt-5 flex gap-3">
-              <button
-                onClick={onClose}
-                className="flex-1 rounded-xl border border-stone-300 py-3 font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={save}
-                disabled={!canSave || log.isPending}
-                className="flex-1 rounded-xl bg-stone-900 py-3 font-medium text-white disabled:opacity-40"
-              >
-                {log.isPending ? "Saving…" : "Save"}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+          <h3 className="mt-6 text-sm font-medium uppercase tracking-wider text-ink-faint">
+            Parts replaced
+          </h3>
+          {items.length === 0 ? (
+            <p className="mt-2 text-sm text-ink-muted">
+              None yet. A visit with no parts is a valid record &mdash; it just resets no
+              maintenance clocks.
+            </p>
+          ) : (
+            <>
+              {nextService !== undefined && (
+                <p className="mt-2 text-sm text-ink-muted">
+                  Next service at <strong>{formatKm(nextService)}</strong>
+                </p>
+              )}
+              <ul className="mt-2 space-y-2">
+                {items.map((item) => (
+                  <ServiceItemRow
+                    key={item.key}
+                    item={item}
+                    odometerKm={odo}
+                    defaultNextDueKm={defaultNextDueKm(item.partTypeId)}
+                    onChange={(next) =>
+                      setItems((prev) => prev.map((p) => (p.key === next.key ? next : p)))
+                    }
+                    onRemove={() =>
+                      setItems((prev) => prev.filter((p) => p.key !== item.key))
+                    }
+                  />
+                ))}
+              </ul>
+            </>
+          )}
+
+          <PartPicker
+            partTypes={partTypes.data ?? []}
+            maintenance={maintenance.data ?? []}
+            exclude={items.map((i) => i.partTypeId)}
+            onAdd={addPart}
+          />
+
+          <Field label="Labour (RM)">
+            <input
+              type="text"
+              inputMode="decimal"
+              value={labourCost}
+              onChange={(e) => setLabourCost(e.target.value.replace(/[^0-9.]/g, ""))}
+              placeholder="0.00"
+              className={INPUT + " tabular-nums"}
+            />
+          </Field>
+          <p className="mt-1 text-xs text-ink-faint">
+            What the workshop charged for the work. Leave the part costs blank if you
+            supplied the parts yourself.
+          </p>
+
+          {grandTotal > 0 && (
+            // Shown, not typed. The total is parts + labour by definition, so
+            // there is no third figure that can disagree with the other two.
+            <dl className="mt-3 space-y-1 border-t border-edge pt-2 text-sm">
+              <Total label="Parts" value={partsSubtotal} />
+              <Total label="Labour" value={labourSen ?? 0} />
+              <Total label="Total" value={grandTotal} strong />
+            </dl>
+          )}
+
+          <Field label="Notes">
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className={INPUT}
+            />
+          </Field>
+
+          {log.isError && (
+            <p className="mt-2 text-sm text-status-overdue-fg">{(log.error as Error).message}</p>
+          )}
+
+          <div className="mt-5 flex gap-3">
+            <button
+              onClick={onClose}
+              className="flex-1 rounded-xl border border-edge py-3 font-medium text-ink-muted hover:text-ink"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={save}
+              disabled={!canSave || log.isPending}
+              className="flex-1 rounded-xl bg-ink py-3 font-medium text-page disabled:opacity-40"
+            >
+              {log.isPending ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </>
+      )}
+    </Sheet>
   );
 }
 
@@ -314,19 +328,29 @@ export function ServiceSheet({
  * resets nothing by design, and the owner needs to see that now rather than
  * discover it as a stale due date months later.
  */
+/** One line of the running cost breakdown. Read-only by design. */
+function Total({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
+  return (
+    <div className={"flex justify-between gap-4" + (strong ? " font-medium text-ink" : "")}>
+      <dt className={strong ? "" : "text-ink-faint"}>{label}</dt>
+      <dd className="tabular-nums">{formatSen(value)}</dd>
+    </div>
+  );
+}
+
 function SavedConfirmation({ parts, onClose }: { parts: string[]; onClose: () => void }) {
   return (
     <div>
       <h2 className="text-lg font-semibold">Service saved</h2>
       {parts.length === 0 ? (
-        <p className="mt-2 text-sm text-stone-700">
+        <p className="mt-2 text-sm text-ink-muted">
           No parts were listed, so no maintenance clock was reset. Add the visit again with
           line items if it included replacements.
         </p>
       ) : (
         <>
-          <p className="mt-2 text-sm text-stone-700">Clocks reset:</p>
-          <ul className="mt-1 list-inside list-disc text-sm text-stone-700">
+          <p className="mt-2 text-sm text-ink-muted">Clocks reset:</p>
+          <ul className="mt-1 list-inside list-disc text-sm text-ink-muted">
             {parts.map((p) => (
               <li key={p}>{p}</li>
             ))}
@@ -335,7 +359,7 @@ function SavedConfirmation({ parts, onClose }: { parts: string[]; onClose: () =>
       )}
       <button
         onClick={onClose}
-        className="mt-5 w-full rounded-xl bg-stone-900 py-3 font-medium text-white"
+        className="mt-5 w-full rounded-xl bg-ink py-3 font-medium text-page"
       >
         Done
       </button>

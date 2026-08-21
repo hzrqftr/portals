@@ -255,7 +255,9 @@ CREATE TABLE service_records (
   serviced_on   TEXT NOT NULL,
   odometer_km   INTEGER NOT NULL,
   workshop_name TEXT,
-  total_cost    INTEGER,          -- minor units; may exceed sum of items
+  labour_cost   INTEGER,          -- minor units; the work, not the parts
+                                  -- grand total = labour + SUM(line totals),
+                                  -- computed on read, never stored
   invoice_key   TEXT,             -- R2 object key, Phase 4
   notes         TEXT,
   created_at    TEXT NOT NULL
@@ -477,7 +479,7 @@ Only `nickname` required. On save: create vehicle, seed intervals from `part_typ
 
 ### 8.4 Log service
 
-The highest-friction flow, needing the most care. Vehicle → date (default today) → odometer (prefilled, validated ≥ current) → workshop → line items. The part type picker **pins the vehicle's overdue and due-soon items to the top**. Brand and spec autocomplete from the garage's own history. Total cost entered separately from item costs, since labour and sundries are not line items. On save, confirm which clocks were reset.
+The highest-friction flow, needing the most care. Vehicle → date (default today) → odometer (prefilled, validated ≥ current) → workshop → line items. The part type picker **pins the vehicle's overdue and due-soon items to the top**. Brand and spec autocomplete from the garage's own history. Labour is entered as its own figure, since it is a real cost that is not a line item — the owner frequently buys the parts and pays a workshop for the fitting alone. The grand total is **shown, not typed**: it is parts + labour, computed, so no two figures on the form can disagree. On save, confirm which clocks were reset.
 
 ### 8.5 Quick odometer update
 
@@ -496,7 +498,7 @@ Units, currency, date format, timezone, due-soon thresholds, garage name, member
 
 ## 9. UX requirements
 
-Mobile-first, designed at 375px. Status colours green, amber, red, grey, always paired with text and never colour alone. Relative dates primary ("in about 5 weeks"), absolute secondary. Empty states that guide rather than blank tables. Optimistic updates with rollback. Dashboard response cached client-side so it renders on a poor connection.
+Desktop-first, responsive down to 375px. Dark theme only -- the palette lives in `tailwind.config.js` as the base colours, so there are no `dark:` variants anywhere. Status colours green, amber, red, grey, always paired with text and never colour alone. Relative dates primary ("in about 5 weeks"), absolute secondary. Empty states that guide rather than blank tables. Optimistic updates with rollback. Dashboard response cached client-side so it renders on a poor connection.
 
 ---
 

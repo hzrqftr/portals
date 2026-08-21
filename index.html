@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Dark-only app. Declared here as well as in CSS so the browser paints
+         the dark canvas before React mounts, rather than flashing white. -->
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0B0B0C" />
     <title>Fleet</title>
   </head>
   <body>

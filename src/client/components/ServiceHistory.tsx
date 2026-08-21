@@ -12,10 +12,10 @@ import { formatKm } from "../lib/format";
 export function ServiceHistory({ vehicleId, today }: { vehicleId: string; today: string }) {
   const services = useServices(vehicleId);
 
-  if (services.isLoading) return <p className="mt-3 text-sm text-stone-500">Loading&hellip;</p>;
+  if (services.isLoading) return <p className="mt-3 text-sm text-ink-faint">Loading&hellip;</p>;
   if (!services.data?.length) {
     return (
-      <p className="mt-3 text-sm text-stone-600">
+      <p className="mt-3 text-sm text-ink-muted">
         Nothing logged yet. Every maintenance clock stays &ldquo;not set up&rdquo; until a
         service records the part that starts it.
       </p>
@@ -36,14 +36,14 @@ function RecordRow({ record, today }: { record: ServiceRecord; today: string }) 
   const typeLabel = SERVICE_TYPES.find((t) => t.value === record.serviceType)?.label;
 
   return (
-    <li className="rounded-xl bg-white p-3 ring-1 ring-stone-200">
+    <li className="rounded-xl border border-edge bg-surface p-3">
       <button onClick={() => setOpen(!open)} className="flex w-full items-start gap-2 text-left">
         <div className="min-w-0 flex-1">
           <p className="font-medium">
             {record.servicedOn}
-            {typeLabel && <span className="text-stone-500"> &middot; {typeLabel}</span>}
+            {typeLabel && <span className="text-ink-faint"> &middot; {typeLabel}</span>}
           </p>
-          <p className="text-sm text-stone-600">
+          <p className="text-sm text-ink-muted">
             {formatKm(record.odometerKm)}
             {record.workshopName && <> &middot; {record.workshopName}</>}
           </p>
@@ -52,9 +52,9 @@ function RecordRow({ record, today }: { record: ServiceRecord; today: string }) 
       </button>
 
       {open && (
-        <div className="mt-3 border-t border-stone-200 pt-3">
+        <div className="mt-3 border-t border-edge pt-3">
           {record.items.length === 0 ? (
-            <p className="text-sm text-stone-600">
+            <p className="text-sm text-ink-muted">
               No parts listed, so this visit reset no maintenance clocks.
             </p>
           ) : (
@@ -63,11 +63,11 @@ function RecordRow({ record, today }: { record: ServiceRecord; today: string }) 
                 <li key={item.id} className="text-sm">
                   <div className="flex justify-between gap-2">
                     <span className="font-medium">{item.partName}</span>
-                    <span className="tabular-nums text-stone-600">
+                    <span className="tabular-nums text-ink-muted">
                       {formatSen(item.lineTotalCost)}
                     </span>
                   </div>
-                  <p className="text-stone-600">
+                  <p className="text-ink-muted">
                     {[
                       item.brand,
                       item.spec,
@@ -79,7 +79,7 @@ function RecordRow({ record, today }: { record: ServiceRecord; today: string }) 
                       .join(" · ")}
                   </p>
                   {item.nextDueKm !== null && (
-                    <p className="text-stone-500">
+                    <p className="text-ink-faint">
                       Next due at {formatKm(item.nextDueKm)} &mdash; set on this visit
                     </p>
                   )}
@@ -88,10 +88,43 @@ function RecordRow({ record, today }: { record: ServiceRecord; today: string }) 
               ))}
             </ul>
           )}
-          {record.notes && <p className="mt-2 text-sm text-stone-600">{record.notes}</p>}
+          <CostBreakdown record={record} />
+
+          {record.notes && <p className="mt-2 text-sm text-ink-muted">{record.notes}</p>}
         </div>
       )}
     </li>
+  );
+}
+
+/**
+ * Parts, labour, total. Spelled out rather than left as one figure, because
+ * "what did the fitting cost me" is the question the owner actually asks --
+ * they often buy the parts themselves and pay a workshop for the work alone.
+ *
+ * Shown only when something was recorded. A visit with no costs entered gets
+ * no breakdown rather than three RM 0.00 lines.
+ */
+function CostBreakdown({ record }: { record: ServiceRecord }) {
+  if (record.totalCost === null) return null;
+
+  return (
+    <dl className="mt-3 space-y-1 border-t border-edge pt-2 text-sm">
+      {record.partsCost !== null && (
+        <Line label="Parts" value={record.partsCost} />
+      )}
+      {record.labourCost !== null && <Line label="Labour" value={record.labourCost} />}
+      <Line label="Total" value={record.totalCost} strong />
+    </dl>
+  );
+}
+
+function Line({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
+  return (
+    <div className={"flex justify-between gap-4" + (strong ? " font-medium text-ink" : "")}>
+      <dt className={strong ? "" : "text-ink-faint"}>{label}</dt>
+      <dd className="tabular-nums">{formatSen(value)}</dd>
+    </div>
   );
 }
 
@@ -106,7 +139,7 @@ function WarrantyBadge({ until, today }: { until: string; today: string }) {
     <span
       className={
         "mt-1 inline-flex rounded-full px-2 py-0.5 text-xs " +
-        (expired ? "bg-stone-100 text-stone-500" : "bg-sky-100 text-sky-900")
+        (expired ? "bg-inset text-ink-faint" : "bg-sky-950 text-sky-300")
       }
     >
       {expired ? `Warranty ended ${until}` : `Under warranty until ${until}`}

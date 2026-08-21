@@ -36,7 +36,7 @@ export function TemplateEditor({ serviceType }: { serviceType: ServiceTypeName }
   return (
     <div className="mt-2">
       {current.length === 0 ? (
-        <p className="text-sm text-stone-600">
+        <p className="text-sm text-ink-muted">
           Nothing pre-filled &mdash; parts get added by hand.
         </p>
       ) : (
@@ -44,13 +44,13 @@ export function TemplateEditor({ serviceType }: { serviceType: ServiceTypeName }
           {current.map((t) => (
             <li
               key={t.partTypeId}
-              className="inline-flex items-center gap-2 rounded-full bg-stone-100 py-1 pl-3 pr-2 text-sm"
+              className="inline-flex items-center gap-2 rounded-full bg-inset py-1 pl-3 pr-2 text-sm"
             >
               {t.partName}
               <button
                 aria-label={`Remove ${t.partName}`}
                 onClick={() => write(chosen.filter((id) => id !== t.partTypeId))}
-                className="text-stone-500"
+                className="text-ink-faint"
               >
                 &times;
               </button>
@@ -74,7 +74,7 @@ export function TemplateEditor({ serviceType }: { serviceType: ServiceTypeName }
       </select>
 
       {put.isError && (
-        <p className="mt-1 text-sm text-red-700">{(put.error as Error).message}</p>
+        <p className="mt-1 text-sm text-status-overdue-fg">{(put.error as Error).message}</p>
       )}
     </div>
   );

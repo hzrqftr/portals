@@ -126,7 +126,11 @@ export const serviceRecords = sqliteTable(
       enum: ["minor", "major", "repair", "inspection", "other"],
     }),
     workshopName: text("workshop_name"),
-    totalCost: integer("total_cost"), // sen; may exceed the sum of items
+    // sen. Labour is a cost in its own right, not the unexplained remainder
+    // of a lump total -- the owner often supplies the parts and pays a
+    // workshop for the fitting alone. The grand total is SUM(line totals) +
+    // this, computed on read; there is no stored total to disagree with it.
+    labourCost: integer("labour_cost"),
     invoiceKey: text("invoice_key"),
     notes: text("notes"),
     createdAt: text("created_at").notNull(),

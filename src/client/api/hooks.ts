@@ -37,13 +37,9 @@ export interface MaintenanceRow {
   part_type_id: string;
   part_name: string;
   part_category: string;
-  /** Effective interval: the last service's override if it set one. */
+  /** The part's schedule. One number each, set by the most recent service. */
   interval_km: number | null;
   interval_months: number | null;
-  interval_is_override: number;
-  /** The vehicle's own setting, still visible underneath an override. */
-  configured_interval_km: number | null;
-  configured_interval_months: number | null;
   baseline_date: string | null;
   baseline_km: number | null;
   due_km: number | null;
@@ -104,6 +100,11 @@ export interface ServiceRecord {
   odometerKm: number;
   serviceType: ServiceTypeName | null;
   workshopName: string | null;
+  /** What the workshop charged for the work itself. */
+  labourCost: number | null;
+  /** Sum of the line items. Derived, like totalCost. */
+  partsCost: number | null;
+  /** partsCost + labourCost, computed server-side. Never stored, never sent. */
   totalCost: number | null;
   notes: string | null;
   createdAt: string;
@@ -249,7 +250,7 @@ export interface ServiceDraft {
   odometerKm: number;
   serviceType?: ServiceTypeName;
   workshopName?: string;
-  totalCost?: number;
+  labourCost?: number;
   notes?: string;
   items: ServiceItemDraft[];
 }

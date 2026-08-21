@@ -48,16 +48,28 @@ Verified against the deployed app, not just the test suite.
 - Quick odometer update from the dashboard (§8.5)
 - Vehicle detail: nickname, odometer, maintenance list, service history
 - **Log a service** (§8.4): date, odometer, service type, workshop, line items,
-  separate total cost, part picker pinning the vehicle's due parts, brand
-  autocomplete, and a save confirmation naming which clocks were reset
-- **Per-service interval overrides**: "next due at 140,000 km" typed on a
-  service, stored as an interval so the due point stays derived
+  part picker pinning the vehicle's due parts, brand autocomplete, and a save
+  confirmation naming which clocks were reset
+- **Labour as its own cost** (migration 0006): entered separately from the
+  parts, which covers the common case of supplying your own oil and filter and
+  paying a workshop for the fitting alone. The grand total is computed as
+  parts + labour on read — there is no stored `total_cost` any more, so no two
+  figures can disagree
+- **One interval per part** (migration 0005): the interval keyed in at a
+  service becomes the vehicle's interval, stored as an interval so the due
+  point stays derived. Replaced the earlier per-service *override*, which gave
+  one part two competing schedules and made an edited interval look like it
+  had not saved
 - **Per-vehicle interval editing** inline on the maintenance list, including
   switching a part off and tracking one the seeder skipped — this is how the
   Waja's timing belt and the City's timing chain are told apart
 - **Settings** (§8.7): due-soon thresholds, stale-odometer threshold, assumed
   km/day fallback, timezone, currency, and the minor/major parts templates
 - Part warranty in months, shown as a badge on the service history line item
+- **Dark, desktop-first UI** (2026-08-21): one wide responsive layout, a shared top bar,
+  and the vehicle maintenance list rebuilt as a grid of tiles with category icons and a
+  All / Needs attention / Not set up filter. Twenty parts used to be ~2,000px of stacked
+  cards; they now fit one screen on a laptop.
 - Every Phase 1 API endpoint
 - 57 tests: tenant isolation, derived logic, and the Access JWT fallback
 

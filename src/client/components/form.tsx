@@ -1,12 +1,17 @@
 import type { ReactNode } from "react";
 
 /**
- * Form primitives shared by the entry sheets. Mobile-first: full-width
- * controls with a large tap target, designed at 375px.
+ * Form primitives shared by the entry sheets.
+ *
+ * Almost all input styling lives in INPUT, so the dark palette reaches most
+ * of the form surface from this one constant. Controls stay large enough to
+ * be a comfortable tap target at 375px even though the layout is now
+ * desktop-first -- the odometer flow (spec 8.5) happens at a petrol pump.
  */
 
 export const INPUT =
-  "mt-1 w-full rounded-xl border border-stone-300 px-4 py-3 focus:border-stone-900 focus:outline-none";
+  "mt-1 w-full rounded-xl border border-edge bg-inset px-4 py-3 text-ink " +
+  "placeholder:text-ink-faint focus:border-ink-muted focus:outline-none";
 
 export function Field({
   label,
@@ -19,7 +24,7 @@ export function Field({
 }) {
   return (
     <label className={"mt-4 block " + className}>
-      <span className="text-sm text-stone-600">{label}</span>
+      <span className="text-sm text-ink-muted">{label}</span>
       {children}
     </label>
   );

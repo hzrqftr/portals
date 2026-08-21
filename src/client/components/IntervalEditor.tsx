@@ -24,10 +24,10 @@ export function IntervalEditor({
   onDone: () => void;
 }) {
   const [km, setKm] = useState(
-    row.configured_interval_km === null ? "" : String(row.configured_interval_km),
+    row.interval_km === null ? "" : String(row.interval_km),
   );
   const [months, setMonths] = useState(
-    row.configured_interval_months === null ? "" : String(row.configured_interval_months),
+    row.interval_months === null ? "" : String(row.interval_months),
   );
   const save = useSetInterval(vehicleId);
 
@@ -36,10 +36,10 @@ export function IntervalEditor({
   const valid = intervalKm !== null || intervalMonths !== null;
 
   return (
-    <div className="mt-3 border-t border-stone-200 pt-3">
+    <div className="mt-3 border-t border-edge pt-3">
       <div className="grid grid-cols-2 gap-2">
         <label className="block">
-          <span className="text-xs text-stone-600">Every (km)</span>
+          <span className="text-xs text-ink-muted">Every (km)</span>
           <input
             type="text"
             inputMode="numeric"
@@ -50,7 +50,7 @@ export function IntervalEditor({
           />
         </label>
         <label className="block">
-          <span className="text-xs text-stone-600">Every (months)</span>
+          <span className="text-xs text-ink-muted">Every (months)</span>
           <input
             type="text"
             inputMode="numeric"
@@ -63,23 +63,23 @@ export function IntervalEditor({
       </div>
 
       {!valid && (
-        <p className="mt-1 text-xs text-stone-500">
+        <p className="mt-1 text-xs text-ink-faint">
           Leave both blank and there is nothing to schedule from &mdash; switch the part off
           instead.
         </p>
       )}
       {save.isError && (
-        <p className="mt-1 text-xs text-red-700">{(save.error as Error).message}</p>
+        <p className="mt-1 text-xs text-status-overdue-fg">{(save.error as Error).message}</p>
       )}
 
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           onClick={() => save.mutate({ partTypeId: row.part_type_id, isActive: 0 }, { onSuccess: onDone })}
-          className="rounded-lg border border-stone-300 px-3 py-2 text-sm"
+          className="rounded-lg border border-edge px-3 py-2 text-sm text-ink-muted hover:text-ink"
         >
           Not on this car
         </button>
-        <button onClick={onDone} className="ml-auto rounded-lg px-3 py-2 text-sm text-stone-600">
+        <button onClick={onDone} className="ml-auto rounded-lg px-3 py-2 text-sm text-ink-muted hover:text-ink">
           Cancel
         </button>
         <button
@@ -90,7 +90,7 @@ export function IntervalEditor({
               { onSuccess: onDone },
             )
           }
-          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+          className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-page disabled:opacity-40"
         >
           Save
         </button>

@@ -55,13 +55,13 @@ export function ServiceItemRow({
     typedNextDue !== null && odometerKm !== null && typedNextDue <= odometerKm;
 
   return (
-    <li className="rounded-xl bg-stone-50 p-3 ring-1 ring-stone-200">
+    <li className="rounded-xl border border-edge bg-inset p-3">
       <div className="flex items-start justify-between gap-2">
         <p className="min-w-0 truncate font-medium">{item.partName}</p>
         <button
           onClick={onRemove}
           aria-label={`Remove ${item.partName}`}
-          className="shrink-0 px-2 text-stone-400"
+          className="shrink-0 px-2 text-ink-faint hover:text-ink"
         >
           &times;
         </button>
@@ -90,7 +90,7 @@ export function ServiceItemRow({
       </div>
 
       <label className="mt-2 block">
-        <span className="text-xs text-stone-600">Next due at</span>
+        <span className="text-xs text-ink-muted">Next due at</span>
         <div className="flex items-baseline gap-2">
           <input
             type="text"
@@ -100,17 +100,17 @@ export function ServiceItemRow({
             placeholder="not tracked"
             className={INPUT + " mt-0 py-2 tabular-nums"}
           />
-          <span className="text-sm text-stone-500">km</span>
+          <span className="text-sm text-ink-faint">km</span>
         </div>
       </label>
       {nextDueTooLow ? (
-        <p className="mt-1 text-xs text-red-700">
+        <p className="mt-1 text-xs text-status-overdue-fg">
           Must be past the service odometer of {formatKm(odometerKm)}.
         </p>
       ) : (
         defaultNextDueKm === null &&
         item.nextDueKm === "" && (
-          <p className="mt-1 text-xs text-stone-500">
+          <p className="mt-1 text-xs text-ink-faint">
             No interval set for this part &mdash; enter one to start tracking it.
           </p>
         )
@@ -119,7 +119,7 @@ export function ServiceItemRow({
       {open ? (
         <div className="mt-2 grid grid-cols-3 gap-2">
           <label className="block">
-            <span className="text-xs text-stone-600">Qty</span>
+            <span className="text-xs text-ink-muted">Qty</span>
             <input
               type="text"
               inputMode="decimal"
@@ -130,7 +130,7 @@ export function ServiceItemRow({
             />
           </label>
           <label className="block">
-            <span className="text-xs text-stone-600">Unit RM</span>
+            <span className="text-xs text-ink-muted">Unit RM</span>
             <input
               type="text"
               inputMode="decimal"
@@ -141,7 +141,7 @@ export function ServiceItemRow({
             />
           </label>
           <label className="block">
-            <span className="text-xs text-stone-600">Warranty</span>
+            <span className="text-xs text-ink-muted">Warranty</span>
             <input
               type="text"
               inputMode="numeric"
@@ -153,7 +153,7 @@ export function ServiceItemRow({
           </label>
         </div>
       ) : (
-        <button onClick={() => setOpen(true)} className="mt-2 text-xs text-stone-500 underline">
+        <button onClick={() => setOpen(true)} className="mt-2 text-xs text-ink-faint underline">
           Cost, quantity and warranty
         </button>
       )}

@@ -2,10 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Designed at 375px first. Everything else is a progressive enhancement. */
+/**
+ * Desktop-first, responsive down to 375px. Dark only -- the palette lives in
+ * tailwind.config.js and there are no `dark:` variants in the app.
+ */
+
+/**
+ * color-scheme is load-bearing, not decoration. The service form uses a
+ * native <input type="date"> and several <select>s; without this they render
+ * as white system widgets on a dark page, and the date picker panel opens
+ * white. It also darkens scrollbars and the pre-mount canvas.
+ */
+:root {
+  color-scheme: dark;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
 }
+
 body {
-  @apply bg-stone-50 text-stone-900 antialiased;
+  @apply bg-page text-ink antialiased;
 }

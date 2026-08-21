@@ -22,13 +22,9 @@ export interface MaintenanceDueRow {
   part_type_id: string;
   part_name: string;
   part_category: string;
-  /** Effective interval: the last service's override if it set one. */
+  /** The part's schedule. One number each, set by the most recent service. */
   interval_km: number | null;
   interval_months: number | null;
-  /** 1 when the two above came from the last service rather than the vehicle. */
-  interval_is_override: number;
-  configured_interval_km: number | null;
-  configured_interval_months: number | null;
   baseline_date: string | null;
   baseline_km: number | null;
   current_odometer_km: number;
@@ -112,8 +108,6 @@ WITH ${USAGE_CTE},
   base AS (
     SELECT md.interval_id, md.vehicle_id, md.part_type_id, md.part_name,
            md.part_category, md.interval_km, md.interval_months,
-           md.interval_is_override, md.configured_interval_km,
-           md.configured_interval_months,
            md.baseline_date, md.baseline_km, md.due_km, md.due_date_by_time,
            md.is_unknown,
            v.nickname, v.current_odometer_km,
@@ -150,8 +144,7 @@ WITH ${USAGE_CTE},
   classified AS (
     SELECT
       interval_id, vehicle_id, nickname, part_type_id, part_name, part_category,
-      interval_km, interval_months, interval_is_override,
-      configured_interval_km, configured_interval_months,
+      interval_km, interval_months,
       baseline_date, baseline_km,
       current_odometer_km, due_km, due_date_by_time, projected_date_by_km,
       effective_due_date, low_confidence,

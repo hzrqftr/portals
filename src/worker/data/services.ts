@@ -13,7 +13,24 @@ export class ServiceRepo extends ScopedRepo {
     const { results } = await this.raw
       .prepare(
         `SELECT sr.id, sr.serviced_on, sr.odometer_km, sr.service_type,
-                sr.workshop_name, sr.total_cost, sr.notes, sr.created_at,
+                sr.workshop_name, sr.labour_cost, sr.notes, sr.created_at,
+                -- The grand total, computed rather than stored. A correlated
+                -- subquery instead of SUM() over the join, because the join
+                -- repeats the record once per line item and a plain SUM would
+                -- multiply the parts by the number of rows.
+                --
+                -- NULLIF keeps "nothing recorded" distinct from "recorded as
+                -- free": a visit with no costs entered shows a blank total,
+                -- not RM 0.00.
+                NULLIF(COALESCE(sr.labour_cost, 0) + COALESCE(
+                  (SELECT SUM(i.line_total_cost)
+                     FROM service_items i
+                    WHERE i.service_record_id = sr.id
+                      AND i.garage_id = sr.garage_id), 0), 0) AS total_cost,
+                (SELECT SUM(i.line_total_cost)
+                   FROM service_items i
+                  WHERE i.service_record_id = sr.id
+                    AND i.garage_id = sr.garage_id) AS parts_cost,
                 si.id AS item_id, si.part_type_id, pt.name AS part_name,
                 si.brand, si.spec, si.quantity_milli, si.unit_cost,
                 si.line_total_cost, si.warranty_months,
@@ -63,7 +80,7 @@ export class ServiceRepo extends ScopedRepo {
         .prepare(
           `INSERT INTO service_records
              (id, garage_id, vehicle_id, serviced_on, odometer_km, service_type,
-              workshop_name, total_cost, notes, created_at)
+              workshop_name, labour_cost, notes, created_at)
            VALUES (?,?,?,?,?,?,?,?,?,?)`,
         )
         .bind(
@@ -77,7 +94,7 @@ export class ServiceRepo extends ScopedRepo {
           // nothing, and that is the correct outcome, not a bug to paper over.
           input.serviceType ?? null,
           input.workshopName ?? null,
-          input.totalCost ?? null,
+          input.labourCost ?? null,
           input.notes ?? null,
           ts,
         ),
@@ -111,21 +128,23 @@ export class ServiceRepo extends ScopedRepo {
           ),
       );
 
-      // An override needs somewhere to land.
+      // The interval keyed in at a service BECOMES the vehicle's interval.
       //
-      // v_maintenance_due starts FROM maintenance_intervals, so a part with
-      // no active interval row is absent from the view entirely -- and the
-      // "next due" the owner just typed would have no visible effect at all.
-      // Silently doing nothing is the worst option here, so: create the
-      // interval if it is missing, reactivate it if it was switched off.
+      // One number governs a part, and the last service is what sets it --
+      // so the figure written on the workshop sticker is the schedule from
+      // then on, until the next service writes a different one. An earlier
+      // design kept this as a one-cycle override sitting on top of a separate
+      // standing setting; two numbers for one part meant the schedule on
+      // screen could disagree with the schedule in the editor, and the owner
+      // had no way to tell which one was in charge.
       //
-      // DO UPDATE deliberately does not overwrite an existing configured
-      // interval. The override already wins for this cycle through the view;
-      // clobbering the vehicle's own setting would make a one-off permanent,
-      // which is the opposite of what "just this once" means.
-      const hasOverride =
+      // COALESCE so a km-only entry does not blank out the months, and the
+      // other way round. The copy on the line item stays as history: what the
+      // schedule was at that service, which is worth keeping even though
+      // nothing computes from it.
+      const setsInterval =
         item.intervalKmOverride != null || item.intervalMonthsOverride != null;
-      if (hasOverride) {
+      if (setsInterval) {
         statements.push(
           this.raw
             .prepare(
@@ -134,7 +153,12 @@ export class ServiceRepo extends ScopedRepo {
                   interval_km, interval_months, is_active)
                VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, 1)
                ON CONFLICT(vehicle_id, part_type_id)
-               DO UPDATE SET is_active = 1`,
+               DO UPDATE SET
+                 is_active       = 1,
+                 interval_km     = COALESCE(excluded.interval_km,
+                                            maintenance_intervals.interval_km),
+                 interval_months = COALESCE(excluded.interval_months,
+                                            maintenance_intervals.interval_months)`,
             )
             .bind(
               this.garageId,
@@ -217,7 +241,10 @@ interface ServiceJoinRow {
   odometer_km: number;
   service_type: ServiceType | null;
   workshop_name: string | null;
+  labour_cost: number | null;
+  /** Derived: labour + the line items. Never stored. See migrations/0006. */
   total_cost: number | null;
+  parts_cost: number | null;
   notes: string | null;
   created_at: string;
   item_id: string | null;
@@ -276,6 +303,8 @@ function shell(r: ServiceJoinRow) {
     odometerKm: r.odometer_km,
     serviceType: r.service_type,
     workshopName: r.workshop_name,
+    labourCost: r.labour_cost,
+    partsCost: r.parts_cost,
     totalCost: r.total_cost,
     notes: r.notes,
     createdAt: r.created_at,

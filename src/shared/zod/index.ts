@@ -94,9 +94,10 @@ export const serviceInput = z.object({
   odometerKm: km,
   serviceType: serviceType.optional(),
   workshopName: z.string().max(120).optional(),
-  // Entered separately from the line items: labour and sundries are real
-  // costs but not parts, so total_cost may legitimately exceed their sum.
-  totalCost: sen.nonnegative().optional(),
+  // What the workshop charged for the work itself, separate from the parts.
+  // The grand total is derived from this plus the line items, so there is no
+  // total to send -- see migrations/0006.
+  labourCost: sen.nonnegative().optional(),
   notes: z.string().max(2000).optional(),
   // An empty list is valid and means "this visit reset no clocks"
   // (invariant 7). It is a record of a visit, not a mistake.

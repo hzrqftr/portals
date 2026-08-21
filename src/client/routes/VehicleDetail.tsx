@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useVehicle, useMaintenance, useDashboard } from "../api/hooks";
+import { Page, AppHeader, SectionTitle } from "../components/Layout";
 import { MaintenanceList } from "../components/MaintenanceList";
 import { ServiceHistory } from "../components/ServiceHistory";
 import { ServiceSheet } from "../components/ServiceSheet";
@@ -17,40 +18,47 @@ export default function VehicleDetail() {
   const dashboard = useDashboard();
   const [logging, setLogging] = useState(false);
 
-  if (vehicle.isLoading) return <p className="p-4 text-stone-500">Loading&hellip;</p>;
-  if (vehicle.isError) return <p className="p-4 text-red-700">Vehicle not found.</p>;
+  if (vehicle.isLoading) return <p className="p-6 text-ink-muted">Loading&hellip;</p>;
+  if (vehicle.isError) return <p className="p-6 text-status-overdue-fg">Vehicle not found.</p>;
 
   const today = dashboard.data?.today;
 
   return (
-    <div className="mx-auto max-w-lg p-4 pb-24">
-      <Link to="/" className="text-sm text-stone-500">
-        &larr; Fleet
-      </Link>
-      <h1 className="mt-2 text-2xl font-semibold">{vehicle.data?.nickname}</h1>
-      <p className="text-stone-600">{formatKm(vehicle.data?.currentOdometerKm ?? null)}</p>
+    <>
+      <AppHeader crumb={vehicle.data?.nickname} />
+      <Page>
+        {/* Title and primary action sit on one row once there is width for
+            it, and stack on a phone where the button stays a full-width
+            thumb target (spec 8.5). */}
+        <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight">{vehicle.data?.nickname}</h1>
+            <p className="mt-1 text-ink-muted">
+              {formatKm(vehicle.data?.currentOdometerKm ?? null)}
+              {vehicle.data?.plate && (
+                <span className="text-ink-faint"> &middot; {vehicle.data.plate}</span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={() => setLogging(true)}
+            disabled={!today}
+            className="rounded-xl bg-ink px-6 py-3 font-medium text-page disabled:opacity-40 sm:w-auto"
+          >
+            Log a service
+          </button>
+        </div>
 
-      <button
-        onClick={() => setLogging(true)}
-        disabled={!today}
-        className="mt-4 w-full rounded-xl bg-stone-900 py-3 font-medium text-white disabled:opacity-40"
-      >
-        Log a service
-      </button>
+        <section className="mt-8">
+          <SectionTitle>Maintenance</SectionTitle>
+          <MaintenanceList vehicleId={id} rows={maintenance.data ?? []} />
+        </section>
 
-      <section className="mt-6">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-stone-500">
-          Maintenance
-        </h2>
-        <MaintenanceList vehicleId={id} rows={maintenance.data ?? []} />
-      </section>
-
-      <section className="mt-8">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-stone-500">
-          Service history
-        </h2>
-        {today && <ServiceHistory vehicleId={id} today={today} />}
-      </section>
+        <section className="mt-10">
+          <SectionTitle>Service history</SectionTitle>
+          {today && <ServiceHistory vehicleId={id} today={today} />}
+        </section>
+      </Page>
 
       {logging && today && (
         <ServiceSheet
@@ -61,6 +69,6 @@ export default function VehicleDetail() {
           onClose={() => setLogging(false)}
         />
       )}
-    </div>
+    </>
   );
 }

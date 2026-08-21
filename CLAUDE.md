@@ -70,9 +70,13 @@ The Worker runs in UTC; the owner is at UTC+8. "Today" in UTC is yesterday for e
 
 Compute from `last service + interval rule`. There is no "next service mileage" column and there must never be one. If you find yourself wanting to cache a due date, cache it in a view.
 
-**`service_items.interval_km_override` is not that column.** It stores an *interval* — "next due N km from this service" — and the due point is still computed as `baseline + COALESCE(override, configured interval)` in `v_maintenance_due`. The user types an absolute figure because that is what the workshop sticker says; the client subtracts the service odometer before sending, so the API never receives a due point at all. The test for whether something is a due date: correct the service odometer, and see whether the number moves. It must.
+**One interval per part, and the last service sets it.** The schedule lives in exactly one place, `maintenance_intervals`. A service that specifies an interval writes it there, so "the interval keyed in at the last service" and "the vehicle's interval" are the same fact, not two facts that can disagree.
 
-The override rides on the baseline row, so it applies to exactly one cycle and is superseded when that part is next serviced. That is what makes "just this once" possible without making it permanent.
+`v_maintenance_due` computes `due_km = baseline odometer + maintenance_intervals.interval_km`. The user types an absolute figure because that is what the workshop sticker says; the client subtracts the service odometer before sending, so the API never receives a due point at all. The test for whether something is a due date: correct the service odometer, and see whether the number moves. It must.
+
+**`service_items.interval_km_override` is history, not a schedule.** It records what the interval was at that service. Nothing computes from it — the view does not join it. Do not reintroduce it into the due-point calculation.
+
+Migration 0004 made it a genuine override that outranked the vehicle's setting for one cycle, to support "come back in 5,000 this time, then back to normal". It was removed in 0005 because two numbers for one part could not be explained on screen: editing the interval to 6,000 left the schedule reading 5,000, and the save looked like it had silently failed. If per-cycle scheduling is ever wanted again, it needs a UI that shows both numbers and says which is in charge — not a silent COALESCE.
 
 ### 7. A `service_item` resets the maintenance clock, not the `service_record`
 
@@ -165,4 +169,10 @@ You cannot do these. Ask, and give exact steps:
 
 ## Style
 
-TypeScript strict mode, no `any`. Prefer explicit over clever. Comment the non-obvious *why*, not the *what*. Keep components under roughly 200 lines. Mobile-first Tailwind, designed at 375px.
+TypeScript strict mode, no `any`. Prefer explicit over clever. Comment the non-obvious *why*, not the *what*. Keep components under roughly 200 lines.
+
+**Desktop-first Tailwind, responsive down to 375px, dark theme only.** The palette is the base colour set in `tailwind.config.js` (`page`, `surface`, `inset`, `edge`, `ink*`, `status.*`), not a `dark:` overlay -- there are no `dark:` variants in the app and adding one means the palette is wrong. Do not reintroduce raw Tailwind colours like `stone-600` or `bg-white`; they will look correct in isolation and wrong on the page.
+
+`:root { color-scheme: dark }` in `index.css` is load-bearing: without it the native date picker and every `<select>` render white.
+
+Desktop-first does not mean desktop-only. The quick odometer flow (spec 8.5) happens at a petrol pump, so its controls stay full-width thumb targets at every breakpoint.
