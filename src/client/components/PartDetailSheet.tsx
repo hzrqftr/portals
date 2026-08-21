@@ -24,7 +24,8 @@ export function PartDetailSheet({
 }) {
   return (
     <Sheet title={row.part_name} onClose={onClose}>
-      <div className="flex items-start justify-between gap-3">
+      {/* pr-9 keeps the status pill clear of the sheet's close button. */}
+      <div className="flex items-start justify-between gap-3 pr-9">
         <div className="flex items-center gap-3">
           <span className="rounded-lg bg-inset p-2 text-ink-muted">
             <PartIcon category={row.part_category} className="h-6 w-6" />

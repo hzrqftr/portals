@@ -40,11 +40,41 @@ export function Sheet({
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
         className={
-          "max-h-[92vh] w-full overflow-y-auto rounded-t-2xl border border-edge bg-surface p-5 pb-8 " +
+          "relative max-h-[92vh] w-full overflow-y-auto rounded-t-2xl border border-edge bg-surface p-5 pb-8 " +
           "sm:rounded-2xl sm:pb-5 sm:shadow-2xl " +
           (wide ? "sm:max-w-2xl" : "sm:max-w-lg")
         }
       >
+        {/*
+          Escape and the scrim already close the sheet, but neither is visible.
+          A dismiss control the eye can find is what most people reach for
+          first, and the Cancel button at the bottom of a scrolling panel is
+          often below the fold.
+
+          sticky, not absolute: these panels scroll, and an absolute button
+          scrolls away with the content it is meant to dismiss. Zero height
+          keeps it out of the flow so it does not push the title down.
+        */}
+        <div className="sticky top-0 z-10 flex h-0 justify-end">
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="-mr-1 -mt-1 rounded-lg p-1.5 text-ink-faint transition hover:bg-inset hover:text-ink focus:outline-none focus:ring-2 focus:ring-ink-muted"
+          >
+            <svg
+              viewBox="0 0 20 20"
+              aria-hidden
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+            >
+              <path d="M5 5l10 10M15 5L5 15" />
+            </svg>
+          </button>
+        </div>
+
         {children}
       </div>
     </div>

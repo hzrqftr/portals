@@ -72,12 +72,23 @@ export function IntervalEditor({
         <p className="mt-1 text-xs text-status-overdue-fg">{(save.error as Error).message}</p>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      {/*
+        Mirrors the "Track" button in the untracked list. The old label here
+        was "Not on this car", which describes the car accurately but does not
+        read as the inverse of Track -- so the pair did not look like a pair,
+        and stopping tracking looked like it was missing.
+      */}
+      <p className="mt-4 text-xs text-ink-faint">
+        Not fitted to this car? Stop tracking it. The history is kept, and it
+        comes back from &ldquo;Not tracked on this car&rdquo; below.
+      </p>
+
+      <div className="mt-2 flex flex-wrap gap-2">
         <button
           onClick={() => save.mutate({ partTypeId: row.part_type_id, isActive: 0 }, { onSuccess: onDone })}
           className="rounded-lg border border-edge px-3 py-2 text-sm text-ink-muted hover:text-ink"
         >
-          Not on this car
+          Stop tracking
         </button>
         <button onClick={onDone} className="ml-auto rounded-lg px-3 py-2 text-sm text-ink-muted hover:text-ink">
           Cancel
