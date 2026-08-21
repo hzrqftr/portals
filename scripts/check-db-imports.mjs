@@ -69,7 +69,14 @@ for (const file of walk(ROOT)) {
   for (const rule of RULES) {
     if (rule.only && !rule.only.some((p) => rel.startsWith(p))) continue;
     if (rule.allow.some((p) => rel.startsWith(p))) continue;
-    const lines = source.split("\n");
+    // Split on /\r?\n/, not "\n". A CRLF checkout leaves a trailing carriage
+    // return on every line, and `.` never matches one -- so the comment
+    // stripping below silently stops matching and this linter starts reporting
+    // prose as violations. It fails CLOSED, which is the right direction for a
+    // security check, but it fails on a fresh clone rather than on a real
+    // problem. .gitattributes now pins the checkout to LF; this is the belt to
+    // that pair of braces.
+    const lines = source.split(/\r?\n/);
     lines.forEach((line, i) => {
       // Skip comments: these identifiers are discussed by name in the docs
       // and comments throughout, and flagging prose helps nobody.

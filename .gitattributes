@@ -1,0 +1,20 @@
+# Normalise line endings in the repository to LF, and check out LF everywhere.
+#
+# Without this, a Windows clone with core.autocrlf=true gets CRLF in the working
+# tree while files written by tooling stay LF, so the same commit behaves
+# differently on two machines. That is not hypothetical: it broke
+# scripts/check-db-imports.mjs, which split on "\n" and was left a trailing \r
+# that stopped its comment-stripping regexes matching -- the tenant-isolation
+# lint failed on a fresh clone while passing on the machine that wrote the code.
+#
+# eol=lf rather than eol=native: this repo has SQL migrations and shell-ish
+# scripts that are read by tools, not just by editors, and one line-ending
+# convention everywhere is the only version that is reproducible.
+* text=auto eol=lf
+
+# Binary, never touched.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
