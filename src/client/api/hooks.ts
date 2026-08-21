@@ -25,6 +25,33 @@ export interface VehicleCard {
   worstStatus: Status;
 }
 
+/**
+ * One vehicle, in full. `GET /api/vehicles/:id` has always returned every
+ * column; the client just used to type it as a VehicleCard and so could not
+ * see the spec it was already being handed.
+ *
+ * Distinct from VehicleCard, which is the dashboard's shape: that one carries
+ * a rolled-up status and no spec, this one is the row itself.
+ */
+export interface VehicleDetails {
+  id: string;
+  nickname: string;
+  plate: string | null;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+  fuelType: "petrol" | "diesel" | "hybrid" | "ev" | null;
+  transmission: "manual" | "auto" | null;
+  engineCc: number | null;
+  vin: string | null;
+  currentOdometerKm: number;
+  odometerUpdatedOn: string | null;
+  purchaseDate: string | null;
+  purchasePrice: number | null;
+  notes: string | null;
+  isActive: number;
+}
+
 export interface Dashboard {
   today: string;
   attention: AttentionItem[];
@@ -135,7 +162,10 @@ export function useDashboard() {
 }
 
 export function useVehicle(id: string) {
-  return useQuery({ queryKey: ["vehicle", id], queryFn: () => api<VehicleCard>(`/vehicles/${id}`) });
+  return useQuery({
+    queryKey: ["vehicle", id],
+    queryFn: () => api<VehicleDetails>(`/vehicles/${id}`),
+  });
 }
 
 export function useMaintenance(id: string) {
@@ -300,12 +330,14 @@ export function useSetInterval(vehicleId: string) {
 
 export interface VehicleDraft {
   nickname: string;
-  plate?: string;
-  make?: string;
-  model?: string;
-  year?: number;
-  fuelType?: "petrol" | "diesel" | "hybrid" | "ev";
-  transmission?: "manual" | "auto";
+  // null clears the field on an edit; undefined leaves it alone. See
+  // `vehiclePatch` in shared/zod for why the distinction is load-bearing.
+  plate?: string | null;
+  make?: string | null;
+  model?: string | null;
+  year?: number | null;
+  fuelType?: "petrol" | "diesel" | "hybrid" | "ev" | null;
+  transmission?: "manual" | "auto" | null;
   currentOdometerKm?: number;
 }
 
@@ -321,6 +353,23 @@ export function useCreateVehicle() {
     mutationFn: (input: VehicleDraft) =>
       api<VehicleCard>("/vehicles", { method: "POST", json: input }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dashboard"] }),
+  });
+}
+
+/**
+ * Editing a vehicle's spec. The endpoint has existed since the API was
+ * written; nothing in the client ever called it, which is why make, model and
+ * year were write-once at creation and invisible afterwards.
+ */
+export function useUpdateVehicle(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: VehicleDraft) =>
+      api<VehicleDetails>(`/vehicles/${id}`, { method: "PATCH", json: patch }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["vehicle", id] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
   });
 }
 

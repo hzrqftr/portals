@@ -5,6 +5,8 @@ import { Page, AppHeader, SectionTitle } from "../components/Layout";
 import { MaintenanceList } from "../components/MaintenanceList";
 import { ServiceHistory } from "../components/ServiceHistory";
 import { ServiceSheet } from "../components/ServiceSheet";
+import { VehicleSheet } from "../components/VehicleSheet";
+import { VehicleSpec } from "../components/VehicleSpec";
 import { formatKm } from "../lib/format";
 
 /** Spec 8.2: overview, maintenance, and service history. */
@@ -17,6 +19,7 @@ export default function VehicleDetail() {
   // one every due date was derived from must be the same day (invariant 5).
   const dashboard = useDashboard();
   const [logging, setLogging] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   if (vehicle.isLoading) return <p className="p-6 text-ink-muted">Loading&hellip;</p>;
   if (vehicle.isError) return <p className="p-6 text-status-overdue-fg">Vehicle not found.</p>;
@@ -50,6 +53,13 @@ export default function VehicleDetail() {
         </div>
 
         <section className="mt-8">
+          <SectionTitle>Details</SectionTitle>
+          {vehicle.data && (
+            <VehicleSpec vehicle={vehicle.data} onEdit={() => setEditing(true)} />
+          )}
+        </section>
+
+        <section className="mt-10">
           <SectionTitle>Maintenance</SectionTitle>
           <MaintenanceList vehicleId={id} rows={maintenance.data ?? []} />
         </section>
@@ -59,6 +69,10 @@ export default function VehicleDetail() {
           {today && <ServiceHistory vehicleId={id} today={today} />}
         </section>
       </Page>
+
+      {editing && vehicle.data && (
+        <VehicleSheet vehicle={vehicle.data} onClose={() => setEditing(false)} />
+      )}
 
       {logging && today && (
         <ServiceSheet

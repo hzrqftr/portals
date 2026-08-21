@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { useCreateVehicle, type VehicleDraft } from "../api/hooks";
+import {
+  useCreateVehicle,
+  useUpdateVehicle,
+  type VehicleDraft,
+  type VehicleDetails,
+} from "../api/hooks";
 import { INPUT, Field, Choice, digitsOnly } from "./form";
 import { Sheet, SheetActions } from "./Sheet";
 
@@ -28,17 +33,38 @@ const TRANSMISSIONS = [
 type Fuel = NonNullable<VehicleDraft["fuelType"]>;
 type Gearbox = NonNullable<VehicleDraft["transmission"]>;
 
-export function VehicleSheet({ onClose }: { onClose: () => void }) {
-  const [nickname, setNickname] = useState("");
-  const [plate, setPlate] = useState("");
-  const [make, setMake] = useState("");
-  const [model, setModel] = useState("");
-  const [year, setYear] = useState("");
+/**
+ * Add a vehicle, or edit one that exists. Pass `vehicle` to edit.
+ *
+ * One component for both because the fields are identical and the alternative
+ * is two forms that drift apart -- the spec you can enter at creation has to
+ * be the spec you can correct afterwards, or half of it becomes write-once.
+ */
+export function VehicleSheet({
+  vehicle,
+  onClose,
+}: {
+  vehicle?: VehicleDetails;
+  onClose: () => void;
+}) {
+  const editing = vehicle !== undefined;
+  const str = (v: string | number | null | undefined) => (v == null ? "" : String(v));
+
+  const [nickname, setNickname] = useState(str(vehicle?.nickname));
+  const [plate, setPlate] = useState(str(vehicle?.plate));
+  const [make, setMake] = useState(str(vehicle?.make));
+  const [model, setModel] = useState(str(vehicle?.model));
+  const [year, setYear] = useState(str(vehicle?.year));
+  // Odometer is seeded at creation only. Editing it here would write a
+  // reading dated today for a number that may be months old, so the quick
+  // odometer flow (spec 8.5) stays the only way to move it.
   const [odometer, setOdometer] = useState("");
-  const [fuelType, setFuelType] = useState<Fuel | "">("");
-  const [transmission, setTransmission] = useState<Gearbox | "">("");
+  const [fuelType, setFuelType] = useState<Fuel | "">(vehicle?.fuelType ?? "");
+  const [transmission, setTransmission] = useState<Gearbox | "">(vehicle?.transmission ?? "");
 
   const create = useCreateVehicle();
+  const update = useUpdateVehicle(vehicle?.id ?? "");
+  const save_ = editing ? update : create;
   const valid = nickname.trim().length > 0;
 
   function save() {
@@ -58,18 +84,34 @@ export function VehicleSheet({ onClose }: { onClose: () => void }) {
       draft.year = parsedYear;
     }
 
-    // Seeds the first odometer reading, which is what every projection is
-    // measured from. Zero is a legitimate value, so test for "" not falsiness.
-    if (odometer !== "") draft.currentOdometerKm = Number(odometer);
+    if (editing) {
+      // Clearing a field has to travel as an explicit null. A PATCH that
+      // simply omits the key means "leave it alone", so emptying the Make box
+      // and saving would otherwise look like it worked and change nothing.
+      if (!plate.trim()) draft.plate = null;
+      if (!make.trim()) draft.make = null;
+      if (!model.trim()) draft.model = null;
+      if (!year.trim()) draft.year = null;
+      if (!fuelType) draft.fuelType = null;
+      if (!transmission) draft.transmission = null;
+    } else if (odometer !== "") {
+      // Seeds the first odometer reading, which is what every projection is
+      // measured from. Zero is legitimate, so test for "" not falsiness.
+      draft.currentOdometerKm = Number(odometer);
+    }
 
-    create.mutate(draft, { onSuccess: onClose });
+    save_.mutate(draft, { onSuccess: onClose });
   }
 
   return (
-    <Sheet title="Add a vehicle" onClose={onClose}>
-      <h2 className="text-lg font-semibold">Add a vehicle</h2>
+    <Sheet title={editing ? "Vehicle details" : "Add a vehicle"} onClose={onClose}>
+      <h2 className="pr-9 text-lg font-semibold">
+        {editing ? "Vehicle details" : "Add a vehicle"}
+      </h2>
       <p className="mt-1 text-sm text-ink-muted">
-        Only the name is required. You can fill in the rest later.
+        {editing
+          ? "The spec for this vehicle. Clear a field to unset it."
+          : "Only the name is required. You can fill in the rest later."}
       </p>
 
       <Field label="Name">
@@ -125,15 +167,23 @@ export function VehicleSheet({ onClose }: { onClose: () => void }) {
             className={INPUT + " tabular-nums"}
           />
         </Field>
-        <Field label="Odometer now (km)" className="flex-1">
-          <input
-            inputMode="numeric"
-            value={odometer}
-            onChange={(e) => setOdometer(digitsOnly(e.target.value))}
-            placeholder="86000"
-            className={INPUT + " tabular-nums"}
-          />
-        </Field>
+        {/*
+          Creation only. The odometer moves through readings (spec 8.5), and
+          an editable box here would write a reading dated today for a number
+          that might be months old. Showing a field that quietly does nothing
+          on save is worse than not showing it.
+        */}
+        {!editing && (
+          <Field label="Odometer now (km)" className="flex-1">
+            <input
+              inputMode="numeric"
+              value={odometer}
+              onChange={(e) => setOdometer(digitsOnly(e.target.value))}
+              placeholder="86000"
+              className={INPUT + " tabular-nums"}
+            />
+          </Field>
+        )}
       </div>
 
       <Choice label="Fuel" value={fuelType} options={FUEL_TYPES} onChange={setFuelType} />
@@ -144,15 +194,15 @@ export function VehicleSheet({ onClose }: { onClose: () => void }) {
         onChange={setTransmission}
       />
 
-      {create.isError && (
-      <p className="mt-3 text-sm text-status-overdue-fg">{(create.error as Error).message}</p>
+      {save_.isError && (
+        <p className="mt-3 text-sm text-status-overdue-fg">{(save_.error as Error).message}</p>
       )}
 
       <SheetActions
         onCancel={onClose}
         onConfirm={save}
         confirmLabel="Save"
-        busy={create.isPending}
+        busy={save_.isPending}
         disabled={!valid}
       />
     </Sheet>

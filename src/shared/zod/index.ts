@@ -61,7 +61,37 @@ export const vehicleInput = z.object({
   notes: z.string().max(2000).optional(),
 });
 
-export const vehiclePatch = vehicleInput.partial().omit({ currentOdometerKm: true });
+/**
+ * Editing a vehicle. Every optional field is additionally NULLABLE here,
+ * which `vehicleInput` deliberately is not.
+ *
+ * The difference matters: on a PATCH, an omitted key means "leave this
+ * alone", so there would otherwise be no way to express "this vehicle has no
+ * plate after all". Clearing a field in the form has to arrive as an explicit
+ * null or the save silently does nothing.
+ *
+ * nickname stays non-nullable -- it is the one field a vehicle cannot be
+ * without, and the form enforces the same rule.
+ *
+ * currentOdometerKm is omitted, not nullable: the odometer moves through
+ * readings (spec 8.5), never by editing the vehicle.
+ */
+export const vehiclePatch = vehicleInput
+  .partial()
+  .omit({ currentOdometerKm: true })
+  .extend({
+    plate: z.string().max(20).nullable().optional(),
+    make: z.string().max(40).nullable().optional(),
+    model: z.string().max(60).nullable().optional(),
+    year: z.number().int().min(1900).max(2100).nullable().optional(),
+    engineCc: z.number().int().positive().max(20_000).nullable().optional(),
+    fuelType: fuelType.nullable().optional(),
+    transmission: transmission.nullable().optional(),
+    vin: z.string().max(32).nullable().optional(),
+    purchaseDate: calendarDate.nullable().optional(),
+    purchasePrice: sen.nonnegative().nullable().optional(),
+    notes: z.string().max(2000).nullable().optional(),
+  });
 
 export const odometerInput = z.object({
   readingKm: km,
