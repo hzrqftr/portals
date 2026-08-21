@@ -55,6 +55,14 @@ Verified against the deployed app, not just the test suite.
   paying a workshop for the fitting alone. The grand total is computed as
   parts + labour on read — there is no stored `total_cost` any more, so no two
   figures can disagree
+- **Wear-and-tear parts, grouped** (migration 0007): 48 global part types,
+  including suspension and steering (absorbers, mounts, stabiliser links and
+  bushes, lower arm bushes, ball joints, tie rod and rack ends), drivetrain
+  (CV boots, engine mounts, wheel bearings), cooling and engine servicing.
+  Four new categories carry them, and the maintenance list is grouped by
+  category with anything overdue or due soon pinned above the groups. Parts
+  that depend on the car rather than the fuel -- clutch, differential, rear
+  drums, coil springs -- ship with no default interval so they stay opt-in
 - **One interval per part** (migration 0005): the interval keyed in at a
   service becomes the vehicle's interval, stored as an interval so the due
   point stays derived. Replaced the earlier per-service *override*, which gave

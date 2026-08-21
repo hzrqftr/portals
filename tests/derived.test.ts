@@ -215,6 +215,89 @@ describe("labour and the derived total (invariant 1)", () => {
   });
 });
 
+/**
+ * The wear-and-tear set added in migration 0007, and the rule that decides
+ * which of it lands on a new vehicle.
+ *
+ * A part type with a default interval on either column is seeded; one with
+ * NULL on both is not, and waits in "Not tracked on this car". That is the
+ * only lever the schema has for parts that depend on the car rather than the
+ * fuel -- a clutch on an automatic, drums on a car with rear discs -- so it
+ * is worth a test that fails loudly if a NULL is ever filled in casually.
+ */
+describe("wear parts seed selectively (migration 0007)", () => {
+  const trackedIds = async (vehicleId: string) =>
+    ((await call(`/api/vehicles/${vehicleId}/maintenance`)).body as {
+      part_type_id: string;
+    }[]).map((r) => r.part_type_id);
+
+  it("seeds the suspension and steering parts onto a new petrol car", async () => {
+    const tracked = await trackedIds(await makeVehicle());
+
+    for (const id of [
+      "pt_absorber_front",
+      "pt_absorber_rear",
+      "pt_stabiliser_link",
+      "pt_lower_arm_bush",
+      "pt_ball_joint",
+      "pt_tie_rod_end",
+      "pt_cv_boot",
+      "pt_engine_mount",
+      "pt_radiator_hose",
+      "pt_wheel_alignment",
+    ]) {
+      expect(tracked, `${id} should be tracked`).toContain(id);
+    }
+  });
+
+  it("leaves car-specific parts untracked until they are asked for", async () => {
+    const tracked = await trackedIds(await makeVehicle());
+
+    // Both NULL defaults. Seeding these would assert that every car has a
+    // clutch, a differential, AND rear drums on top of the rear discs it was
+    // already given.
+    for (const id of [
+      "pt_clutch",
+      "pt_diff_oil",
+      "pt_brake_shoe_rear",
+      "pt_brake_drum_rear",
+      "pt_coil_spring",
+      "pt_thermostat",
+    ]) {
+      expect(tracked, `${id} should NOT be seeded`).not.toContain(id);
+    }
+  });
+
+  it("keeps engine-only parts off an EV", async () => {
+    const tracked = await trackedIds(await makeVehicle({ fuelType: "ev" }));
+
+    expect(tracked).not.toContain("pt_water_pump");
+    expect(tracked).not.toContain("pt_pcv_valve");
+    expect(tracked).not.toContain("pt_ignition_coil");
+    expect(tracked).not.toContain("pt_engine_oil");
+
+    // Suspension wears out whatever is driving the wheels.
+    expect(tracked).toContain("pt_absorber_front");
+    expect(tracked).toContain("pt_wheel_alignment");
+  });
+
+  it("gives every part type a category the client can group under", async () => {
+    // A category the display order does not know about renders in a trailing
+    // "unknown" bucket rather than vanishing, but it should never happen: this
+    // is the CHECK constraint, the Zod enum and CATEGORY_ORDER agreeing.
+    const known = [
+      "fluid", "filter", "brake", "tyre", "battery", "belt", "electrical",
+      "other", "suspension", "drivetrain", "cooling", "engine",
+    ];
+    const { results } = await env.DB.prepare(
+      `SELECT DISTINCT category FROM part_types`,
+    ).all<{ category: string }>();
+
+    expect(results.length).toBeGreaterThan(0);
+    for (const r of results) expect(known).toContain(r.category);
+  });
+});
+
 describe("due status handles missing halves of an interval (spec 6.2 step 5)", () => {
   it("still reports a km-only interval instead of dropping it", async () => {
     const vehicleId = await makeVehicle();

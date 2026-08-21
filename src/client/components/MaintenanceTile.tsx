@@ -47,18 +47,28 @@ export function MaintenanceTile({
 
       <p className="mt-2 font-medium leading-tight">{row.part_name}</p>
 
-      {row.status === "unknown" ? (
-        // Unmeasured, not overdue. The tile asks for a baseline rather than
-        // raising a false alarm on a car that was only just added.
-        <p className="mt-1 text-xs text-ink-muted">No service logged yet</p>
-      ) : (
-        <p className="mt-1 text-xs text-ink-muted">
-          {relativeDays(row.days_remaining)}
-          {row.due_km !== null && (
-            <span className="block text-ink-faint">at {formatKm(row.due_km)}</span>
-          )}
-        </p>
-      )}
+      {/*
+        Always two lines, even when the second has nothing to say.
+        
+        Tiles used to be equalised by auto-rows-fr, which only works within a
+        single grid. Now that parts are grouped, each category is its own grid,
+        so a group where no part has a due mileage came out shorter than one
+        where a part does -- tiles the same size beside each other and a
+        different size one heading down. Reserving the line here makes every
+        tile the same height by construction, in any grid, at any breakpoint.
+      */}
+      <p className="mt-1 text-xs text-ink-muted">
+        {row.status === "unknown"
+          ? // Unmeasured, not overdue. The tile asks for a baseline rather
+            // than raising a false alarm on a car that was only just added.
+            "No service logged yet"
+          : relativeDays(row.days_remaining)}
+        <span className="block text-ink-faint">
+          {row.status !== "unknown" && row.due_km !== null
+            ? `at ${formatKm(row.due_km)}`
+            : " "}
+        </span>
+      </p>
 
       <p className="mt-auto pt-2 text-[11px] text-ink-faint">
         <Interval row={row} />

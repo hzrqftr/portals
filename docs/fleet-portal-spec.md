@@ -187,7 +187,9 @@ CREATE TABLE part_types (
   code                    TEXT NOT NULL,
   name                    TEXT NOT NULL,
   category                TEXT NOT NULL CHECK (category IN
-                            ('fluid','filter','brake','tyre','battery','belt','electrical','other')),
+                            ('fluid','filter','brake','tyre','battery','belt',
+                             'electrical','other','suspension','drivetrain',
+                             'cooling','engine')),
   default_interval_km     INTEGER,
   default_interval_months INTEGER,
   applies_to_fuel         TEXT   -- CSV of fuel types, NULL = all
@@ -471,7 +473,7 @@ DELETE /api/garages/:id/members/:userId → owner only
 
 ### 8.2 Vehicle detail
 
-Sections: Overview (specs, inline odometer edit, usage rate with confidence indicator), Maintenance (intervals with last done, next due, status, inline editing), Service history (reverse chronological, expandable to line items), Renewals (active per type with countdown, plus history), Costs (run rate, spend by category, 12-month trend).
+Sections: Overview (specs, inline odometer edit, usage rate with confidence indicator), Maintenance (intervals with last done, next due, status, inline editing — **grouped by part category, with overdue and due-soon items pinned above the groups** so attention is never hidden inside a collapsed section), Service history (reverse chronological, expandable to line items), Renewals (active per type with countdown, plus history), Costs (run rate, spend by category, 12-month trend).
 
 ### 8.3 Add vehicle
 
@@ -479,7 +481,7 @@ Only `nickname` required. On save: create vehicle, seed intervals from `part_typ
 
 ### 8.4 Log service
 
-The highest-friction flow, needing the most care. Vehicle → date (default today) → odometer (prefilled, validated ≥ current) → workshop → line items. The part type picker **pins the vehicle's overdue and due-soon items to the top**. Brand and spec autocomplete from the garage's own history. Labour is entered as its own figure, since it is a real cost that is not a line item — the owner frequently buys the parts and pays a workshop for the fitting alone. The grand total is **shown, not typed**: it is parts + labour, computed, so no two figures on the form can disagree. On save, confirm which clocks were reset.
+The highest-friction flow, needing the most care. Vehicle → date (default today) → odometer (prefilled, validated ≥ current) → workshop → line items. The part type picker **pins the vehicle's overdue and due-soon items to the top**, with the remaining part types grouped by category. Brand and spec autocomplete from the garage's own history. Labour is entered as its own figure, since it is a real cost that is not a line item — the owner frequently buys the parts and pays a workshop for the fitting alone. The grand total is **shown, not typed**: it is parts + labour, computed, so no two figures on the form can disagree. On save, confirm which clocks were reset.
 
 ### 8.5 Quick odometer update
 

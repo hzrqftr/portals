@@ -1,13 +1,14 @@
 import type { MaintenanceRow, PartType } from "../api/hooks";
 import { INPUT } from "./form";
+import { categoryLabel, groupByCategory } from "../lib/partCategories";
 
 /**
  * Adds a part to a service. Spec 8.4.
  *
  * THE ORDERING IS THE FEATURE. This is used standing in a workshop, one
- * handed, with someone waiting. Twenty part types in alphabetical order means
- * hunting; the four the car is actually due for, pinned to the top, means
- * two taps. A native select is deliberate -- it gets the platform's own
+ * handed, with someone waiting. Forty-eight part types in alphabetical order
+ * means hunting; the four the car is actually due for pinned to the top, and
+ * the rest grouped by category, means two taps. A native select is deliberate -- it gets the platform's own
  * scroll wheel on a phone rather than a custom list that fights the keyboard.
  */
 export function PartPicker({
@@ -50,13 +51,21 @@ export function PartPicker({
         </optgroup>
       )}
 
-      <optgroup label="All parts">
-        {rest.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name}
-          </option>
-        ))}
-      </optgroup>
+      {/*
+        One optgroup per category, not one "All parts" list. The seed set went
+        from twenty entries to forty-eight in 0007, and a flat dropdown that
+        long is a scroll rather than a choice. "Due on this vehicle" stays
+        pinned above them, since that is the reason most services get logged.
+      */}
+      {groupByCategory(rest, (p) => p.category).map(({ category, rows }) => (
+        <optgroup key={category} label={categoryLabel(category)}>
+          {rows.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </optgroup>
+      ))}
     </select>
   );
 }

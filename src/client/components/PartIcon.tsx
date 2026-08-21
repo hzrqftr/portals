@@ -7,6 +7,10 @@ import {
   RefreshCw,
   Zap,
   Wrench,
+  Waves,
+  Cog,
+  Thermometer,
+  Gauge,
   type LucideIcon,
 } from "lucide-react";
 
@@ -14,7 +18,7 @@ import {
  * An icon per part CATEGORY, not per part type.
  *
  * `part_category` already rides along on every maintenance row, so this needs
- * no new data. Keying off the eight categories rather than the twenty part
+ * no new data. Keying off the twelve categories rather than the forty-odd part
  * types also means a custom part type the owner adds later gets a sensible
  * glyph for free instead of a blank square.
  */
@@ -27,6 +31,11 @@ const ICONS: Record<string, LucideIcon> = {
   belt: RefreshCw,
   electrical: Zap,
   other: Wrench,
+  // Added with migration 0007.
+  suspension: Waves,
+  drivetrain: Cog,
+  cooling: Thermometer,
+  engine: Gauge,
 };
 
 export function PartIcon({ category, className }: { category: string; className?: string }) {

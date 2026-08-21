@@ -43,6 +43,13 @@ export const partCategory = z.enum([
   "belt",
   "electrical",
   "other",
+  // Added with migration 0007. Kept in step with the CHECK constraint on
+  // part_types.category and the Drizzle enum -- a value that passes here and
+  // fails there is a 500 at insert time.
+  "suspension",
+  "drivetrain",
+  "cooling",
+  "engine",
 ]);
 
 export const vehicleInput = z.object({

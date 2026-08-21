@@ -52,7 +52,23 @@ export const partTypes = sqliteTable("part_types", {
   code: text("code").notNull(),
   name: text("name").notNull(),
   category: text("category", {
-    enum: ["fluid", "filter", "brake", "tyre", "battery", "belt", "electrical", "other"],
+    enum: [
+      "fluid",
+      "filter",
+      "brake",
+      "tyre",
+      "battery",
+      "belt",
+      "electrical",
+      "other",
+      // Added in 0007. Category is the grouping axis for the maintenance
+      // list as well as the icon, so suspension and drivetrain parts need
+      // homes of their own rather than all landing in "other".
+      "suspension",
+      "drivetrain",
+      "cooling",
+      "engine",
+    ],
   }).notNull(),
   defaultIntervalKm: integer("default_interval_km"),
   defaultIntervalMonths: integer("default_interval_months"),
