@@ -19,21 +19,24 @@ says what to build; this file says how much of it exists.
 | Access app | "fleet-portal - Cloudflare Workers", policy `fleet-portal-allowlist` |
 | Identity provider | Google (not Google Workspace) |
 
-Deployed and working end to end. Migrations 0001–0003 are applied locally and
-remotely. **Migration 0004 is applied locally only** — it must be applied
-remotely before the next deploy:
+Deployed and working end to end. **Migrations 0001–0008 are applied both
+locally and remotely; nothing is pending.** Confirm with
+`npx wrangler d1 migrations list fleet --remote`.
 
-```bash
-npm run db:apply:remote
-```
+Production schema: 15 tables, 4 views, 61 seeded part types, foreign keys
+enforced.
 
-After 0004: 15 tables, 4 views, 20 seeded part types, foreign keys enforced.
-
-Data currently in production: one user, one garage, two vehicles (Waja, City),
-**no odometer readings and no service history**. Every maintenance row is
+Data currently in production: one user, one garage, two vehicles (Waja, City,
+both `vehicle_type = 'car'`), 81 maintenance intervals, and **no odometer
+readings, no service history and no renewals**. Every maintenance row is
 therefore `unknown`, which is correct rather than broken — see the "no
-baseline" trap in CLAUDE.md. Services can now be logged, so this is fixable
-from the UI rather than being a permanent state.
+baseline" trap in CLAUDE.md. Services can be logged from the UI, so this is a
+starting state rather than a permanent one.
+
+Note that the developer's LOCAL database is a different and much fuller thing:
+`.wrangler/` is gitignored, so whatever a previous machine had — test vehicles,
+service records, hand-edited intervals — does not travel with a clone. A fresh
+checkout starts empty and that is correct.
 
 ---
 
@@ -99,12 +102,13 @@ the endpoints exist and are covered by the isolation suite.
 | Gap | Spec | Why it matters |
 |---|---|---|
 | Renewals | §4.6, §6.3 | Road tax and insurance are half the reason the app exists |
-| Vehicle edit and delete | §10 | A typo in a plate is currently permanent |
+| Vehicle delete | §10 | Editing is built (Details → Edit details); deleting is not. `DELETE /api/vehicles/:id` archives and is isolation-tested, but nothing calls it |
 | Add-vehicle baseline prompt | §8.3 | Spec says prompt for baselines after saving; it currently saves and dismisses, which is how both vehicles ended up with no odometer |
-| Vehicle detail overview | §8.2 | Missing specs, inline odometer edit, and usage rate with confidence indicator |
+| Inline odometer edit, usage rate | §8.2 | The Details panel now shows the spec, but the odometer can only be changed from the dashboard, and the usage rate with its confidence indicator is not surfaced anywhere |
 | Editing a service after saving | §8.4 | `servicePatch` omits `items`, `odometerKm` and `servicedOn`, so fixing a line item means deleting and re-logging the visit |
-| Custom part types in the UI | — | `POST /api/part-types` exists and is isolation-tested, but nothing calls it yet; the 20 seeded types cover the common cases |
-| Per-vehicle service templates | §8.4 | `service_templates.vehicle_id` exists and is always NULL; templates are garage-wide for now |
+| Custom part types in the UI | — | `POST /api/part-types` exists and is isolation-tested, but nothing calls it yet; the 61 seeded types cover the common cases |
+| Per-vehicle service templates | §8.4 | `service_templates.vehicle_id` exists and is always NULL; templates are garage-wide for now, which also means one "Minor service" template is shared between a car and a bike |
+| Changing a vehicle's type | — | Read-only once created, deliberately: switching it would not re-seed or un-seed anything, so a control that appeared to turn a car into a bike while leaving forty car parts behind would be lying. Delete-and-recreate for now |
 
 Deferred by design: Budgets (§8.6) is Phase 2, multi-user is Phase 3, backups
 and reminders are Phase 4.
@@ -129,18 +133,6 @@ Endpoints, all built and isolation-tested: `GET /api/vehicles/:id/renewals`,
 A missing renewal type is a setup prompt, not an alert — the same reasoning as
 a maintenance part with no baseline.
 
-### Before deploying the current work
-
-```bash
-npm run db:apply:remote   # migration 0004 has not been applied remotely
-npm run deploy
-```
-
-Migration 0004 backfills the minor/major parts templates for garages that
-already exist. `bootstrapUser()` only runs on a user's first ever login, so
-without that backfill the production garage would have no templates and
-picking "Minor service" would pre-fill nothing.
-
 ---
 
 ## Picking this up on another machine
@@ -148,25 +140,45 @@ picking "Minor service" would pre-fill nothing.
 ```bash
 git clone https://github.com/hzrqftr/odometry.git
 cd odometry
-npm install
+npm ci                    # not `npm install` -- the lockfile is committed
 npx wrangler login        # needs a real terminal; opens a browser
 npm run db:apply:local    # local D1, safe to re-run
 npm run dev               # http://localhost:5173
-npm test
+npm test                  # 73 tests; should be green on a fresh clone
 ```
+
+This path is verified, not assumed: it was run end to end from a scratch clone
+on 2026-08-21 (clone → `npm ci` → migrations → 73 tests → build).
 
 `wrangler dev` supplies a simulated Access identity through the `access.dev`
 block in `wrangler.jsonc`, so local development needs no Cloudflare Access and
 no login. The local database starts empty and is separate from production.
 
+Node 24 is what this has been developed and verified on. There is no `engines`
+pin, so a very different major version is untested rather than known-bad.
+
 Deploying:
 
 ```bash
-npm run deploy
+npm run deploy            # test -> build -> migrate remote -> deploy
 ```
+
+The ordering inside that script is load-bearing in two directions and is
+explained in CLAUDE.md under Commands. Do not replace it with a bare
+`wrangler deploy` (that is `npm run deploy:worker`, for redeploying unchanged
+code) unless you are certain there is no pending migration.
 
 ### Things that will confuse you otherwise
 
+- **Line endings are pinned to LF by `.gitattributes`.** This is not
+  cosmetic. Before it existed, `core.autocrlf=true` gave a Windows clone CRLF
+  while tooling wrote LF, and `scripts/check-db-imports.mjs` — which split on
+  `"
+"` — was left a trailing carriage return that stopped its comment
+  stripping from matching, so the tenant-isolation lint reported its own
+  comments as violations and a fresh clone could not run `npm test` or
+  therefore `npm run deploy`. If you ever see that lint flagging prose, suspect
+  line endings first.
 - **`github.com` is blocked on the home ISP.** `git push` hangs for ~21
   seconds and fails, while `gh` commands succeed, because those hit
   `api.github.com`. It is not a git or credential problem. Tether to a phone
