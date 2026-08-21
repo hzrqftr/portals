@@ -47,6 +47,16 @@ export function MaintenanceGroups({
       return next;
     });
 
+  // "All" means all the CATEGORIES, which is not all the parts: the attention
+  // block has no heading and no chevron and is not affected. That is the point
+  // of it -- collapse-all is for getting the browsing list out of the way, and
+  // it must not become a way to hide an overdue part.
+  const allCollapsed =
+    groups.length > 0 && groups.every(({ category }) => collapsed.has(category));
+
+  const toggleAll = () =>
+    setCollapsed(allCollapsed ? new Set() : new Set(groups.map((g) => g.category)));
+
   return (
     <>
       {attention.length > 0 && (
@@ -59,10 +69,21 @@ export function MaintenanceGroups({
         </section>
       )}
 
+      {groups.length > 0 && (
+        <div className="mt-5 flex justify-end">
+          <button
+            onClick={toggleAll}
+            className="text-xs text-ink-muted underline underline-offset-2 hover:text-ink"
+          >
+            {allCollapsed ? "Expand all" : "Collapse all"}
+          </button>
+        </div>
+      )}
+
       {groups.map(({ category, rows: groupRows }) => {
         const isCollapsed = collapsed.has(category);
         return (
-          <section key={category} className="mt-6">
+          <section key={category} className="mt-4">
             <button
               onClick={() => toggle(category)}
               aria-expanded={!isCollapsed}
