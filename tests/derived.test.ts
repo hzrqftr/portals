@@ -298,6 +298,114 @@ describe("wear parts seed selectively (migration 0007)", () => {
   });
 });
 
+/**
+ * Motorbikes (migration 0008).
+ *
+ * The catalogue is keyed by vehicle type now, and gets it wrong in two
+ * directions if the join is missed: a bike offered car parts it does not have,
+ * or a bike seeded at car intervals -- which for engine oil is 10,000 km on a
+ * thing that wants 3,000, and is the kind of wrong that ruins an engine
+ * quietly.
+ */
+describe("motorcycles get their own catalogue (migration 0008)", () => {
+  const trackedIds = async (vehicleId: string) =>
+    ((await call(`/api/vehicles/${vehicleId}/maintenance`)).body as {
+      part_type_id: string;
+    }[]).map((r) => r.part_type_id);
+
+  const makeBike = (extra: Record<string, unknown> = {}) =>
+    makeVehicle({ nickname: "Test Bike", vehicleType: "motorcycle", ...extra });
+
+  it("seeds bike parts and none of the car-only ones", async () => {
+    const tracked = await trackedIds(await makeBike());
+
+    for (const id of ["pt_fork_oil", "pt_rear_shock", "pt_valve_clearance", "pt_engine_oil"]) {
+      expect(tracked, `${id} should be tracked on a bike`).toContain(id);
+    }
+
+    // A bike has no cabin, no aircon, no wipers, no ATF, no power steering, no
+    // CV joints, and none of the car suspension.
+    for (const id of [
+      "pt_cabin_filter",
+      "pt_aircon_service",
+      "pt_wiper_blades",
+      "pt_gearbox_oil",
+      "pt_power_steer_fluid",
+      "pt_cv_boot",
+      "pt_absorber_front",
+      "pt_tie_rod_end",
+      "pt_wheel_alignment",
+      "pt_timing_belt",
+    ]) {
+      expect(tracked, `${id} must not reach a bike`).not.toContain(id);
+    }
+  });
+
+  it("gives the SAME part type a different interval per vehicle type", async () => {
+    // The whole reason intervals moved out of part_types. One pt_engine_oil,
+    // so brand history and service records stay together, two schedules.
+    const bikeRows = (await call(`/api/vehicles/${await makeBike()}/maintenance`))
+      .body as { part_type_id: string; interval_km: number }[];
+    const carRows = (await call(`/api/vehicles/${await makeVehicle()}/maintenance`))
+      .body as { part_type_id: string; interval_km: number }[];
+
+    const oil = (rows: typeof bikeRows) =>
+      rows.find((r) => r.part_type_id === "pt_engine_oil")!.interval_km;
+
+    expect(oil(bikeRows)).toBe(3_000);
+    expect(oil(carRows)).toBe(10_000);
+  });
+
+  it("assumes neither a chain nor a CVT", async () => {
+    // A bike is one or the other and the schema has no column that says which,
+    // so both are offered and neither is seeded -- the same treatment rear
+    // discs versus drums already get.
+    const tracked = await trackedIds(await makeBike());
+    expect(tracked).not.toContain("pt_chain_sprocket");
+    expect(tracked).not.toContain("pt_cvt_belt");
+
+    const catalogue = (await call("/api/part-types?vehicleType=motorcycle")).body as {
+      id: string;
+    }[];
+    const ids = catalogue.map((p) => p.id);
+    expect(ids).toContain("pt_chain_sprocket");
+    expect(ids).toContain("pt_cvt_belt");
+  });
+
+  it("composes the fuel filter with the type filter on an electric bike", async () => {
+    const tracked = await trackedIds(await makeBike({ fuelType: "ev" }));
+
+    expect(tracked).not.toContain("pt_engine_oil");
+    expect(tracked).not.toContain("pt_spark_plugs");
+    expect(tracked).not.toContain("pt_valve_clearance");
+
+    // Forks and tyres wear out regardless of what turns the wheel.
+    expect(tracked).toContain("pt_fork_oil");
+    expect(tracked).toContain("pt_tyres");
+  });
+
+  it("keeps the car catalogue free of bike parts", async () => {
+    const tracked = await trackedIds(await makeVehicle());
+    for (const id of ["pt_fork_oil", "pt_chain_sprocket", "pt_valve_clearance"]) {
+      expect(tracked, `${id} must not reach a car`).not.toContain(id);
+    }
+
+    const catalogue = (await call("/api/part-types?vehicleType=car")).body as { id: string }[];
+    expect(catalogue.map((p) => p.id)).not.toContain("pt_fork_oil");
+  });
+
+  it("defaults an untyped vehicle to a car", async () => {
+    // vehicleType has a Zod default rather than being optional: a vehicle with
+    // no type would join to nothing and be seeded with no parts at all.
+    const res = await call("/api/vehicles", {
+      method: "POST",
+      json: { nickname: "Untyped", fuelType: "petrol" },
+    });
+    expect(res.status).toBe(201);
+    expect((await trackedIds(res.body.id as string))).toContain("pt_cabin_filter");
+  });
+});
+
 describe("due status handles missing halves of an interval (spec 6.2 step 5)", () => {
   it("still reports a km-only interval instead of dropping it", async () => {
     const vehicleId = await makeVehicle();

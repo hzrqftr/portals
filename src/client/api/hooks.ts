@@ -15,9 +15,12 @@ export interface AttentionItem {
   lowConfidence: boolean;
 }
 
+export type VehicleType = "car" | "motorcycle";
+
 export interface VehicleCard {
   id: string;
   nickname: string;
+  vehicleType: VehicleType;
   plate: string | null;
   currentOdometerKm: number;
   odometerUpdatedOn: string | null;
@@ -36,6 +39,7 @@ export interface VehicleCard {
 export interface VehicleDetails {
   id: string;
   nickname: string;
+  vehicleType: VehicleType;
   plate: string | null;
   make: string | null;
   model: string | null;
@@ -93,9 +97,9 @@ export interface PartType {
   code: string;
   name: string;
   category: string;
+  /** For the vehicle type this list was fetched for. See migration 0008. */
   default_interval_km: number | null;
   default_interval_months: number | null;
-  applies_to_fuel: string | null;
 }
 
 export interface ServiceTemplate {
@@ -183,10 +187,19 @@ export function useServices(id: string) {
 }
 
 /** Reference data: global seed rows plus this garage's own. Rarely changes. */
-export function usePartTypes() {
+/**
+ * The catalogue, narrowed to one kind of vehicle.
+ *
+ * Pass the vehicle's type on a vehicle page: a bike must not be offered a
+ * cabin filter, and the intervals that come back are that type's. Omit it only
+ * where the question genuinely is not about one vehicle -- the garage-wide
+ * service templates in Settings.
+ */
+export function usePartTypes(vehicleType?: VehicleType) {
   return useQuery({
-    queryKey: ["part-types"],
-    queryFn: () => api<PartType[]>("/part-types"),
+    queryKey: ["part-types", vehicleType ?? "all"],
+    queryFn: () =>
+      api<PartType[]>(`/part-types${vehicleType ? `?vehicleType=${vehicleType}` : ""}`),
     staleTime: 5 * 60_000,
   });
 }
@@ -330,6 +343,7 @@ export function useSetInterval(vehicleId: string) {
 
 export interface VehicleDraft {
   nickname: string;
+  vehicleType?: VehicleType;
   // null clears the field on an edit; undefined leaves it alone. See
   // `vehiclePatch` in shared/zod for why the distinction is load-bearing.
   plate?: string | null;

@@ -34,6 +34,8 @@ export const renewalType = z.enum(["road_tax", "insurance", "inspection", "warra
  */
 export const serviceType = z.enum(["minor", "major", "repair", "inspection", "other"]);
 
+export const vehicleType = z.enum(["car", "motorcycle"]);
+
 export const partCategory = z.enum([
   "fluid",
   "filter",
@@ -54,6 +56,9 @@ export const partCategory = z.enum([
 
 export const vehicleInput = z.object({
   nickname: z.string().min(1, "A nickname is required").max(60),
+  // Decides which parts get seeded, so it defaults rather than being optional:
+  // a vehicle with no type would be seeded with nothing at all.
+  vehicleType: vehicleType.default("car"),
   plate: z.string().max(20).optional(),
   make: z.string().max(40).optional(),
   model: z.string().max(60).optional(),

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { usePartTypes, useSetInterval } from "../api/hooks";
+import { usePartTypes, useSetInterval, type VehicleType } from "../api/hooks";
 import { PartIcon } from "./PartIcon";
 import { categoryLabel, groupByCategory } from "../lib/partCategories";
 
@@ -19,14 +19,16 @@ import { categoryLabel, groupByCategory } from "../lib/partCategories";
  */
 export function UntrackedParts({
   vehicleId,
+  vehicleType,
   tracked,
 }: {
   vehicleId: string;
+  vehicleType: VehicleType;
   tracked: string[];
 }) {
   const [openList, setOpenList] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
-  const partTypes = usePartTypes();
+  const partTypes = usePartTypes(vehicleType);
   const save = useSetInterval(vehicleId);
 
   const trackedSet = new Set(tracked);
@@ -44,7 +46,7 @@ export function UntrackedParts({
         onClick={() => setOpenList(!openList)}
         className="text-sm text-ink-muted underline hover:text-ink"
       >
-        {openList ? "Hide" : `Not tracked on this car (${untracked.length})`}
+        {openList ? "Hide" : `Not tracked on this vehicle (${untracked.length})`}
       </button>
 
       {openList && (
@@ -70,12 +72,11 @@ export function UntrackedParts({
                         setPending(p.id);
                         save.mutate({
                           partTypeId: p.id,
-                          // A part with no default has nothing to schedule
-                          // from, so it starts at a placeholder the owner then
-                          // corrects -- better than refusing to add it at all.
-                          intervalKm:
-                            p.default_interval_km ??
-                            (p.default_interval_months ? null : 10_000),
+                          // Every part carries a real interval since 0008, so
+                          // there is nothing left to invent -- the old
+                          // `?? 10_000` placeholder existed only because an
+                          // opt-in part had both intervals NULL.
+                          intervalKm: p.default_interval_km,
                           intervalMonths: p.default_interval_months,
                           isActive: 1,
                         });

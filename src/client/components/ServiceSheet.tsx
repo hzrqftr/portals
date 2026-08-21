@@ -7,6 +7,7 @@ import {
   SERVICE_TYPES,
   type ServiceItemDraft,
   type ServiceTypeName,
+  type VehicleType,
 } from "../api/hooks";
 import { parseSen, toQuantityMilli, formatSen } from "@shared/money";
 import { INPUT, Field, digitsOnly } from "./form";
@@ -31,18 +32,20 @@ import { ServiceItemRow, type ItemDraft } from "./ServiceItemRow";
  */
 export function ServiceSheet({
   vehicleId,
+  vehicleType,
   nickname,
   currentKm,
   today,
   onClose,
 }: {
   vehicleId: string;
+  vehicleType: VehicleType;
   nickname: string;
   currentKm: number;
   today: string;
   onClose: () => void;
 }) {
-  const partTypes = usePartTypes();
+  const partTypes = usePartTypes(vehicleType);
   const maintenance = useMaintenance(vehicleId);
   const templates = useServiceTemplates();
   const log = useLogService(vehicleId);

@@ -1,5 +1,6 @@
 import type { VehicleDetails } from "../api/hooks";
 import { formatKm } from "../lib/format";
+import { VehicleTypeIcon, vehicleTypeLabel } from "../lib/vehicleType";
 
 /**
  * The vehicle's own spec, on the vehicle's own page.
@@ -30,6 +31,7 @@ export function VehicleSpec({
   onEdit: () => void;
 }) {
   const rows: [string, string | null][] = [
+    ["Type", vehicleTypeLabel(vehicle.vehicleType)],
     ["Make", vehicle.make],
     ["Model", vehicle.model],
     ["Year", vehicle.year === null ? null : String(vehicle.year)],
@@ -63,6 +65,9 @@ export function VehicleSpec({
       </dl>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
+        <span className="text-ink-faint">
+          <VehicleTypeIcon type={vehicle.vehicleType} className="h-5 w-5" />
+        </span>
         <button
           onClick={onEdit}
           className="rounded-lg border border-edge px-3 py-2 text-sm text-ink-muted hover:text-ink"
@@ -77,9 +82,10 @@ export function VehicleSpec({
       </div>
 
       <p className="mt-3 text-xs text-ink-faint">
-        Fuel type decides which parts this vehicle tracks by default. Which parts it
-        actually tracks &mdash; a timing belt rather than a chain, say &mdash; is set per
-        part in the Maintenance tab.
+        Type and fuel decide which parts this vehicle tracks by default, and on what
+        schedule &mdash; a bike counts engine oil in thousands of km, not tens of
+        thousands. Which parts it actually tracks &mdash; a chain rather than a CVT belt,
+        say &mdash; is set per part in the Maintenance tab.
       </p>
     </div>
   );

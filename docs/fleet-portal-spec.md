@@ -210,6 +210,8 @@ CREATE TABLE vehicles (
   model               TEXT,
   year                INTEGER,
   engine_cc           INTEGER,
+  vehicle_type        TEXT NOT NULL DEFAULT 'car'
+                        CHECK (vehicle_type IN ('car','motorcycle')),
   fuel_type           TEXT CHECK (fuel_type IN ('petrol','diesel','hybrid','ev')),
   transmission        TEXT CHECK (transmission IN ('manual','auto')),
   vin                 TEXT,

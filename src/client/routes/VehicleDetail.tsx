@@ -104,7 +104,11 @@ export default function VehicleDetail() {
         </div>
 
         {tab === "maintenance" ? (
-          <MaintenanceList vehicleId={id} rows={maintenance.data ?? []} />
+          <MaintenanceList
+            vehicleId={id}
+            vehicleType={vehicle.data?.vehicleType ?? "car"}
+            rows={maintenance.data ?? []}
+          />
         ) : (
           <section className="mt-4">
             {today && <ServiceHistory vehicleId={id} today={today} />}
@@ -119,6 +123,7 @@ export default function VehicleDetail() {
       {logging && today && (
         <ServiceSheet
           vehicleId={id}
+          vehicleType={vehicle.data?.vehicleType ?? "car"}
           nickname={vehicle.data?.nickname ?? ""}
           currentKm={vehicle.data?.currentOdometerKm ?? 0}
           today={today}

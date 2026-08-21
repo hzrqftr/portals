@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { MaintenanceRow } from "../api/hooks";
+import type { MaintenanceRow, VehicleType } from "../api/hooks";
 import { MaintenanceGroups } from "./MaintenanceGroups";
 import { UntrackedParts } from "./UntrackedParts";
 import { PartDetailSheet } from "./PartDetailSheet";
@@ -16,9 +16,11 @@ const FILTERS: { value: Filter; label: string }[] = [
 
 export function MaintenanceList({
   vehicleId,
+  vehicleType,
   rows,
 }: {
   vehicleId: string;
+  vehicleType: VehicleType;
   rows: MaintenanceRow[];
 }) {
   const [filter, setFilter] = useState<Filter>("all");
@@ -73,7 +75,11 @@ export function MaintenanceList({
         <MaintenanceGroups rows={shown} onOpen={setOpen} />
       )}
 
-      <UntrackedParts vehicleId={vehicleId} tracked={rows.map((r) => r.part_type_id)} />
+      <UntrackedParts
+        vehicleId={vehicleId}
+        vehicleType={vehicleType}
+        tracked={rows.map((r) => r.part_type_id)}
+      />
 
       {open && (
         <PartDetailSheet

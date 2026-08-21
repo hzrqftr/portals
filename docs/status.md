@@ -55,6 +55,14 @@ Verified against the deployed app, not just the test suite.
   paying a workshop for the fitting alone. The grand total is computed as
   parts + labour on read — there is no stored `total_cost` any more, so no two
   figures can disagree
+- **Motorbikes** (migration 0008): `vehicles.vehicle_type`, and a
+  `part_type_defaults` table keyed by (part type, vehicle type) that decides
+  both which parts a vehicle has and on what schedule — the same
+  `pt_engine_oil` is 10,000 km on a car and 3,000 on a bike. 13 bike-specific
+  parts; chain and CVT parts both ship un-seeded since a bike is one or the
+  other and nothing in the schema says which. Car-only parts (cabin filter,
+  aircon, wipers, ATF, power steering, CV boots, car suspension) no longer
+  exist for a bike at all
 - **Wear-and-tear parts, grouped** (migration 0007): 48 global part types,
   including suspension and steering (absorbers, mounts, stabiliser links and
   bushes, lower arm bushes, ball joints, tie rod and rack ends), drivetrain

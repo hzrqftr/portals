@@ -35,6 +35,7 @@ export interface AttentionItem {
 export interface VehicleCard {
   id: string;
   nickname: string;
+  vehicleType: "car" | "motorcycle";
   plate: string | null;
   currentOdometerKm: number;
   odometerUpdatedOn: string | null;
@@ -143,7 +144,8 @@ export class DashboardRepo extends ScopedRepo {
             WHERE r.garage_id = ?
             GROUP BY r.vehicle_id
          )
-         SELECT v.id, v.nickname, v.plate, v.current_odometer_km, v.odometer_updated_on,
+         SELECT v.id, v.nickname, v.vehicle_type, v.plate, v.current_odometer_km,
+                v.odometer_updated_on,
                 MIN(COALESCE(ir.rank, 3), COALESCE(rr.rank, 3)) AS worst_rank
            FROM vehicles v
            LEFT JOIN item_rank ir ON ir.vehicle_id = v.id
@@ -171,6 +173,7 @@ export class DashboardRepo extends ScopedRepo {
       .all<{
         id: string;
         nickname: string;
+        vehicle_type: "car" | "motorcycle";
         plate: string | null;
         current_odometer_km: number;
         odometer_updated_on: string | null;
@@ -181,6 +184,7 @@ export class DashboardRepo extends ScopedRepo {
     return results.map((r) => ({
       id: r.id,
       nickname: r.nickname,
+      vehicleType: r.vehicle_type,
       plate: r.plate,
       currentOdometerKm: r.current_odometer_km,
       odometerUpdatedOn: r.odometer_updated_on,

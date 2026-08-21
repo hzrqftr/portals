@@ -79,8 +79,8 @@ export function IntervalEditor({
         and stopping tracking looked like it was missing.
       */}
       <p className="mt-4 text-xs text-ink-faint">
-        Not fitted to this car? Stop tracking it. The history is kept, and it
-        comes back from &ldquo;Not tracked on this car&rdquo; below.
+        Not fitted to this vehicle? Stop tracking it. The history is kept, and it
+        comes back from &ldquo;Not tracked on this vehicle&rdquo; below.
       </p>
 
       <div className="mt-2 flex flex-wrap gap-2">

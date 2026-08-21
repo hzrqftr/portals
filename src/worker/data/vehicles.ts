@@ -42,15 +42,16 @@ export class VehicleRepo extends ScopedRepo {
       this.raw
         .prepare(
           `INSERT INTO vehicles
-             (id, garage_id, nickname, plate, make, model, year, engine_cc,
+             (id, garage_id, nickname, vehicle_type, plate, make, model, year, engine_cc,
               fuel_type, transmission, vin, purchase_date, purchase_price,
               current_odometer_km, odometer_updated_on, notes, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         )
         .bind(
           id,
           this.garageId,
           input.nickname,
+          input.vehicleType,
           input.plate ?? null,
           input.make ?? null,
           input.model ?? null,
@@ -72,23 +73,32 @@ export class VehicleRepo extends ScopedRepo {
       // types and looping in JS. applies_to_fuel is a CSV, so the membership
       // test wraps both sides in commas: 'petrol' must not match 'petrol_x'.
       // A vehicle with no fuel_type set gets every interval.
+      //
+      // The join to part_type_defaults is what makes a bike a bike: a part
+      // with no row for this vehicle type is not merely skipped, it does not
+      // apply at all, and the interval comes from that row rather than from
+      // the part type -- so engine oil arrives at 3,000 km on a motorcycle and
+      // 10,000 on a car (migration 0008).
       this.raw
         .prepare(
           `INSERT INTO maintenance_intervals
              (id, garage_id, vehicle_id, part_type_id, interval_km, interval_months)
            SELECT lower(hex(randomblob(16))), ?, ?, pt.id,
-                  pt.default_interval_km, pt.default_interval_months
+                  d.interval_km, d.interval_months
              FROM part_types pt
+             JOIN part_type_defaults d
+               ON d.part_type_id = pt.id
+              AND d.vehicle_type = ?
             WHERE (pt.garage_id IS NULL OR pt.garage_id = ?)
-              AND (pt.default_interval_km IS NOT NULL
-                   OR pt.default_interval_months IS NOT NULL)
-              AND (pt.applies_to_fuel IS NULL
+              AND d.seed_by_default = 1
+              AND (d.applies_to_fuel IS NULL
                    OR ? IS NULL
-                   OR instr(',' || pt.applies_to_fuel || ',', ',' || ? || ',') > 0)`,
+                   OR instr(',' || d.applies_to_fuel || ',', ',' || ? || ',') > 0)`,
         )
         .bind(
           this.garageId,
           id,
+          input.vehicleType,
           this.garageId,
           input.fuelType ?? null,
           input.fuelType ?? null,

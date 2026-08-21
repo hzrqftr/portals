@@ -4,8 +4,10 @@ import {
   useUpdateVehicle,
   type VehicleDraft,
   type VehicleDetails,
+  type VehicleType,
 } from "../api/hooks";
 import { INPUT, Field, Choice, digitsOnly } from "./form";
+import { VEHICLE_TYPES } from "../lib/vehicleType";
 import { Sheet, SheetActions } from "./Sheet";
 
 /**
@@ -50,6 +52,7 @@ export function VehicleSheet({
   const editing = vehicle !== undefined;
   const str = (v: string | number | null | undefined) => (v == null ? "" : String(v));
 
+  const [vType, setVType] = useState<VehicleType>(vehicle?.vehicleType ?? "car");
   const [nickname, setNickname] = useState(str(vehicle?.nickname));
   const [plate, setPlate] = useState(str(vehicle?.plate));
   const [make, setMake] = useState(str(vehicle?.make));
@@ -72,7 +75,7 @@ export function VehicleSheet({
 
     // Omit blanks rather than sending empty strings: the column is nullable
     // and "" would later render as a plate that looks set but is not.
-    const draft: VehicleDraft = { nickname: nickname.trim() };
+    const draft: VehicleDraft = { nickname: nickname.trim(), vehicleType: vType };
     if (plate.trim()) draft.plate = plate.trim().toUpperCase();
     if (make.trim()) draft.make = make.trim();
     if (model.trim()) draft.model = model.trim();
@@ -113,6 +116,32 @@ export function VehicleSheet({
           ? "The spec for this vehicle. Clear a field to unset it."
           : "Only the name is required. You can fill in the rest later."}
       </p>
+
+      {/*
+        First, above the name, because it decides which parts the vehicle is
+        seeded with -- a far harder thing to correct afterwards than a typo in
+        the model. On an edit it is read-only for the same reason: changing it
+        would not retro-seed or un-seed anything, so a control that appears to
+        switch a car into a bike and silently leaves forty car parts behind
+        would be lying.
+      */}
+      {editing ? (
+        <Field label="Type">
+          <p className={INPUT + " text-ink-muted"}>
+            {VEHICLE_TYPES.find((t) => t.value === vType)?.label}
+          </p>
+        </Field>
+      ) : (
+        <Choice
+          label="Type"
+          value={vType}
+          options={VEHICLE_TYPES}
+          // Choice allows "" for the optional fields it was built for. A
+          // vehicle is always one type or the other, so the blank is ignored
+          // rather than given a meaning here.
+          onChange={(next) => next && setVType(next)}
+        />
+      )}
 
       <Field label="Name">
         <input

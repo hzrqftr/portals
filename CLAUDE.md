@@ -78,6 +78,10 @@ Compute from `last service + interval rule`. There is no "next service mileage" 
 
 Migration 0004 made it a genuine override that outranked the vehicle's setting for one cycle, to support "come back in 5,000 this time, then back to normal". It was removed in 0005 because two numbers for one part could not be explained on screen: editing the interval to 6,000 left the schedule reading 5,000, and the save looked like it had silently failed. If per-cycle scheduling is ever wanted again, it needs a UI that shows both numbers and says which is in charge — not a silent COALESCE.
 
+**Which parts a vehicle has, and at what interval, comes from `part_type_defaults`** — keyed by `(part_type_id, vehicle_type)`. A part with no row for a vehicle type does not apply to it at all: a motorbike is never offered a cabin filter. Intervals live there rather than on `part_types` because they differ by type — engine oil is 10,000 km on a car and 3,000 on a bike — and duplicating the part type would split the brand history and service records for one real-world thing.
+
+`seed_by_default` is separate from the intervals on purpose. "Not seeded" used to be encoded as both intervals being NULL, which left opt-in parts with no number to offer once the owner did tick them. Do not re-conflate them.
+
 ### 7. A `service_item` resets the maintenance clock, not the `service_record`
 
 A service visit with no line items resets nothing. The baseline for any part type is the most recent `service_item` of that type.

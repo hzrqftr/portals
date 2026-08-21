@@ -1,5 +1,12 @@
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  uniqueIndex,
+  primaryKey,
+} from "drizzle-orm/sqlite-core";
 
 /**
  * Drizzle mirror of migrations/0001_init.sql.
@@ -70,10 +77,31 @@ export const partTypes = sqliteTable("part_types", {
       "engine",
     ],
   }).notNull(),
-  defaultIntervalKm: integer("default_interval_km"),
-  defaultIntervalMonths: integer("default_interval_months"),
-  appliesToFuel: text("applies_to_fuel"),
 });
+
+/**
+ * Which parts a kind of vehicle has, and on what schedule. Migration 0008.
+ *
+ * A row existing IS the applicability. Intervals live here rather than on
+ * part_types because they differ by vehicle type -- engine oil is 10,000 km on
+ * a car and 3,000 on a bike -- and duplicating the part type per vehicle type
+ * would split the brand history and service records for one real-world thing.
+ */
+export const partTypeDefaults = sqliteTable(
+  "part_type_defaults",
+  {
+    partTypeId: text("part_type_id").notNull(),
+    vehicleType: text("vehicle_type", { enum: ["car", "motorcycle"] }).notNull(),
+    intervalKm: integer("interval_km"),
+    intervalMonths: integer("interval_months"),
+    appliesToFuel: text("applies_to_fuel"),
+    // Separate from the intervals on purpose: "not seeded" used to be encoded
+    // as both intervals being NULL, which left opt-in parts with no number to
+    // offer once the owner did tick them.
+    seedByDefault: integer("seed_by_default").notNull().default(1),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.partTypeId, t.vehicleType] }) }),
+);
 
 export const vehicles = sqliteTable(
   "vehicles",
@@ -86,6 +114,8 @@ export const vehicles = sqliteTable(
     model: text("model"),
     year: integer("year"),
     engineCc: integer("engine_cc"),
+    // Decides which parts this vehicle is seeded with (migration 0008).
+    vehicleType: text("vehicle_type", { enum: ["car", "motorcycle"] }).notNull().default("car"),
     fuelType: text("fuel_type", { enum: ["petrol", "diesel", "hybrid", "ev"] }),
     transmission: text("transmission", { enum: ["manual", "auto"] }),
     vin: text("vin"),

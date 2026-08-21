@@ -13,6 +13,7 @@ import {
   serviceType,
   serviceTemplatePut,
   partTypeInput,
+  vehicleType,
 } from "@shared/zod";
 import { assertCanWrite } from "../auth";
 
@@ -138,7 +139,16 @@ export function registerRoutes(app: Hono<AppContext>): void {
   });
 
   // --- reference data --------------------------------------------------
-  app.get("/api/part-types", async (c) => c.json(await c.get("repos").partTypes.list()));
+  // ?vehicleType=car|motorcycle narrows the catalogue to parts that vehicle
+  // actually has, and returns that type's intervals. Omitted, it returns
+  // everything -- the garage-wide template editor is not about one vehicle.
+  // Parsed rather than passed through: an unrecognised value must not reach
+  // the JOIN and quietly return an empty catalogue.
+  app.get("/api/part-types", async (c) => {
+    const raw = c.req.query("vehicleType");
+    const parsed = raw === undefined ? undefined : vehicleType.parse(raw);
+    return c.json(await c.get("repos").partTypes.list(parsed));
+  });
 
   app.get("/api/part-types/:id/brands", async (c) =>
     c.json(await c.get("repos").services.brandSuggestions(c.req.param("id"))),

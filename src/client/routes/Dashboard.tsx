@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useDashboard, type VehicleCard } from "../api/hooks";
 import { Page, AppHeader, SectionTitle } from "../components/Layout";
+import { VehicleTypeIcon } from "../lib/vehicleType";
 import { StatusPill } from "../components/StatusPill";
 import { OdometerSheet } from "../components/OdometerSheet";
 import { VehicleSheet } from "../components/VehicleSheet";
@@ -108,7 +109,12 @@ export default function Dashboard() {
                 <li key={v.id} className="rounded-xl border border-edge bg-surface p-4">
                   <div className="flex items-start justify-between gap-2">
                     <Link to={"/vehicles/" + v.id} className="min-w-0 hover:text-ink">
-                      <p className="truncate text-lg font-medium">{v.nickname}</p>
+                      <p className="flex items-center gap-2 truncate text-lg font-medium">
+                        <span className="shrink-0 text-ink-faint">
+                          <VehicleTypeIcon type={v.vehicleType} className="h-4 w-4" />
+                        </span>
+                        <span className="truncate">{v.nickname}</span>
+                      </p>
                       <p className="text-sm text-ink-muted">
                         {formatKm(v.currentOdometerKm)}
                         {v.odometerAgeDays !== null && (

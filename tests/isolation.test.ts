@@ -371,6 +371,25 @@ describe("cross-tenant isolation", () => {
     expect(codes).toContain("engine_oil");
     expect(codes).not.toContain("bob_custom_part");
   });
+
+  it("keeps the garage predicate when the catalogue is narrowed by vehicle type", async () => {
+    // ?vehicleType changes the JOIN, which is exactly the kind of edit that
+    // loses a WHERE clause. B's custom part applies to both vehicle types, so
+    // if the predicate were dropped it would surface here.
+    await env_insertCustomPartType(bob.vehicleId);
+
+    for (const type of ["car", "motorcycle"]) {
+      const res = await as(A)(`/api/part-types?vehicleType=${type}`);
+      expect(res.status).toBe(200);
+      const codes = res.body.map((p: { code: string }) => p.code);
+      expect(codes).not.toContain("bob_custom_part");
+      expect(codes).toContain("engine_oil");
+    }
+
+    // Bike-only parts must not leak into the car catalogue either.
+    const carOnly = await as(A)("/api/part-types?vehicleType=car");
+    expect(carOnly.body.map((p: { code: string }) => p.code)).not.toContain("fork_oil");
+  });
 });
 
 /** Inserts a garage-scoped part type for B, bypassing the API. */
@@ -379,10 +398,17 @@ async function env_insertCustomPartType(bobVehicleId: string): Promise<void> {
   const garage = await env.DB.prepare(`SELECT garage_id FROM vehicles WHERE id = ?`)
     .bind(bobVehicleId)
     .first<{ garage_id: string }>();
-  await env.DB.prepare(
-    `INSERT INTO part_types (id, garage_id, code, name, category, default_interval_km)
-     VALUES ('pt_bob_custom', ?, 'bob_custom_part', 'BOB_CUSTOM', 'other', 10000)`,
-  )
-    .bind(garage!.garage_id)
-    .run();
+  // Two rows since 0008: a part type with no defaults row applies to no
+  // vehicle type and would be invisible to the endpoint under test, which
+  // would make this pass for the wrong reason.
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO part_types (id, garage_id, code, name, category)
+       VALUES ('pt_bob_custom', ?, 'bob_custom_part', 'BOB_CUSTOM', 'other')`,
+    ).bind(garage!.garage_id),
+    env.DB.prepare(
+      `INSERT INTO part_type_defaults (part_type_id, vehicle_type, interval_km)
+       VALUES ('pt_bob_custom','car',10000), ('pt_bob_custom','motorcycle',10000)`,
+    ),
+  ]);
 }
