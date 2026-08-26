@@ -3,7 +3,7 @@
 Where the project actually is, and what to pick up next. `fleet-portal-spec.md`
 says what to build; this file says how much of it exists.
 
-**Last updated:** 2026-08-21
+**Last updated:** 2026-08-26
 
 ---
 
@@ -19,19 +19,19 @@ says what to build; this file says how much of it exists.
 | Access app | "fleet-portal - Cloudflare Workers", policy `fleet-portal-allowlist` |
 | Identity provider | Google (not Google Workspace) |
 
-Deployed and working end to end. **Migrations 0001–0008 are applied both
+Deployed and working end to end. **Migrations 0001–0009 are applied both
 locally and remotely; nothing is pending.** Confirm with
 `npx wrangler d1 migrations list fleet --remote`.
 
-Production schema: 15 tables, 4 views, 61 seeded part types, foreign keys
-enforced.
+Production schema: 15 tables, 4 views, 61 seeded part types across 11
+categories, 83 part-type defaults, foreign keys enforced.
 
-Data currently in production: one user, one garage, two vehicles (Waja, City,
-both `vehicle_type = 'car'`), 81 maintenance intervals, and **no odometer
-readings, no service history and no renewals**. Every maintenance row is
-therefore `unknown`, which is correct rather than broken — see the "no
-baseline" trap in CLAUDE.md. Services can be logged from the UI, so this is a
-starting state rather than a permanent one.
+Data currently in production: one user, one garage, three vehicles (Waja and
+City, both `vehicle_type = 'car'`, and an RS150R, `'motorcycle'`), 96
+maintenance intervals, and **no odometer readings, no service history and no
+renewals**. Every maintenance row is therefore `unknown`, which is correct
+rather than broken — see the "no baseline" trap in CLAUDE.md. Services can be
+logged from the UI, so this is a starting state rather than a permanent one.
 
 Note that the developer's LOCAL database is a different and much fuller thing:
 `.wrangler/` is gitignored, so whatever a previous machine had — test vehicles,
@@ -89,8 +89,18 @@ Verified against the deployed app, not just the test suite.
   and the vehicle maintenance list rebuilt as a grid of tiles with category icons and a
   All / Needs attention / Not set up filter. Twenty parts used to be ~2,000px of stacked
   cards; they now fit one screen on a laptop.
+- **Part search on the maintenance tab** (2026-08-22): a search box above the
+  grid filters the tracked tiles and the not-tracked list together, by part
+  name. A car tracks around forty parts across eleven categories, which meant
+  scrolling to find one even after the tile rebuild. It filters an array
+  already in memory and does not re-sort it, so the server's
+  overdue → due_soon → ok → unknown ordering and invariant 4 both stand
+- **Battery folded into Electrical** (migration 0009): `battery` was a category
+  with exactly one member, while spark plugs and ignition coils already sat
+  under `electrical`. A plain data `UPDATE`, not a rebuild — `electrical` was
+  already legal under the category `CHECK`. Eleven categories now, not twelve
 - Every Phase 1 API endpoint
-- 57 tests: tenant isolation, derived logic, and the Access JWT fallback
+- 73 tests: tenant isolation, derived logic, and the Access JWT fallback
 
 ---
 
@@ -103,7 +113,7 @@ the endpoints exist and are covered by the isolation suite.
 |---|---|---|
 | Renewals | §4.6, §6.3 | Road tax and insurance are half the reason the app exists |
 | Vehicle delete | §10 | Editing is built (Details → Edit details); deleting is not. `DELETE /api/vehicles/:id` archives and is isolation-tested, but nothing calls it |
-| Add-vehicle baseline prompt | §8.3 | Spec says prompt for baselines after saving; it currently saves and dismisses, which is how both vehicles ended up with no odometer |
+| Add-vehicle baseline prompt | §8.3 | Spec says prompt for baselines after saving; it currently saves and dismisses, which is how all three vehicles ended up with no odometer |
 | Inline odometer edit, usage rate | §8.2 | The Details panel now shows the spec, but the odometer can only be changed from the dashboard, and the usage rate with its confidence indicator is not surfaced anywhere |
 | Editing a service after saving | §8.4 | `servicePatch` omits `items`, `odometerKm` and `servicedOn`, so fixing a line item means deleting and re-logging the visit |
 | Custom part types in the UI | — | `POST /api/part-types` exists and is isolation-tested, but nothing calls it yet; the 61 seeded types cover the common cases |
