@@ -1,17 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "fleet-portal",
-  "main": "./src/worker/index.ts",
-  "compatibility_date": "2026-08-20",
-  "compatibility_flags": ["nodejs_compat"],
-  // No "directory" here: the Vite plugin builds the client and points this
-  // at dist/client itself. Setting it by hand silently disagrees with the
-  // build output.
-  "assets": {
-    "not_found_handling": "single-page-application",
-    "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
-  },
+  // Admin-only config. This declares NO Worker (`main` is absent on purpose) and is
+  // never deployed. It exists so that `wrangler d1 ...` commands have one unambiguous
+  // home for the shared database, rather than one portal's config having to drive
+  // migrations that belong to the other. See CLAUDE.md, "One database, one ledger".
+  "name": "portals-db-admin",
   "d1_databases": [
     {
       "binding": "DB",
@@ -19,28 +12,5 @@
       "database_id": "e4bdd9c3-e885-42de-a709-4daf8f4a6edb",
       "migrations_dir": "./migrations"
     }
-  ],
-  // Access is enabled on the Worker itself from the dashboard, not from here.
-  // This block ONLY simulates an identity for `wrangler dev` and tests, and is
-  // ignored in production. It means ctx.access.getIdentity() behaves the same
-  // locally as deployed, so there is no dev-only code branch in auth.ts at all.
-  "access": {
-    "dev": {
-      "aud": "fleet-portal-dev",
-      "identity": {
-        "email": "hazriq.fitri95@gmail.com",
-        "name": "Dev User"
-      }
-    }
-  },
-  // ACCESS_* are not secrets: the team domain is public and the audience tag
-  // is an identifier, not a credential. They are only used to verify the
-  // Access assertion header when the runtime does not populate ctx.access.
-  // ACCESS_AUD must match the Application Audience (AUD) Tag shown under
-  // Cloudflare One > Access controls > Applications > fleet-portal.
-  "vars": {
-    "ENVIRONMENT": "production",
-    "ACCESS_TEAM_DOMAIN": "effortless-hf95.cloudflareaccess.com",
-    "ACCESS_AUD": "8589de21f29cca2879237ed5187c945a0861fc16becd764662e1b6d6905008b5"
-  }
+  ]
 }

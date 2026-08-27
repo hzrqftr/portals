@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "@cloudflare/workers-types",
+      "@cloudflare/vitest-pool-workers/types",
+      "vite/client",
+      "node"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["src/shared/*"],
+      "@worker/*": ["src/worker/*"]
+    }
+  },
+  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts"]
+}

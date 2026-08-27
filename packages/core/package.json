@@ -1,0 +1,27 @@
+{
+  "name": "@portals/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worker": "./src/worker/index.ts",
+    "./client": "./src/client/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./tailwind-preset": "./tailwind-preset.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.36.0",
+    "hono": "^4.6.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260815.1",
+    "@types/react": "^18.3.11",
+    "react": "^18.3.1",
+    "typescript": "^5.6.0"
+  }
+}

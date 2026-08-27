@@ -6,7 +6,10 @@ import { fileURLToPath, URL } from "node:url";
 // the tests run against the real schema -- views, CHECK constraints, partial
 // indexes, generated columns and all -- rather than a hand-maintained copy
 // that can drift away from what production actually has.
-const migrations = await readD1Migrations("./migrations");
+//
+// The path reaches up to the workspace root: there is ONE migrations folder for
+// the one shared D1 database, and one linear sequence within it. See CLAUDE.md.
+const migrations = await readD1Migrations("../../migrations");
 
 export default defineConfig({
   plugins: [

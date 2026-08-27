@@ -4,7 +4,14 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
-  plugins: [react(), cloudflare()],
+  plugins: [
+    react(),
+    // persistState points at the WORKSPACE ROOT, not this app. Both portals share
+    // one D1 database in production, so they must share one local database too --
+    // otherwise `npm run dev` in each app gets its own private copy and local
+    // behaviour stops resembling deployed behaviour. See CLAUDE.md.
+    cloudflare({ persistState: { path: "../../.wrangler/state" } }),
+  ],
   build: { outDir: "dist" },
   resolve: {
     alias: {
