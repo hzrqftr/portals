@@ -106,9 +106,20 @@ export default function Dashboard() {
           ) : (
             <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {data.vehicles.map((v) => (
-                <li key={v.id} className="rounded-xl border border-edge bg-surface p-4">
+                <li
+                  key={v.id}
+                  className="relative rounded-xl border border-edge bg-surface p-4 transition-colors hover:border-ink-faint focus-within:border-ink-faint"
+                >
                   <div className="flex items-start justify-between gap-2">
-                    <Link to={"/vehicles/" + v.id} className="min-w-0 hover:text-ink">
+                    {/* The empty span stretches this link over the whole card,
+                        so any dead space in the tile navigates too. The link
+                        keeps the nickname as its accessible name, and the
+                        odometer button below sits above the overlay. */}
+                    <Link
+                      to={"/vehicles/" + v.id}
+                      className="min-w-0 hover:text-ink focus:outline-none"
+                    >
+                      <span className="absolute inset-0 rounded-xl" />
                       <p className="flex items-center gap-2 truncate text-lg font-medium">
                         <span className="shrink-0 text-ink-faint">
                           <VehicleTypeIcon type={v.vehicleType} className="h-4 w-4" />
@@ -131,7 +142,7 @@ export default function Dashboard() {
                       petrol-pump target (spec 8.5). */}
                   <button
                     onClick={() => setLogging(v)}
-                    className="mt-4 w-full rounded-lg border border-edge bg-inset py-2.5 text-sm font-medium text-ink-muted hover:text-ink"
+                    className="relative z-10 mt-4 w-full rounded-lg border border-edge bg-inset py-2.5 text-sm font-medium text-ink-muted hover:text-ink"
                   >
                     Update odometer
                   </button>
