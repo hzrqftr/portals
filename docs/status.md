@@ -7,6 +7,83 @@ build; this file says how much of it exists.
 
 ---
 
+## READ THIS FIRST: work in progress on an unmerged branch
+
+**The two-portal workspace lives on branch `workspace-split`, three commits,
+not merged and not pushed.** `main` is still the single-app Odometry repo at
+`94b0e5e`. If you are on `main` and none of this file matches what you see:
+
+```bash
+git checkout workspace-split
+```
+
+Nothing is uncommitted. The working tree was clean at handover.
+
+### What those three commits did
+
+| Commit | What |
+|---|---|
+| `bb9c87f` | Moved Odometry to `apps/odometry`, npm workspaces, `migrations/` and `.wrangler/state` to the root |
+| `d3f3668` | Extracted `packages/core` — one `getAuthenticatedUser()` across both portals, generic `BaseScopedRepo` |
+| `8f19f63` | Coinbox skeleton: `ledgers` table, ledger-scoped repo, isolation suite, docs |
+
+Everything was verified, not assumed:
+
+- Odometry is behaviourally unchanged — **73 tests before the move, 73 after**.
+- Migration ledger intact: `wrangler d1 migrations apply` reported nothing to
+  apply after `migrations/` was relocated (the ledger stores bare filenames).
+- The isolation lint and the Coinbox isolation suite were each **made to fail
+  on purpose and then restored**. A passing check proves nothing until it has
+  been seen to fail.
+- Clean clone → `npm ci` → `npm test` is green.
+
+### What is deliberately NOT built
+
+**The `transactions` and `categories` schema.** It is the open design question
+in the kickoff document, so it is a proposal in `docs/coinbox-spec.md` §4, with
+what is still undecided in §7. A document is cheap to argue with; a migration
+against financial history is not.
+
+Only `ledgers` (migration `0010`) exists, because scope resolution and the
+isolation test cannot exist without it.
+
+**Do not implement §4.2 onward without asking the owner.** §7 lists six open
+decisions, including category structure and how much of the Odometry link to
+build in phase one.
+
+### Blocked on the owner — cannot be done from a coding session
+
+1. **`wrangler login`.** The CLI is not currently authorised for this account
+   (`code: 7403`), so the remote migration ledger could not be verified and
+   nothing can be deployed.
+2. **The Coinbox Access application.** Google IdP, **narrower allowlist than
+   Odometry's — owner only**. Its AUD tag replaces the placeholder
+   `REPLACE_WITH_COINBOX_ACCESS_AUD` in `apps/coinbox/wrangler.jsonc`. Until
+   then Coinbox rejects every request, which fails closed.
+3. **Renaming the workspace.** The repo root folder is still `odometry` while
+   containing `apps/odometry`, and the sibling `github/coinbox` folder is
+   empty. Suggested: rename the root to `portals` (matching the root package
+   name), plus the GitHub-side rename and `git remote set-url`.
+4. **A Coinbox wordmark.** Odometry's Bukhari Script woff2 is subset to its own
+   eight glyphs and is licensed for personal use only, so it cannot be reused.
+5. **An R2 bucket**, when backups start.
+
+### Traps specific to this in-flight state
+
+- **`0010_ledgers.sql` is applied LOCALLY ONLY.** It is pending on remote. It
+  adds one table Odometry never reads, so the fleet portal is unaffected either
+  way — but `npm run deploy -w odometry` would apply it to production as part
+  of its normal ordering. That is safe; just know it will happen.
+- **Both apps share `.wrangler/state` at the repo root**, because they share
+  one D1 in production. If either app starts creating its own, a transaction
+  will not be able to see the vehicle it references.
+- **Both dev servers want port 5173.** Run one at a time.
+- **`npm test` at the root runs everything**; `npm test -w odometry` runs one
+  app. The root `test` is what `npm run deploy -w <app>` calls, deliberately —
+  both portals share a database and `packages/core`.
+
+---
+
 ## Live system
 
 This repo is a **workspace with two portals** sharing one D1 database. See the
@@ -138,11 +215,31 @@ the endpoints exist and are covered by the isolation suite.
 Deferred by design: Budgets (§8.6) is Phase 2, multi-user is Phase 3, backups
 and reminders are Phase 4.
 
+### Coinbox
+
+Everything except the skeleton. `GET /api/me` is the only endpoint.
+
+| Gap | Spec | Why it matters |
+|---|---|---|
+| `transactions` + `categories` schema | §4.2, §4.3 | The whole app. Deliberately unwritten — see §7 open decisions |
+| Entry form | §1.1 | Conditional field visibility is the main thing Google Forms cannot do |
+| Sheet import | §6 | ~80 car fuel rows need a manual triage screen; motorcycle rows are unambiguous |
+| Backup + restore | §7.6 | A launch requirement, not a follow-up. There is currently NO D1 backup at all |
+| Cross-portal navigation | §7.4 | `AppHeader` takes a `portals` prop nothing passes. Blocked on Access groups reaching the Worker |
+
 ---
 
-## Next: renewals (§4.6, §6.3)
+## Next
 
-Road tax and insurance. Comparatively simple, and it mirrors what already
+Two independent tracks. **Ask the owner which**, rather than assuming — the
+workspace split was done to unblock Coinbox, but Odometry's renewals gap
+predates it and is the older commitment.
+
+**Coinbox:** settle `docs/coinbox-spec.md` §7 with the owner, then write the
+transactions schema. Backups (§7.6) are a launch requirement and there is no
+D1 backup at all today, which arguably outranks new features.
+
+**Odometry — renewals (§4.6, §6.3):** road tax and insurance. Comparatively simple, and it mirrors what already
 exists — with one rule that is easy to get wrong:
 
 **Renewing inserts a new row. It never updates `expires_on` in place**
