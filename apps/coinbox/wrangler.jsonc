@@ -1,0 +1,47 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "coinbox",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2026-08-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  // The SAME database_id as Odometry. One D1 for both portals: users is
+  // shared, and transactions will reference vehicles. The migrations folder
+  // is shared too, at the workspace root, because D1's migration ledger is a
+  // single filename-keyed table -- two folders against one database would
+  // silently skip each other's migrations.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "fleet",
+      "database_id": "e4bdd9c3-e885-42de-a709-4daf8f4a6edb",
+      "migrations_dir": "../../migrations"
+    }
+  ],
+  // Simulates an identity for `wrangler dev` and tests only; ignored in
+  // production. A DIFFERENT aud from Odometry's on purpose -- each portal has
+  // its own Access application, and accepting the other's audience would let
+  // a token minted for the fleet portal open the ledger.
+  "access": {
+    "dev": {
+      "aud": "coinbox-dev",
+      "identity": {
+        "email": "hazriq.fitri95@gmail.com",
+        "name": "Dev User"
+      }
+    }
+  },
+  "vars": {
+    "ENVIRONMENT": "production",
+    "ACCESS_TEAM_DOMAIN": "effortless-hf95.cloudflareaccess.com",
+    // PLACEHOLDER. Replace with the Application Audience (AUD) Tag from
+    // Cloudflare One > Access > Applications > coinbox. Until this is a real
+    // tag, the assertion fallback in packages/core rejects every request --
+    // which fails closed, and is the correct direction to be wrong in.
+    "ACCESS_AUD": "REPLACE_WITH_COINBOX_ACCESS_AUD"
+  }
+}

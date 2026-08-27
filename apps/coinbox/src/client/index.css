@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Load-bearing: without it the native date picker and every <select> render
+ * as white system widgets on a dark page.
+ */
+:root {
+  color-scheme: dark;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-page text-ink antialiased;
+}

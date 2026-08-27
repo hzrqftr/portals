@@ -1,0 +1,287 @@
+# Coinbox — Technical Specification
+
+**Version:** 0.1 (proposal)
+**Status:** Skeleton built; transaction schema NOT built and open for revision
+**Target:** Replace a Google Form + Sheet expense log
+
+---
+
+## 1. Overview
+
+Coinbox is a personal **expense ledger**. It replaces a Google Form feeding a
+Google Sheet, chosen originally because it was cheap to build, not because it
+was the right long-term answer.
+
+### 1.1 What the Form cannot do, and this must
+
+- **Conditional field visibility.** Selecting a fuel or vehicle category should
+  reveal vehicle-specific fields; most categories should not.
+- **Editing past entries.** Google Forms cannot amend a submission.
+- **Real validation**, shared between client and server via Zod.
+- **Vehicle attribution as a first-class field**, not a string buried in a
+  free-text description.
+
+### 1.2 Non-goals
+
+This is an expense ledger, not a personal finance app. Explicitly out of scope:
+account balances (the banks and wallets have no API, so reconciliation is not
+feasible), budgets, net worth tracking, loan amortisation, multi-currency, and
+recurring-transaction detection. Parity with the Form, plus §1.1.
+
+### 1.3 Relationship to Odometry
+
+Two portals, one Cloudflare account, **one D1 database**, one repo.
+
+**Ownership rule:** money rows are owned by Coinbox, fleet structure is owned
+by Odometry. No duplicated rows and no syncing between them. The link is a
+nullable `vehicle_id` on transactions and, later, a nullable `transaction_id`
+on service records. Which UI you type into is a front-end question, not a data
+question.
+
+The repo is shared because the *database* is shared. See the root `CLAUDE.md`,
+"One database, one repo", for why that is not a style preference.
+
+---
+
+## 2. Architecture
+
+| Layer | Choice |
+|---|---|
+| Runtime | Cloudflare Workers, static assets + API in one Worker |
+| Frontend | React 18, TypeScript, Vite, Tailwind, TanStack Query |
+| API | Hono under `/api/*` |
+| Database | Cloudflare D1 (SQLite) via Drizzle, shared with Odometry |
+| Auth | Cloudflare Access, Google IdP, allowlist |
+| Validation | Zod, shared between client and server |
+
+### 2.1 Two Workers, not one
+
+Coinbox is a separate Worker from Odometry. The deciding constraint is that
+neither Worker touches `env.ASSETS`: `assets.run_worker_first: ["/api/*"]`
+means the platform serves every non-API path before the Worker runs at all.
+Two SPAs therefore cannot share one Worker without an asset-routing fallback
+that exists in neither codebase.
+
+Separate Workers also mean a Coinbox deploy cannot take the fleet portal down.
+
+### 2.2 Access
+
+Coinbox has its **own Access application** with a **narrower allowlist than
+Odometry's** — the owner only. Someone added to Odometry for fleet access
+cannot load the Coinbox login page.
+
+This is defence in depth *behind* the ownership key, not instead of it. The
+ledger predicate (§5) is what is actually relied upon; the allowlist is a
+second door, and neither is trusted to be the only one.
+
+---
+
+## 3. Tenancy model
+
+**The ownership axis is a LEDGER, and it is deliberately not a garage.**
+
+Odometry indirects ownership through a `garage`, which exists so a garage can
+be shared between people in one household. Finances are not garage-scoped: if
+someone is added to a garage so they can see service schedules, they must not
+thereby see a salary.
+
+There is **no `ledger_members` table**, so no membership can be granted at all.
+Sharing is unrepresentable, not merely absent.
+
+### 3.1 Why a `ledgers` table rather than `owner_user_id` on transactions
+
+The costs are asymmetric. Changing the ownership column on `transactions`
+later means the SQLite 12-step table rebuild (see migrations `0007`, `0008`)
+against real financial history, plus every repository predicate and the scope
+resolution. Adding `ledger_members` later is by contrast purely additive — a
+new table, nothing rebuilt, no predicate changed.
+
+One small table now buys that option. This is the lesson Odometry already
+learned with `garages`, minus the membership surface that would give the
+isolation suite a new leak path to cover.
+
+### 3.2 First-login bootstrap
+
+`users` is shared with Odometry, so someone who has used the fleet portal
+already has a row. `resolveLedgerScope()` must therefore handle "user exists,
+ledger does not", not only a wholly new person.
+
+The ledger insert reads its owner back out of `users` rather than binding a
+generated id, so two racing first requests cannot produce a foreign key
+violation on a brand new account.
+
+---
+
+## 4. Data model
+
+> **§4.2 onward is a PROPOSAL and is not built.** Only `ledgers` (migration
+> `0010`) exists. This section is written to be argued with: a migration
+> against financial history is expensive to reverse, a document is not.
+
+### 4.1 Type conventions
+
+Identical to Odometry (root `CLAUDE.md` invariant 1):
+
+- money → `INTEGER`, minor units (sen). Never `REAL`.
+- calendar dates → `TEXT` `YYYY-MM-DD`, no time component.
+- timestamps → `TEXT` ISO 8601 UTC.
+- booleans → `INTEGER` 0/1.
+- enums → `TEXT` + `CHECK`.
+
+### 4.2 `transactions` (proposed)
+
+```sql
+CREATE TABLE transactions (
+  id              TEXT PRIMARY KEY,
+  ledger_id       TEXT NOT NULL REFERENCES ledgers(id) ON DELETE CASCADE,
+  occurred_on     TEXT NOT NULL,                 -- YYYY-MM-DD, user's calendar
+  item            TEXT NOT NULL,
+  description     TEXT,
+  category_id     TEXT NOT NULL REFERENCES categories(id),
+  vehicle_id      TEXT REFERENCES vehicles(id),  -- nullable; the Odometry link
+  amount_sen      INTEGER NOT NULL CHECK (amount_sen > 0),
+  direction       TEXT NOT NULL CHECK (direction IN ('in','out')),
+  signed_sen      INTEGER GENERATED ALWAYS AS
+                    (CASE direction WHEN 'out' THEN -amount_sen ELSE amount_sen END) VIRTUAL,
+  source_type_raw TEXT,                          -- import only; dropped after reconciliation
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+```
+
+**Magnitude plus direction, sign derived.** The positive-magnitude `CHECK`
+makes a sign error impossible at write time, which matters because a missed
+negation on one insert path is silent rather than visible. The generated
+column keeps aggregation to `SUM(signed_sen)` with no `CASE` repeated across
+queries and no chance of two reports disagreeing. `VIRTUAL` costs no storage.
+
+**`in`/`out`, not debit/credit.** Debit and credit are genuinely ambiguous
+here: by ledger convention a debit increases an asset account, but a bank
+statement is written from the bank's perspective and shows money arriving as a
+credit. Same word, opposite meanings, both correct. They only earn their keep
+in double-entry, where every transaction has two sides that must balance —
+this is a single pooled account and a flat log, so there is no second side and
+nothing to balance. And not `income`/`expense`: categories are deliberately
+not bound to a direction, so naming the direction after a category-like
+concept would quietly re-couple them.
+
+### 4.3 `categories` (proposed)
+
+Flat, roughly 20, **not bound to direction** — any category may appear as
+either. `ledger_id` nullable, where NULL means a global seed row, following
+the `part_types` precedent in `0001`, including its partial-unique idiom:
+
+```sql
+CREATE UNIQUE INDEX uq_category_code ON categories(COALESCE(ledger_id, ''), code);
+```
+
+`UNIQUE` does not constrain NULLs in SQLite, which is exactly the trap a
+nullable "applies to everything" column makes common.
+
+### 4.4 Indexes (proposed)
+
+```sql
+CREATE INDEX idx_txn_ledger_date     ON transactions(ledger_id, occurred_on DESC);
+CREATE INDEX idx_txn_ledger_category ON transactions(ledger_id, category_id, occurred_on);
+CREATE INDEX idx_txn_vehicle         ON transactions(vehicle_id) WHERE vehicle_id IS NOT NULL;
+```
+
+### 4.5 Views
+
+Aggregation happens in SQL, never JS loops (invariant 4). Two rules carry over
+from `0002_views.sql`:
+
+- **No view may call `date('now')` or `CURRENT_DATE`.** The Worker runs in UTC
+  and the owner is at UTC+8, so "today" is computed from `users.timezone` and
+  passed as a bound parameter. Views expose parameter-free facts.
+- The aggregation idiom is `ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...)`
+  filtered `WHERE rn = 1`, not `GROUP BY` with a correlated max.
+
+---
+
+## 5. Tenant isolation
+
+Identical in structure to Odometry's spec §5, with `ledger_id` in place of
+`garage_id`. Repositories extend `LedgerScopedRepo`, whose `where()` folds in
+the tenant predicate on every call and cannot be bypassed.
+
+### 5.1 The one place the two axes meet
+
+A transaction may reference a vehicle. The transaction is ledger-scoped; the
+vehicle is garage-scoped. So `assertUsableVehicle()` cannot use the ledger
+predicate — it has to ask Odometry's question: *is this vehicle in a garage
+the caller is a member of?*
+
+This is the only write path where a cross-portal leak could hide. It is
+already written and covered even though nothing calls it yet.
+
+### 5.2 Enforcement
+
+Three mechanisms, per Odometry's §5.2 "implement at least two of":
+
+1. `scripts/check-db-imports.mjs` — `env.DB` and the Drizzle client may not
+   appear outside `data/`, enforced across the whole workspace from one place.
+2. `LedgerScopedRepo` — the predicate cannot be omitted.
+3. `apps/coinbox/tests/isolation.test.ts` — including the **garage co-member**
+   case, verified by deliberately injecting a missing predicate and confirming
+   four tests fail.
+
+---
+
+## 6. Migration from the Sheet
+
+Current columns: `Timestamp, Item, Amount, Category, Description, Type`, where
+`Type` is `Debit` (money in) or `Credit` (money out).
+
+- `Debit → in`, `Credit → out`. Keep the original string in `source_type_raw`
+  during import, so anything looking backwards can be checked against what the
+  row actually said, and drop the column once totals are verified against the
+  sheet.
+- **Idempotent re-runs.** An `import_batches` table plus a `UNIQUE` hash of the
+  source row, so the import can be re-run after fixing the category mapping —
+  expected at least twice.
+- **Fuel attribution.** Motorcycle rows are unambiguous from `Item`. Car rows
+  are indistinguishable between the two cars and need a manual triage screen,
+  roughly 80 rows.
+
+---
+
+## 7. Open decisions
+
+Genuinely undecided. Whoever implements next should ask rather than pick.
+
+1. **Category structure.** Flat list, or does it need grouping? The Sheet's ~20
+   are flat and unbound to direction. Grouping is easy to add and hard to
+   remove.
+2. **How much of the Odometry link to build in phase one.** The nullable
+   `vehicle_id` is cheap; the reverse link (`transaction_id` on service
+   records) and any shared UI are not.
+3. **The `user_settings` split.** That table mixes shared columns (`currency`,
+   `date_format`, `distance_unit`) with Odometry-specific ones (`due_soon_*`,
+   `fallback_km_per_day`, `stale_odometer_days`). Coinbox reads only the shared
+   ones. Splitting it is deliberately deferred, and recorded here so it is not
+   "discovered" later and refactored by accident.
+4. **Cross-portal navigation.** Deferred. The clean mechanism is Access groups,
+   but `ctx.access` is not populated in production (which is why the JWT
+   assertion fallback exists) and the assertion payload carries no groups
+   claim. `AppHeader` takes a `portals` prop that nothing passes, so switching
+   it on later is passing an array rather than reworking chrome in two apps.
+5. **The wordmark.** Odometry's Bukhari Script woff2 is subset to the eight
+   letters of "Odometry" and is licensed free for personal use only. Coinbox
+   needs its own face, or stays on body type as it currently does.
+6. **Backups.** A launch requirement, not a follow-up: there is currently no D1
+   backup at all. Nightly D1 → R2 export plus the Sheets mirror (overwrite,
+   idempotent by construction, so a missed run self-heals and a double-fire
+   writes the same thing twice). The **restore path must be exercised, not
+   assumed**, before any financial history is migrated in.
+
+---
+
+## 8. UX requirements
+
+- **Never render a negative number.** Show magnitude with a colour and a
+  prefix.
+- The entry screen leads with two large direction buttons, defaulting to
+  `out`, since that is the overwhelming majority of rows — a miscategorised
+  inflow should be visually obvious rather than buried in a dropdown.
+- Fast on mobile: that is where entry actually happens.

@@ -1,30 +1,45 @@
 # Status
 
-Where the project actually is, and what to pick up next. `fleet-portal-spec.md`
-says what to build; this file says how much of it exists.
+Where the project actually is, and what to pick up next. The specs say what to
+build; this file says how much of it exists.
 
-**Last updated:** 2026-08-26
+**Last updated:** 2026-08-27
 
 ---
 
 ## Live system
 
+This repo is a **workspace with two portals** sharing one D1 database. See the
+root `CLAUDE.md`, "One database, one repo".
+
 | | |
 |---|---|
 | Repo | `hzrqftr/odometry`, private, branch `main` |
-| App | https://fleet-portal.hazriq-fitri95.workers.dev |
+| Odometry app | https://fleet-portal.hazriq-fitri95.workers.dev |
+| Coinbox app | NOT DEPLOYED. Skeleton only; no Access application yet |
 | Worker | `fleet-portal` |
 | Database | D1 `fleet` (`e4bdd9c3-e885-42de-a709-4daf8f4a6edb`) |
 | Access team | `effortless-hf95.cloudflareaccess.com` |
 | Access app | "fleet-portal - Cloudflare Workers", policy `fleet-portal-allowlist` |
 | Identity provider | Google (not Google Workspace) |
 
-Deployed and working end to end. **Migrations 0001–0009 are applied both
-locally and remotely; nothing is pending.** Confirm with
-`npx wrangler d1 migrations list fleet --remote`.
+**Coinbox is built but not deployable yet.** It needs its own Access
+application with a **narrower allowlist than Odometry's — owner only** — and
+its AUD tag pasted into `apps/coinbox/wrangler.jsonc`, which currently holds
+the placeholder `REPLACE_WITH_COINBOX_ACCESS_AUD`. Until then the assertion
+check rejects every request, which fails closed.
+
+Odometry is deployed and working end to end. **Migration `0010_ledgers.sql`
+is applied LOCALLY ONLY — it is pending on remote.** 0001–0009 are applied
+both locally and remotely. Confirm with
+`npx wrangler d1 migrations list fleet --remote -c wrangler.jsonc`.
+
+`0010` adds only the `ledgers` table and touches nothing Odometry reads, so
+the fleet portal is unaffected either way.
 
 Production schema: 15 tables, 4 views, 61 seeded part types across 11
-categories, 83 part-type defaults, foreign keys enforced.
+categories, 83 part-type defaults, foreign keys enforced. Local adds
+`ledgers` (16 tables).
 
 Data currently in production: one user, one garage, three vehicles (Waja and
 City, both `vehicle_type = 'car'`, and an RS150R, `'motorcycle'`), 96
@@ -152,13 +167,19 @@ git clone https://github.com/hzrqftr/odometry.git
 cd odometry
 npm ci                    # not `npm install` -- the lockfile is committed
 npx wrangler login        # needs a real terminal; opens a browser
-npm run db:apply:local    # local D1, safe to re-run
-npm run dev               # http://localhost:5173
-npm test                  # 73 tests; should be green on a fresh clone
+npm run db:apply:local    # shared local D1, safe to re-run
+npm run dev -w odometry   # http://localhost:5173
+npm run dev -w coinbox    # run one at a time; both want port 5173
+npm test                  # lint + 73 Odometry + 7 Coinbox tests
 ```
 
 This path is verified, not assumed: it was run end to end from a scratch clone
-on 2026-08-21 (clone → `npm ci` → migrations → 73 tests → build).
+on 2026-08-21 (clone → `npm ci` → migrations → 73 tests → build), and again
+after the workspace split on 2026-08-27.
+
+**Both portals share `.wrangler/state` at the repo root**, because they share
+one D1 in production. Do not let either app create its own — a transaction
+would then be unable to see the vehicle it references.
 
 `wrangler dev` supplies a simulated Access identity through the `access.dev`
 block in `wrangler.jsonc`, so local development needs no Cloudflare Access and
@@ -170,7 +191,7 @@ pin, so a very different major version is untested rather than known-bad.
 Deploying:
 
 ```bash
-npm run deploy            # test -> build -> migrate remote -> deploy
+npm run deploy -w odometry   # test -> build -> migrate remote -> deploy
 ```
 
 The ordering inside that script is load-bearing in two directions and is
