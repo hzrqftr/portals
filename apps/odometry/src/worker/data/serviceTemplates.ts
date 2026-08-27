@@ -1,4 +1,4 @@
-import { ScopedRepo } from "./base";
+import { GarageScopedRepo } from "./base";
 import type { ServiceType } from "@shared/zod";
 
 /**
@@ -21,7 +21,7 @@ export interface ServiceTemplateRow {
   sortOrder: number;
 }
 
-export class ServiceTemplateRepo extends ScopedRepo {
+export class ServiceTemplateRepo extends GarageScopedRepo {
   async list(): Promise<ServiceTemplateRow[]> {
     const { results } = await this.raw
       .prepare(

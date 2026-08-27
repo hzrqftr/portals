@@ -1,17 +1,8 @@
-export interface Env {
-  DB: D1Database;
-  ASSETS: Fetcher;
-  ENVIRONMENT: string;
-  DEV_USER_EMAIL?: string;
+import type { CoreEnv } from "@portals/core/worker";
 
-  /**
-   * Access team domain and application audience tag, used only to verify the
-   * Cf-Access-Jwt-Assertion header when the runtime does not populate
-   * ctx.access. See auth.ts. Both must be set for that fallback to engage;
-   * with either missing, requests without a runtime identity are rejected.
-   */
-  ACCESS_TEAM_DOMAIN?: string;
-  ACCESS_AUD?: string;
+export interface Env extends CoreEnv {
+  ASSETS: Fetcher;
+  DEV_USER_EMAIL?: string;
 }
 
 export type Role = "owner" | "editor" | "viewer";
@@ -30,11 +21,6 @@ export interface Scope {
   /** Divisor in the km->date projection. Guaranteed >= 1 by settingsPatch. */
   fallbackKmPerDay: number;
   staleOdometerDays: number;
-}
-
-export interface AuthUser {
-  email: string;
-  name: string | null;
 }
 
 export type Status = "overdue" | "due_soon" | "ok" | "unknown";

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
 import { env } from "cloudflare:test";
 import { as, migrate, resetDb } from "./helpers";
-import { todayIn } from "@shared/dates";
+import { todayIn } from "@portals/core";
 
 /**
  * Proves the behaviours where the spec, taken literally, would have produced

@@ -15,7 +15,7 @@ import {
   partTypeInput,
   vehicleType,
 } from "@shared/zod";
-import { assertCanWrite } from "../auth";
+import { assertCanWrite } from "../scope";
 
 /**
  * Route handlers. Spec 7.

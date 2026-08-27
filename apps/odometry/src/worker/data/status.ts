@@ -1,5 +1,5 @@
-import { ScopedRepo } from "./base";
-import { todayIn } from "@shared/dates";
+import { GarageScopedRepo } from "./base";
+import { todayIn } from "@portals/core";
 import type { Status } from "../types";
 
 /**
@@ -191,7 +191,7 @@ SELECT r.id, r.vehicle_id, v.nickname, r.type, r.provider, r.expires_on, r.cost,
  /*FILTER*/
  ORDER BY r.expires_on`;
 
-export class StatusRepo extends ScopedRepo {
+export class StatusRepo extends GarageScopedRepo {
   private get today(): string {
     return todayIn(this.scope.timezone);
   }

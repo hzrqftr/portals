@@ -4,7 +4,7 @@ import {
   usePutServiceTemplate,
   type ServiceTypeName,
 } from "../api/hooks";
-import { INPUT } from "./form";
+import { INPUT } from "@portals/core/client";
 
 /**
  * Which parts a service type pre-fills in the log-service form.

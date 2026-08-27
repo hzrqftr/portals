@@ -8,19 +8,17 @@ import { z } from "zod";
  * same object.
  */
 
-/** Calendar date, no time component ever. Invariant 5. */
-export const calendarDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a date as YYYY-MM-DD");
-
 /**
- * Money, in sen. Integer only -- a float here is the exact failure invariant
- * 1 exists to prevent, and it would arrive from the client looking harmless.
+ * The type-level primitives live in @portals/core: a calendar date and a
+ * whole number of sen mean the same thing in every portal, and one definition
+ * is the only way two portals cannot disagree about them.
+ *
+ * The domain enums below stay here. They are Odometry's vocabulary, and
+ * putting them in core would make it the place two unrelated domains meet.
  */
-export const sen = z.number().int("Money must be a whole number of sen");
+import { calendarDate, sen, quantityMilli } from "@portals/core";
 
-/** Quantities are integer thousandths. See src/shared/money.ts. */
-export const quantityMilli = z.number().int().positive();
+export { calendarDate, sen, quantityMilli };
 
 export const km = z.number().int().nonnegative().max(9_999_999);
 

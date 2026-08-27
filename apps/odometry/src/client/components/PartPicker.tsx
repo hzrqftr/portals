@@ -1,5 +1,5 @@
 import type { MaintenanceRow, PartType } from "../api/hooks";
-import { INPUT } from "./form";
+import { INPUT } from "@portals/core/client";
 import { categoryLabel, groupByCategory } from "../lib/partCategories";
 
 /**

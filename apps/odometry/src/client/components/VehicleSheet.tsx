@@ -6,9 +6,9 @@ import {
   type VehicleDetails,
   type VehicleType,
 } from "../api/hooks";
-import { INPUT, Field, Choice, digitsOnly } from "./form";
+import { INPUT, Field, Choice, digitsOnly } from "@portals/core/client";
 import { VEHICLE_TYPES } from "../lib/vehicleType";
-import { Sheet, SheetActions } from "./Sheet";
+import { Sheet, SheetActions } from "@portals/core/client";
 
 /**
  * Spec 10, Phase 1: vehicle CRUD. This is the first thing a new user must be

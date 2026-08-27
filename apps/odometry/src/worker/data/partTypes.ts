@@ -1,8 +1,8 @@
-import { ScopedRepo } from "./base";
-import { ValidationError } from "../errors";
+import { GarageScopedRepo } from "./base";
+import { ValidationError } from "@portals/core/worker";
 import type { PartTypeInput } from "@shared/zod";
 
-export class PartTypeRepo extends ScopedRepo {
+export class PartTypeRepo extends GarageScopedRepo {
   /**
    * Global seed rows plus this garage's own custom types.
    *

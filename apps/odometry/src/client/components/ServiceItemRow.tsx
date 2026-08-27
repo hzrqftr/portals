@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useBrandSuggestions } from "../api/hooks";
-import { INPUT, digitsOnly } from "./form";
+import { INPUT, digitsOnly } from "@portals/core/client";
 import { formatKm } from "../lib/format";
 import { specPlaceholder } from "../lib/partCategories";
 

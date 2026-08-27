@@ -1,5 +1,5 @@
 import type { MaintenanceRow } from "../api/hooks";
-import { Sheet } from "./Sheet";
+import { Sheet } from "@portals/core/client";
 import { StatusPill } from "./StatusPill";
 import { PartIcon } from "./PartIcon";
 import { IntervalEditor } from "./IntervalEditor";

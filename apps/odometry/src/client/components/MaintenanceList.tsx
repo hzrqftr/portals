@@ -3,7 +3,7 @@ import type { MaintenanceRow, VehicleType } from "../api/hooks";
 import { MaintenanceGroups } from "./MaintenanceGroups";
 import { UntrackedParts } from "./UntrackedParts";
 import { PartDetailSheet } from "./PartDetailSheet";
-import { INPUT } from "./form";
+import { INPUT } from "@portals/core/client";
 
 /** Spec 8.2: intervals with last done, next due, status, and inline editing. */
 

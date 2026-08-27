@@ -1,47 +1,41 @@
-import { drizzle, type DrizzleD1Database } from "drizzle-orm/d1";
-import { and, eq, type SQL } from "drizzle-orm";
+import { eq, type SQL } from "drizzle-orm";
+import { BaseScopedRepo, makeDb as makeCoreDb, NotFoundError } from "@portals/core/worker";
 import type { Env, Scope } from "../types";
-import { NotFoundError } from "../errors";
 import * as schema from "../schema";
 
 /**
- * THE ONLY PLACE env.DB IS TOUCHED. CLAUDE.md invariant 2, spec 5.1.
+ * Odometry's tenant axis: garage_id. Invariant 2, spec 5.1.
  *
- * D1 has no row-level security. There is nothing behind this code to catch a
- * missing `WHERE garage_id = ?` -- a forgotten predicate is not a bug that
- * returns too many rows, it is one user reading another user's data. The
- * database will hand it over without complaint.
+ * The generic machinery -- the Drizzle client, the constructor, and a
+ * `where()` that cannot be called without folding in the tenant predicate --
+ * lives in @portals/core/worker. What is Odometry's own is the answer to
+ * "which column carries ownership", and that is the one thing this class
+ * supplies.
  *
- * Route handlers receive repositories that are already scoped. They cannot
- * import the binding or the Drizzle client, and the CI lint rule in
- * scripts/check-db-imports.mjs fails the build if they try.
+ * Coinbox answers it differently (ledger_id), which is exactly why the base
+ * class takes it as a parameter instead of hardcoding a column. A garage is
+ * shared so a household can co-own a fleet; a ledger is not.
  */
 
 /** Any table carrying a garage_id. */
 type ScopedTable = { garageId: unknown; id: unknown };
 
-export abstract class ScopedRepo {
-  constructor(
-    protected readonly db: DrizzleD1Database<typeof schema>,
-    protected readonly raw: D1Database,
-    protected readonly scope: Scope,
-  ) {}
-
+export abstract class GarageScopedRepo extends BaseScopedRepo<
+  typeof schema,
+  Scope,
+  ScopedTable
+> {
   protected get garageId(): string {
     return this.scope.garageId;
   }
 
-  /**
-   * The garage predicate. Every query in every subclass starts from this.
-   * Combine further conditions through `where` below rather than building a
-   * bare `where()` clause, so the predicate cannot be left off by accident.
-   */
-  protected inGarage<T extends ScopedTable>(table: T): SQL {
+  protected override tenantPredicate(table: ScopedTable): SQL {
     return eq(table.garageId as never, this.garageId);
   }
 
-  protected where<T extends ScopedTable>(table: T, ...conditions: (SQL | undefined)[]): SQL {
-    return and(this.inGarage(table), ...conditions) as SQL;
+  /** Reads better at the call sites than `tenantPredicate` does. */
+  protected inGarage<T extends ScopedTable>(table: T): SQL {
+    return this.tenantPredicate(table);
   }
 
   /**
@@ -75,8 +69,8 @@ export abstract class ScopedRepo {
 }
 
 export function makeDb(env: Env): {
-  db: DrizzleD1Database<typeof schema>;
+  db: ReturnType<typeof makeCoreDb<typeof schema>>["db"];
   raw: D1Database;
 } {
-  return { db: drizzle(env.DB, { schema }), raw: env.DB };
+  return makeCoreDb(env.DB, schema);
 }

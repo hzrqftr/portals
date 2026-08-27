@@ -1,11 +1,11 @@
 import { eq, desc } from "drizzle-orm";
-import { ScopedRepo } from "./base";
+import { GarageScopedRepo } from "./base";
 import { serviceRecords, serviceItems } from "../schema";
-import { NotFoundError } from "../errors";
-import { nowIso } from "@shared/dates";
+import { NotFoundError } from "@portals/core/worker";
+import { nowIso } from "@portals/core";
 import type { ServiceInput, ServicePatch, ServiceType } from "@shared/zod";
 
-export class ServiceRepo extends ScopedRepo {
+export class ServiceRepo extends GarageScopedRepo {
   async list(vehicleId: string) {
     await this.assertOwnedVehicle(vehicleId);
 

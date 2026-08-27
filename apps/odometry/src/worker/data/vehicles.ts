@@ -1,11 +1,11 @@
 import { and, eq, desc } from "drizzle-orm";
-import { ScopedRepo } from "./base";
+import { GarageScopedRepo } from "./base";
 import { vehicles, odometerReadings, maintenanceIntervals } from "../schema";
-import { NotFoundError, ValidationError } from "../errors";
-import { nowIso, todayIn } from "@shared/dates";
+import { NotFoundError, ValidationError } from "@portals/core/worker";
+import { nowIso, todayIn } from "@portals/core";
 import type { VehicleInput, VehiclePatch, OdometerInput } from "@shared/zod";
 
-export class VehicleRepo extends ScopedRepo {
+export class VehicleRepo extends GarageScopedRepo {
   async list() {
     return this.db
       .select()

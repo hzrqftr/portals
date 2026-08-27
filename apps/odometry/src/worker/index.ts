@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import type { Env, Scope } from "./types";
-import { getAuthenticatedUser, resolveScope } from "./auth";
+import { getAuthenticatedUser } from "@portals/core/worker";
+import { resolveScope } from "./scope";
 import { makeRepos, type Repos } from "./data";
-import { HttpError } from "./errors";
+import { HttpError } from "@portals/core/worker";
 import { ZodError } from "zod";
 import { registerRoutes } from "./routes";
 

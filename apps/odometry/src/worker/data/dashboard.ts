@@ -1,6 +1,6 @@
-import { ScopedRepo } from "./base";
+import { GarageScopedRepo } from "./base";
 import { StatusRepo, type MaintenanceDueRow, type RenewalStatusRow } from "./status";
-import { todayIn, daysBetween } from "@shared/dates";
+import { todayIn, daysBetween } from "@portals/core";
 import type { Status } from "../types";
 
 /**
@@ -50,7 +50,7 @@ const STATUS_RANK: Record<Status, number> = {
   unknown: 3,
 };
 
-export class DashboardRepo extends ScopedRepo {
+export class DashboardRepo extends GarageScopedRepo {
   async load(): Promise<DashboardPayload> {
     const today = todayIn(this.scope.timezone);
     const status = new StatusRepo(this.db, this.raw, this.scope);

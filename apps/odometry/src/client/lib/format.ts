@@ -1,4 +1,4 @@
-import { formatSen } from "@shared/money";
+import { formatSen } from "@portals/core";
 
 export { formatSen };
 

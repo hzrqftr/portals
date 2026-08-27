@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useSetInterval, type MaintenanceRow } from "../api/hooks";
-import { INPUT, digitsOnly } from "./form";
+import { INPUT, digitsOnly } from "@portals/core/client";
 
 /**
  * Per-vehicle interval editing, inline on the maintenance list (spec 8.2).

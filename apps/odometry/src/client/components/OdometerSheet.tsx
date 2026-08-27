@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLogOdometer } from "../api/hooks";
-import { Sheet, SheetActions } from "./Sheet";
+import { Sheet, SheetActions } from "@portals/core/client";
 
 /**
  * Spec 8.5: one tap from the dashboard, numeric keypad, one field, save and

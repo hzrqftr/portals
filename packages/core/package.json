@@ -11,17 +11,21 @@
     "./tailwind-preset": "./tailwind-preset.js"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck"
   },
   "dependencies": {
     "drizzle-orm": "^0.36.0",
     "hono": "^4.6.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "react-router-dom": "^6.27.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260815.1",
     "@types/react": "^18.3.11",
     "react": "^18.3.1",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "react-dom": "^18.3.1",
+    "@types/react-dom": "^18.3.0"
   }
 }

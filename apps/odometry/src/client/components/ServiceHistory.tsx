@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useServices, SERVICE_TYPES, type ServiceRecord } from "../api/hooks";
-import { formatSen, fromQuantityMilli } from "@shared/money";
+import { formatSen, fromQuantityMilli } from "@portals/core";
 import { formatKm } from "../lib/format";
 
 /**

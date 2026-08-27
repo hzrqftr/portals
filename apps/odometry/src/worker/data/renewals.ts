@@ -1,7 +1,7 @@
 import { eq, desc } from "drizzle-orm";
-import { ScopedRepo } from "./base";
+import { GarageScopedRepo } from "./base";
 import { renewals } from "../schema";
-import { NotFoundError } from "../errors";
+import { NotFoundError } from "@portals/core/worker";
 import type { RenewalInput, RenewalPatch } from "@shared/zod";
 
 /**
@@ -12,7 +12,7 @@ import type { RenewalInput, RenewalPatch } from "@shared/zod";
  * last year's premium with this year's and the trend it was supposed to show
  * is gone, silently and unrecoverably.
  */
-export class RenewalRepo extends ScopedRepo {
+export class RenewalRepo extends GarageScopedRepo {
   /** Full history for a vehicle, newest expiry first. */
   async list(vehicleId: string) {
     await this.assertOwnedVehicle(vehicleId);

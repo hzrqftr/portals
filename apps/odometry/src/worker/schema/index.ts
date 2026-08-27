@@ -18,13 +18,17 @@ import {
  * the source of truth for the shape of the database.
  */
 
-export const users = sqliteTable("users", {
-  id: text("id").primaryKey(),
-  email: text("email").notNull().unique(),
-  displayName: text("display_name"),
-  timezone: text("timezone").notNull().default("Asia/Kuala_Lumpur"),
-  createdAt: text("created_at").notNull(),
-});
+/**
+ * `users` and `user_settings` are shared by every portal and are defined in
+ * @portals/core/schema. They are re-exported here so `import * as schema`
+ * still describes the whole of what this app may query, and so the Drizzle
+ * client is typed over one object rather than two.
+ *
+ * Odometry's OWN ownership tables -- garages, garage_members -- stay below.
+ * They are not in core on purpose: a garage is Odometry's tenant axis, and
+ * Coinbox must not be able to type a query against it.
+ */
+export { users, userSettings } from "@portals/core/schema";
 
 export const garages = sqliteTable("garages", {
   id: text("id").primaryKey(),
@@ -37,19 +41,6 @@ export const garageMembers = sqliteTable("garage_members", {
   garageId: text("garage_id").notNull(),
   userId: text("user_id").notNull(),
   role: text("role", { enum: ["owner", "editor", "viewer"] }).notNull(),
-});
-
-export const userSettings = sqliteTable("user_settings", {
-  userId: text("user_id").primaryKey(),
-  distanceUnit: text("distance_unit", { enum: ["km", "mi"] }).notNull().default("km"),
-  currency: text("currency").notNull().default("MYR"),
-  dateFormat: text("date_format").notNull().default("DD/MM/YYYY"),
-  dueSoonDays: integer("due_soon_days").notNull().default(30),
-  dueSoonKm: integer("due_soon_km").notNull().default(1000),
-  // Assumed daily distance used only while a vehicle has too little odometer
-  // history to measure one. See USAGE_CTE in data/status.ts.
-  fallbackKmPerDay: integer("fallback_km_per_day").notNull().default(30),
-  staleOdometerDays: integer("stale_odometer_days").notNull().default(45),
 });
 
 export const partTypes = sqliteTable("part_types", {

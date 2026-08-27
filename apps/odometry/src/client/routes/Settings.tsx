@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMe, useUpdateSettings, type Settings as SettingsShape } from "../api/hooks";
 import { Page, AppHeader, SectionTitle } from "../components/Layout";
 import { TemplateEditor } from "../components/TemplateEditor";
-import { INPUT, Field, digitsOnly } from "../components/form";
+import { INPUT, Field, digitsOnly } from "@portals/core/client";
 
 /**
  * Spec 8.7. Everything here used to be a constant in the source.

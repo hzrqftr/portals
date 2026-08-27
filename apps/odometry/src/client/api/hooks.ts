@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "./client";
+import { api } from "@portals/core/client";
 
 export type Status = "overdue" | "due_soon" | "ok" | "unknown";
 

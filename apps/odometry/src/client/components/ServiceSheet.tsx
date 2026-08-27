@@ -9,10 +9,10 @@ import {
   type ServiceTypeName,
   type VehicleType,
 } from "../api/hooks";
-import { parseSen, toQuantityMilli, formatSen } from "@shared/money";
-import { INPUT, Field, digitsOnly } from "./form";
+import { parseSen, toQuantityMilli, formatSen } from "@portals/core";
+import { INPUT, Field, digitsOnly } from "@portals/core/client";
 import { formatKm } from "../lib/format";
-import { Sheet } from "./Sheet";
+import { Sheet } from "@portals/core/client";
 import { PartPicker } from "./PartPicker";
 import { ServiceItemRow, type ItemDraft } from "./ServiceItemRow";
 
