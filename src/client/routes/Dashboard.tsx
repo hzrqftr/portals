@@ -25,7 +25,7 @@ export default function Dashboard() {
     <>
       <AppHeader />
       <Page>
-        <h1 className="mt-6 text-3xl font-semibold tracking-tight">Fleet</h1>
+        <h1 className="mt-6 text-3xl font-semibold tracking-tight">Your Vehicles</h1>
 
         {data.staleOdometers.length > 0 && (
           // Spec 8.1 / 11.7: every projection decays silently without fresh

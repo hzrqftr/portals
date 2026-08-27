@@ -18,18 +18,25 @@ export function Page({ children }: { children: ReactNode }) {
 
 /**
  * The top bar, shared by every route. Previously each route rendered its own
- * "← Fleet" link and the dashboard alone had a Settings link, so Settings was
- * unreachable from a vehicle page without going home first.
+ * back-to-home link and the dashboard alone had a Settings link, so Settings
+ * was unreachable from a vehicle page without going home first.
  *
- * A breadcrumb rather than a duplicate "← Fleet" link: the wordmark already
+ * A breadcrumb rather than a duplicate home link: the wordmark already
  * returns home, so `crumb` says where you are instead of repeating how to
  * leave.
  *
- * The back arrow is a different thing from the wordmark and both are needed.
- * The wordmark always goes home; the arrow returns to whatever you were
- * looking at. Reaching Settings from a vehicle page and pressing "Fleet"
- * lands on the dashboard, which is not where you came from -- that is the
- * gap the arrow closes.
+ * The back arrow is a different thing from the home link and both are needed.
+ * The home link always goes to the dashboard; the arrow returns to whatever
+ * you were looking at. Reaching Settings from a vehicle page and pressing
+ * "Dashboard" lands on the dashboard, which is not where you came from --
+ * that is the gap the arrow closes.
+ *
+ * The root link changes identity with depth, which is deliberate. At the
+ * root it is the WORDMARK: the app name in the display face, the one piece
+ * of branding on screen. Inside a breadcrumb it is NAVIGATION, so it reads
+ * "Dashboard" in the body font and sits at the same weight as the crumb
+ * beside it. A script face next to plain crumb text looked like a mistake,
+ * and "Odometry / Waja" named the app where the user expected a place.
  */
 export function AppHeader({ crumb }: { crumb?: string }) {
   const { pathname } = useLocation();
@@ -39,9 +46,18 @@ export function AppHeader({ crumb }: { crumb?: string }) {
     <header className="sticky top-0 z-30 border-b border-edge bg-page/90 backdrop-blur">
       <div className={CONTAINER.replace("pb-24", "") + " flex h-14 items-center gap-2"}>
         {crumb && <BackButton />}
-        <Link to="/" className="font-semibold tracking-tight hover:text-ink">
-          Fleet
-        </Link>
+        {crumb ? (
+          <Link to="/" className="shrink-0 text-ink-muted hover:text-ink">
+            Dashboard
+          </Link>
+        ) : (
+          <Link
+            to="/"
+            className="shrink-0 font-wordmark text-2xl leading-none hover:text-ink"
+          >
+            Odometry
+          </Link>
+        )}
         {crumb && (
           <>
             <span aria-hidden className="text-ink-faint">

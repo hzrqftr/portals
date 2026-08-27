@@ -17,6 +17,20 @@
   color-scheme: dark;
 }
 
+/**
+ * Wordmark only. This file is SUBSET to the eight glyphs in "Odometry" --
+ * that is why it is 4KB and not 134KB. Every other character is absent, so
+ * applying this family to anything else silently falls back mid-word.
+ * Regenerate via fonts-src/README.md if the wordmark text ever changes.
+ */
+@font-face {
+  font-family: "Bukhari Script";
+  src: url("/fonts/bukhari-script.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
 }

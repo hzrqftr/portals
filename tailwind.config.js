@@ -3,6 +3,11 @@ export default {
   content: ["./index.html", "./src/client/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        // Display face for the header wordmark only -- see the subset note in
+        // index.css before reaching for it anywhere else.
+        wordmark: ['"Bukhari Script"', 'ui-serif', 'cursive'],
+      },
       colors: {
         /**
          * The app is DARK ONLY, so this is the base palette rather than a
