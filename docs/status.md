@@ -107,7 +107,7 @@ root `CLAUDE.md`, "One database, one repo".
 |---|---|
 | Repo | `hzrqftr/portals`, private, branch `main` |
 | Odometry app | https://fleet-portal.hazriq-fitri95.workers.dev |
-| Coinbox app | https://coinbox.hazriq-fitri95.workers.dev — live, owner-only |
+| Coinbox app | https://coinbox.hazriq-fitri95.workers.dev — LIVE with the full ledger, owner-only |
 | Workers | `fleet-portal`, `coinbox` |
 | Database | D1 `fleet` (`e4bdd9c3-e885-42de-a709-4daf8f4a6edb`) |
 | Access team | `effortless-hf95.cloudflareaccess.com` |
@@ -232,6 +232,60 @@ Verified against the deployed app, not just the test suite.
   a log behind. It is the one job here with nobody watching it.
 - Every Phase 1 API endpoint
 - 73 tests: tenant isolation, derived logic, and the Access JWT fallback
+
+---
+
+## Coinbox is live on the real ledger — 2026-08-28
+
+**The Google Form can be retired.** Coinbox holds the complete history and
+every entry path the Form had, plus the four things it could not do.
+
+| | |
+|---|---|
+| Transactions in production | **4,421** |
+| Span | 2022-01-03 → 2026-08-28, 56 months |
+| Money in / out | RM 350,805.89 / RM 350,809.67 |
+| Net | −RM 3.78 |
+| Categories | 20, seeded globally |
+| Vehicle-attributed | 699 |
+
+Reconciled exactly on the first production run, against figures written into
+`docs/coinbox-spec.md` §6 **before** the importer existed. Foreign key check
+clean. Both portals still 302 to Access.
+
+### What the full history changed
+
+The 2026-only sample it was all built against was wrong about three things.
+
+1. **A zero amount is real data.** `CHECK (amount_sen > 0)` rejected eight
+   RM 0.00 water bills, recorded on purpose so a monthly-average dashboard has
+   a value for every month. The constraint is now `>= 0`; the guard that was
+   actually wanted — blank versus typed zero — moved to the form and the table,
+   where the slip happens.
+2. **A default tuned on a slice lied.** Miscellaneous is 12 in / 3 out across
+   2026 and 34 in / 66 out across five years. It defaulted to `in`; it now
+   defaults to `out`.
+3. **Four categories were missing** — Accommodation, Dividend, Fundings, Debt
+   appear only before 2026.
+
+### Import decisions, for the record
+
+- The **"Elai's" row** (12-May-2022) was dropped: a restaurant name landed in
+  the Amount column and no figure is recoverable.
+- **Six duplicate pairs** were double submissions; the second of each was
+  dropped, worth RM 102.83. That is the whole difference from the Sheet's
+  totals, so an import matching the Sheet exactly would be wrong.
+- **124 ambiguous `Car fuel` rows → the City.** An **owner decision, not
+  evidence**: the file names the Waja 44 times to the City's 33 and leans Waja
+  heavily in 2023. Recorded here so four years of attribution is never mistaken
+  for something the Sheet said.
+
+### Still on the Sheet, deliberately
+
+The owner is dropping the **Form**, not the **Sheet**. Features he still wants
+live there and are not built here yet — dashboards and the monthly averages the
+zero-amount rows feed. Coinbox is the system of record for entries; the Sheet
+is still where some analysis happens.
 
 ---
 
