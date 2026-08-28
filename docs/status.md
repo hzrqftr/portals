@@ -7,6 +7,76 @@ build; this file says how much of it exists.
 
 ---
 
+## UNFINISHED: rename the local folder, then delete the signpost
+
+**Owner action, 2026-08-28.** Everything below this section assumes the folder
+rename has happened. It has not. Do this first.
+
+The GitHub repo is already renamed `hzrqftr/portals` and `origin` already
+points at it. What is left is the **local** folder, still `github/odometry`
+while containing `apps/odometry`.
+
+It could not be done from the coding session: Claude Code resets its shell
+working directory into the repo folder after every command, and a process whose
+cwd is a directory holds a Windows handle that forbids renaming it. `mv` gives
+"Device or resource busy", `Rename-Item` gives "being used by another process".
+Closing the session releases it. A second terminal does not help — the handle
+belongs to the session, not the terminal.
+
+### The steps
+
+```
+1. Close the Claude Code session.
+
+2. cd "C:UsersHazriq Fitrigithub"
+   ren odometry portals
+   rmdir /s /q coinbox          # the signpost; see "Why the signpost existed"
+
+3. Reopen Claude Code in C:UsersHazriq Fitrigithubportals
+
+4. rmdir /s /q node_modules     # REQUIRED, see below
+   npm ci
+   npm test                     # expect: lint + 73 Odometry + 7 Coinbox
+```
+
+### Step 4 is not optional
+
+npm workspaces link on Windows as **junctions with absolute targets**. All
+three currently point into the old path:
+
+| Link | Target |
+|---|---|
+| `node_modules/odometry` | `...githubodometryappsodometry` |
+| `node_modules/coinbox` | `...githubodometryappscoinbox` |
+| `node_modules/@portals/core` | `...githubodometrypackagescore` |
+
+After the rename those resolve to a path that no longer exists. Every
+`@portals/core` import fails and so do the build and the test run. `npm ci`
+rebuilds them against the new path. This is a local-only concern — junctions
+are not in git, and a fresh clone never has the problem.
+
+`.wrangler/state` is fine: it is found relative to the repo root, so the local
+D1 and its data move with the folder. No migration needs re-applying.
+
+### Why the signpost existed
+
+`github/coinbox` was a folder holding one README and no code, pointing at
+`../odometry`. It was kept, not deleted, through three sessions because it was
+the only artifact outside an unpushed branch saying where Coinbox actually
+lived. Both reasons are now gone — the branch is pushed and the repo is
+renamed — so once `github/portals` exists it has nothing left to point at.
+Delete it in the same sitting as the rename, as step 2 does.
+
+### Still open after all that
+
+- **`workspace-split` is unmerged.** `main` is still the pre-split single-app
+  repo at `94b0e5e`. A fresh clone that does not check out the branch sees the
+  old world. Merging is a decision, not a chore — it was left to the owner.
+- The blocked-on-owner list below (`wrangler login`, the Coinbox Access
+  application, a wordmark, an R2 bucket) is unchanged.
+
+---
+
 ## READ THIS FIRST: work in progress on an unmerged branch
 
 **The two-portal workspace lives on branch `workspace-split`, four commits,
