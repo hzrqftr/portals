@@ -1,5 +1,5 @@
 import type { MaintenanceRow, PartType } from "../api/hooks";
-import { INPUT } from "@portals/core/client";
+import { Select } from "@portals/core/client";
 import { categoryLabel, groupByCategory } from "../lib/partCategories";
 
 /**
@@ -34,10 +34,10 @@ export function PartPicker({
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <select
+    <Select
       value=""
       onChange={(e) => e.target.value && onAdd(e.target.value)}
-      className={INPUT + " mt-3"}
+      className="mt-3"
     >
       <option value="">+ Add a part</option>
 
@@ -66,6 +66,6 @@ export function PartPicker({
           ))}
         </optgroup>
       ))}
-    </select>
+    </Select>
   );
 }

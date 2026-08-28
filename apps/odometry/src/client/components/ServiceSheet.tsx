@@ -10,7 +10,7 @@ import {
   type VehicleType,
 } from "../api/hooks";
 import { parseSen, toQuantityMilli, formatSen } from "@portals/core";
-import { INPUT, Field, digitsOnly } from "@portals/core/client";
+import { Field, INPUT, Select, digitsOnly } from "@portals/core/client";
 import { formatKm } from "../lib/format";
 import { Sheet } from "@portals/core/client";
 import { PartPicker } from "./PartPicker";
@@ -203,10 +203,10 @@ export function ServiceSheet({
           </div>
 
           <Field label="Type of service">
-            <select
+            <Select
+              className="mt-1"
               value={serviceType}
               onChange={(e) => chooseType(e.target.value as ServiceTypeName | "")}
-              className={INPUT}
             >
               <option value="">Not specified</option>
               {SERVICE_TYPES.map((t) => (
@@ -214,7 +214,7 @@ export function ServiceSheet({
                   {t.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
 
           <Field label="Workshop">

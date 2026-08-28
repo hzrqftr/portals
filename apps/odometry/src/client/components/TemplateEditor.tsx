@@ -4,7 +4,7 @@ import {
   usePutServiceTemplate,
   type ServiceTypeName,
 } from "../api/hooks";
-import { INPUT } from "@portals/core/client";
+import { Select } from "@portals/core/client";
 
 /**
  * Which parts a service type pre-fills in the log-service form.
@@ -59,11 +59,11 @@ export function TemplateEditor({ serviceType }: { serviceType: ServiceTypeName }
         </ul>
       )}
 
-      <select
+      <Select
         value=""
         disabled={put.isPending}
         onChange={(e) => e.target.value && write([...chosen, e.target.value])}
-        className={INPUT + " mt-3"}
+        className="mt-3"
       >
         <option value="">+ Add a part</option>
         {available.map((p) => (
@@ -71,7 +71,7 @@ export function TemplateEditor({ serviceType }: { serviceType: ServiceTypeName }
             {p.name}
           </option>
         ))}
-      </select>
+      </Select>
 
       {put.isError && (
         <p className="mt-1 text-sm text-status-overdue-fg">{(put.error as Error).message}</p>

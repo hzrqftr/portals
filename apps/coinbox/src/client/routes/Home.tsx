@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AppHeader, Page, SectionTitle } from "../components/Layout";
 import { todayIn } from "@portals/core";
+import { Select } from "@portals/core/client";
 import {
   useMe,
   useCategories,
@@ -14,8 +15,8 @@ import { TransactionTable } from "../components/TransactionTable";
 /** Matches the API's default page size, so "is there more?" is answerable. */
 const LIST_LIMIT = 500;
 
-/** One definition, so the filters and the search stay the same height. */
-const FILTER = "rounded-xl border border-edge bg-inset px-3 py-2 text-ink";
+/** The search input, matched to Select's `sm` metrics so the row lines up. */
+const FILTER = "w-full rounded-xl border border-edge bg-inset px-3 py-2 text-ink";
 
 export default function Home() {
   const me = useMe();
@@ -75,37 +76,33 @@ export default function Home() {
 
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-3">
-            <select className={FILTER} value={month} onChange={(e) => setMonth(e.target.value)}>
+            <Select size="sm" value={month} onChange={(e) => setMonth(e.target.value)}>
               <option value="">All months</option>
               {months.map((m) => (
                 <option key={m.month} value={m.month}>
                   {m.month}
                 </option>
               ))}
-            </select>
+            </Select>
 
-            <select
-              className={FILTER}
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-            >
+            <Select size="sm" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
               <option value="">All categories</option>
               {categories.data?.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
-            </select>
+            </Select>
 
-            <select
-              className={FILTER}
+            <Select
+              size="sm"
               value={direction}
               onChange={(e) => setDirection(e.target.value as "" | "in" | "out")}
             >
               <option value="">All types</option>
               <option value="out">Out</option>
               <option value="in">In</option>
-            </select>
+            </Select>
           </div>
 
           {/* Right-aligned, under the Add entry button. Searching is a

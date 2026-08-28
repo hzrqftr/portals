@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Sheet, SheetActions, INPUT, Field } from "@portals/core/client";
+import { Field, INPUT, Select, Sheet, SheetActions } from "@portals/core/client";
 import { parseSen } from "@portals/core";
 import {
   useCategories,
@@ -191,7 +191,7 @@ export function TransactionSheet({
           including RM 3,000 from the owner's mother for the roof, which is
           filed as Household and arrives as money in.
         */}
-        <select className={INPUT} value={categoryId} onChange={(e) => pickCategory(e.target.value)}>
+        <Select className="mt-1" value={categoryId} onChange={(e) => pickCategory(e.target.value)}>
           <option value="">Choose one</option>
           <optgroup label={form.direction === "in" ? "Usually money in" : "Usually money out"}>
             {usual.map((c) => (
@@ -207,7 +207,7 @@ export function TransactionSheet({
               </option>
             ))}
           </optgroup>
-        </select>
+        </Select>
       </Field>
 
       {/*
@@ -217,8 +217,8 @@ export function TransactionSheet({
       */}
       {vehicleVisible && (
         <Field label="Vehicle">
-          <select
-            className={INPUT}
+          <Select
+            className="mt-1"
             value={form.vehicleId ?? ""}
             onChange={(e) => setForm((f) => ({ ...f, vehicleId: e.target.value || null }))}
           >
@@ -228,7 +228,7 @@ export function TransactionSheet({
                 {v.nickname}
               </option>
             ))}
-          </select>
+          </Select>
         </Field>
       )}
 
