@@ -55,11 +55,11 @@ interface Editing {
  * select, which has its own intrinsic sizing, cannot push the row around.
  */
 const CELL = "px-3 py-1.5 align-middle transition-colors";
-const CONTENT = "flex h-9 items-center text-sm leading-5";
+const CONTENT = "flex h-9 min-w-0 items-center text-sm leading-5";
 
 /** Editor and display must be metrically identical. Change both or neither. */
 const EDITOR =
-  "h-9 w-full appearance-none border-0 p-0 text-sm leading-5 text-ink " +
+  "h-9 w-full min-w-0 appearance-none border-0 p-0 text-sm leading-5 text-ink " +
   "focus:outline-none focus:ring-0";
 
 const EDITOR_INPUT = EDITOR + " bg-transparent";
@@ -255,7 +255,29 @@ export function TransactionTable({
       {/* Wide content scrolls inside its own container; the page never scrolls
           sideways. Seven columns do not fit a phone and should not try to. */}
       <div className="overflow-x-auto rounded-xl border border-edge">
-        <table className="w-full min-w-[52rem] border-collapse text-sm">
+        {/*
+          TABLE-FIXED, WITH DECLARED WIDTHS.
+
+          Under the default auto layout a column is sized by its contents, and
+          an <input> carries an intrinsic width of roughly twenty characters
+          regardless of the `w-full` on it. So clicking an Amount cell widened
+          the whole column and shoved every other column sideways -- the same
+          class of bug as the row-height jump, on the other axis.
+
+          Fixed layout makes width a property of the column rather than of
+          whatever happens to be in it, which is also how a spreadsheet
+          behaves. Nothing can move by being clicked.
+        */}
+        <table className="w-full min-w-[64rem] table-fixed border-collapse text-sm">
+          <colgroup>
+            <col className="w-[7.5rem]" />
+            <col className="w-[14rem]" />
+            <col className="w-[8rem]" />
+            <col className="w-[10rem]" />
+            <col />
+            <col className="w-[5rem]" />
+            <col className="w-[8rem]" />
+          </colgroup>
           <thead className="bg-inset">
             <tr>
               <th className={HEAD}>Date</th>
@@ -302,7 +324,9 @@ export function TransactionTable({
                           onCancel={() => setEditing(null)}
                         />
                       ) : (
-                        <span className="text-ink">{t.item}</span>
+                        <span className="truncate text-ink" title={t.item}>
+                          {t.item}
+                        </span>
                       )}
                     </div>
                   </td>
@@ -348,7 +372,9 @@ export function TransactionTable({
                           ))}
                         </CellSelect>
                       ) : (
-                        <span className="whitespace-nowrap text-ink-muted">{t.categoryName}</span>
+                        <span className="truncate text-ink-muted" title={t.categoryName}>
+                          {t.categoryName}
+                        </span>
                       )}
                     </div>
                   </td>
@@ -363,7 +389,9 @@ export function TransactionTable({
                           onCancel={() => setEditing(null)}
                         />
                       ) : (
-                        <span className="text-ink-faint">{t.description || "—"}</span>
+                        <span className="truncate text-ink-faint" title={t.description ?? ""}>
+                          {t.description || "—"}
+                        </span>
                       )}
                     </div>
                   </td>
