@@ -250,6 +250,7 @@ the endpoints exist and are covered by the isolation suite.
 | Custom part types in the UI | — | `POST /api/part-types` exists and is isolation-tested, but nothing calls it yet; the 61 seeded types cover the common cases |
 | Per-vehicle service templates | §8.4 | `service_templates.vehicle_id` exists and is always NULL; templates are garage-wide for now, which also means one "Minor service" template is shared between a car and a bike |
 | Changing a vehicle's type | — | Read-only once created, deliberately: switching it would not re-seed or un-seed anything, so a control that appeared to turn a car into a bike while leaving forty car parts behind would be lying. Delete-and-recreate for now |
+| `Sheet`'s close button (both portals) | — | `packages/core/src/client/Sheet.tsx` floats its X in a zero-height row, so every caller must remember `pr-9` to stay clear of it, and must render its own `<h2>` because `title` is only an aria-label. Three of five callers remember; **`OdometerSheet` and `ServiceSheet` are correct only because their headings are short** — a longer vehicle nickname reproduces the collision Coinbox hit on 2026-08-28. Reviewed and deliberately deferred: the real fix is `Sheet` rendering the title itself, which touches five files and needs judgement in `ServiceSheet` (its saved-state screen) and `PartDetailSheet` (its pill header) |
 
 Deferred by design: Budgets (§8.6) is Phase 2, multi-user is Phase 3, backups
 and reminders are Phase 4.
