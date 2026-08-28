@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppHeader, Page, SectionTitle } from "../components/Layout";
 import { todayIn } from "@portals/core";
 import {
@@ -14,6 +14,9 @@ import { TransactionTable } from "../components/TransactionTable";
 /** Matches the API's default page size, so "is there more?" is answerable. */
 const LIST_LIMIT = 500;
 
+/** One definition, so the filters and the search stay the same height. */
+const FILTER = "rounded-xl border border-edge bg-inset px-3 py-2 text-ink";
+
 export default function Home() {
   const me = useMe();
   const categories = useCategories();
@@ -21,9 +24,27 @@ export default function Home() {
 
   const [month, setMonth] = useState<string>("");
   const [categoryId, setCategoryId] = useState<string>("");
+  const [direction, setDirection] = useState<"" | "in" | "out">("");
+  const [search, setSearch] = useState<string>("");
   const [adding, setAdding] = useState(false);
 
-  const filters = { ...(month ? { month } : {}), ...(categoryId ? { categoryId } : {}) };
+  // Debounced, so typing "Motorcycle fuel" is one request rather than fifteen.
+  // The query key includes the filters, so an un-debounced search would also
+  // spawn a cache entry per keystroke.
+  const [query, setQuery] = useState<string>("");
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const filters = {
+    ...(month ? { month } : {}),
+    ...(categoryId ? { categoryId } : {}),
+    ...(direction ? { direction } : {}),
+    // Omitted when empty rather than sent blank: the API's `q` is min(1), so
+    // an empty string is a 422 rather than "no filter".
+    ...(query ? { q: query } : {}),
+  };
   const transactions = useTransactions(filters);
   const summary = useSummary();
 
@@ -52,31 +73,68 @@ export default function Home() {
           </button>
         </div>
 
-        <div className="mb-6 flex flex-wrap gap-3">
-          <select
-            className="rounded-xl border border-edge bg-inset px-3 py-2 text-ink"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-          >
-            <option value="">All months</option>
-            {months.map((m) => (
-              <option key={m.month} value={m.month}>
-                {m.month}
-              </option>
-            ))}
-          </select>
-          <select
-            className="rounded-xl border border-edge bg-inset px-3 py-2 text-ink"
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-          >
-            <option value="">All categories</option>
-            {categories.data?.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-3">
+            <select className={FILTER} value={month} onChange={(e) => setMonth(e.target.value)}>
+              <option value="">All months</option>
+              {months.map((m) => (
+                <option key={m.month} value={m.month}>
+                  {m.month}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className={FILTER}
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+            >
+              <option value="">All categories</option>
+              {categories.data?.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className={FILTER}
+              value={direction}
+              onChange={(e) => setDirection(e.target.value as "" | "in" | "out")}
+            >
+              <option value="">All types</option>
+              <option value="out">Out</option>
+              <option value="in">In</option>
+            </select>
+          </div>
+
+          {/* Right-aligned, under the Add entry button. Searching is a
+              different gesture from narrowing, so it sits apart from the
+              three selects rather than becoming a fourth one. */}
+          <div className="relative w-full sm:w-64">
+            <input
+              // The native search-cancel button is suppressed and replaced
+              // below: keeping both gave two X's side by side, and the native
+              // one is styled differently in every browser.
+              className={
+                FILTER + " w-full pr-8 [&::-webkit-search-cancel-button]:appearance-none"
+              }
+              type="search"
+              placeholder="Search items…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-ink-faint hover:text-ink"
+              >
+                &times;
+              </button>
+            )}
+          </div>
         </div>
 
         {transactions.isPending ? (
