@@ -57,7 +57,11 @@ export class TransactionRepo extends LedgerScopedRepo {
       .innerJoin(categories, eq(categories.id, transactions.categoryId))
       .where(this.where(transactions, ...conditions))
       .orderBy(desc(transactions.occurredOn), desc(transactions.createdAt))
-      .limit(Math.min(filters.limit ?? 200, 500));
+      // 500 by default: the whole ledger is 648 rows and grows by roughly 80
+      // a month, so the table shows everything for a filtered month and very
+      // nearly everything unfiltered. Past a few thousand this wants
+      // virtualising rather than a bigger number.
+      .limit(Math.min(filters.limit ?? 500, 1000));
   }
 
   async get(id: string) {

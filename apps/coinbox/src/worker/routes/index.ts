@@ -18,7 +18,7 @@ const listQuery = z.object({
   categoryId: z.string().min(1).optional(),
   direction: direction.optional(),
   q: z.string().trim().min(1).max(100).optional(),
-  limit: z.coerce.number().int().positive().max(500).optional(),
+  limit: z.coerce.number().int().positive().max(1000).optional(),
 });
 
 /**

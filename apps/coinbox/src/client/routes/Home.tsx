@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { AppHeader, Page, SectionTitle } from "../components/Layout";
-import { formatSen, todayIn } from "@portals/core";
+import { todayIn } from "@portals/core";
 import {
   useMe,
   useCategories,
   useVehicles,
   useTransactions,
   useSummary,
-  type Transaction,
 } from "../api/hooks";
 import { TransactionSheet } from "../components/TransactionSheet";
-import { TransactionList } from "../components/TransactionList";
+import { TransactionTable } from "../components/TransactionTable";
+
+/** Matches the API's default page size, so "is there more?" is answerable. */
+const LIST_LIMIT = 500;
 
 export default function Home() {
   const me = useMe();
@@ -20,7 +22,6 @@ export default function Home() {
   const [month, setMonth] = useState<string>("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [adding, setAdding] = useState(false);
-  const [editing, setEditing] = useState<Transaction | null>(null);
 
   const filters = { ...(month ? { month } : {}), ...(categoryId ? { categoryId } : {}) };
   const transactions = useTransactions(filters);
@@ -31,11 +32,9 @@ export default function Home() {
   // puts eight hours of every evening on the wrong day.
   const today = me.data ? todayIn(me.data.timezone) : "";
 
-  const vehicleNames = new Map((vehicles.data ?? []).map((v) => [v.id, v.nickname]));
+  // The summary is still fetched, but only to populate the month filter --
+  // one row per month is exactly the list of months that have entries.
   const months = summary.data ?? [];
-  const shown = month ? months.filter((m) => m.month === month) : months;
-  const totalIn = shown.reduce((a, m) => a + m.in_sen, 0);
-  const totalOut = shown.reduce((a, m) => a + m.out_sen, 0);
 
   return (
     <>
@@ -51,36 +50,6 @@ export default function Home() {
           >
             Add entry
           </button>
-        </div>
-
-        {/* Totals for whatever is currently in view, so the filter and the
-            figures can never describe different things. */}
-        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-edge bg-surface px-4 py-3">
-            <div className="text-xs uppercase tracking-wider text-ink-faint">In</div>
-            <div className="mt-1 tabular-nums text-lg font-semibold text-status-ok-fg">
-              {formatSen(totalIn)}
-            </div>
-          </div>
-          <div className="rounded-xl border border-edge bg-surface px-4 py-3">
-            <div className="text-xs uppercase tracking-wider text-ink-faint">Out</div>
-            <div className="mt-1 tabular-nums text-lg font-semibold text-ink">
-              {formatSen(totalOut)}
-            </div>
-          </div>
-          <div className="col-span-2 rounded-xl border border-edge bg-surface px-4 py-3 sm:col-span-1">
-            <div className="text-xs uppercase tracking-wider text-ink-faint">Net</div>
-            <div
-              className={
-                "mt-1 tabular-nums text-lg font-semibold " +
-                (totalIn - totalOut >= 0 ? "text-status-ok-fg" : "text-status-overdue-fg")
-              }
-            >
-              {/* Magnitude plus a word, never a minus sign. */}
-              {totalIn - totalOut >= 0 ? "up " : "down "}
-              {formatSen(Math.abs(totalIn - totalOut))}
-            </div>
-          </div>
         </div>
 
         <div className="mb-6 flex flex-wrap gap-3">
@@ -115,18 +84,19 @@ export default function Home() {
         ) : transactions.isError ? (
           <p className="text-status-overdue-fg">{(transactions.error as Error).message}</p>
         ) : (
-          <TransactionList
+          <TransactionTable
             transactions={transactions.data ?? []}
-            vehicleNames={vehicleNames}
-            onEdit={setEditing}
+            categories={categories.data ?? []}
+            vehicles={vehicles.data ?? []}
+            truncated={(transactions.data?.length ?? 0) >= LIST_LIMIT}
           />
         )}
       </Page>
 
+      {/* The sheet is for ADDING only now. A blank row needs the direction
+          defaults and the conditional vehicle field; a correction does not,
+          and the table handles those in place. */}
       {adding && today && <TransactionSheet today={today} onClose={() => setAdding(false)} />}
-      {editing && today && (
-        <TransactionSheet today={today} existing={editing} onClose={() => setEditing(null)} />
-      )}
     </>
   );
 }

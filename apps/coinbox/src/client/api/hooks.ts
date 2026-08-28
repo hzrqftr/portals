@@ -126,6 +126,26 @@ export function useCreateTransaction() {
   });
 }
 
+/**
+ * Patch one transaction, id passed at call time rather than at hook time.
+ *
+ * The table needs this: `useUpdateTransaction(id)` binds an id when the hook
+ * is created, which is fine for a sheet editing one row and impossible for a
+ * grid where any of 648 rows might be the next one touched. Hooks cannot be
+ * called in a loop.
+ */
+export function usePatchTransaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<TransactionDraft> }) =>
+      api<Transaction>(`/transactions/${id}`, { method: "PATCH", json: patch }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["summary"] });
+    },
+  });
+}
+
 export function useUpdateTransaction(id: string) {
   const qc = useQueryClient();
   return useMutation({
