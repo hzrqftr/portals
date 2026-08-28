@@ -184,6 +184,8 @@ npx wrangler tail -c apps/odometry/wrangler.jsonc   # live logs, incl. CPU warni
 node scripts/restore.mjs <backup.json>                  # restore into local D1
 node scripts/restore.mjs <backup.json> --dry-run        # show what it would run
 node scripts/restore.mjs <backup.json> --remote --i-mean-it
+
+node scripts/export-csv.mjs <backup.json> --out csv/   # one CSV per table
 ```
 
 ### Backups

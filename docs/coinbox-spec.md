@@ -250,12 +250,16 @@ Current columns: `Timestamp, Item, Amount, Category, Description, Type`, where
 
 Genuinely undecided. Whoever implements next should ask rather than pick.
 
-1. **Category structure.** Flat list, or does it need grouping? The Sheet's ~20
-   are flat and unbound to direction. Grouping is easy to add and hard to
-   remove.
-2. **How much of the Odometry link to build in phase one.** The nullable
-   `vehicle_id` is cheap; the reverse link (`transaction_id` on service
-   records) and any shared UI are not.
+1. ~~**Category structure.**~~ **SETTLED 2026-08-28: flat, ~20, unbound to
+   direction.** Matches the Sheet, so the import is a direct mapping with
+   nothing to invent. Grouping stays easy to add later and hard to remove, so
+   it waits for a reason. Do not add a `direction` column to `categories`.
+2. ~~**How much of the Odometry link to build in phase one.**~~
+   **SETTLED 2026-08-28: the nullable `vehicle_id` only.** A transaction may
+   name a vehicle, which is enough for fuel and service attribution and for
+   cost-per-km later. The reverse link (`transaction_id` on service records)
+   and any shared UI are deferred -- they couple the two portals' write paths,
+   which is the expensive half and the one that can leak.
 3. **The `user_settings` split.** That table mixes shared columns (`currency`,
    `date_format`, `distance_unit`) with Odometry-specific ones (`due_soon_*`,
    `fallback_km_per_day`, `stale_odometer_days`). Coinbox reads only the shared
@@ -266,9 +270,11 @@ Genuinely undecided. Whoever implements next should ask rather than pick.
    assertion fallback exists) and the assertion payload carries no groups
    claim. `AppHeader` takes a `portals` prop that nothing passes, so switching
    it on later is passing an array rather than reworking chrome in two apps.
-5. **The wordmark.** Odometry's Bukhari Script woff2 is subset to the eight
-   letters of "Odometry" and is licensed free for personal use only. Coinbox
-   needs its own face, or stays on body type as it currently does.
+5. ~~**The wordmark.**~~ **CLOSED 2026-08-28: body type, indefinitely.**
+   Odometry's Bukhari Script woff2 is subset to the eight letters of
+   "Odometry" and licensed for personal use only, so it cannot be reused.
+   Coinbox stays on body type. Nothing depends on this and it was cluttering
+   the blocked list; reopen it only if the owner actively wants a face.
 6. **Backups — RESOLVED for R2, 2026-08-28. Sheets mirror still open.**
    The nightly D1 → R2 export is built and runs from the fleet-portal Worker
    (one D1, one backup, covering both portals). Retention is 90 days, chosen

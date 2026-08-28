@@ -138,19 +138,33 @@ state first (`npm run db:apply:local`). Do not reach for
 ## Getting the data OUT — as CSV, Excel, or a Sheet
 
 The backup is JSON. JSON is the right format for restoring exactly, and the
-wrong format for opening on a phone.
-
-**There is currently no CSV or XLSX export.** See "What is not built" below.
-
-What you *can* do today, for a one-off look:
+wrong format for opening on a phone. So there is a converter:
 
 ```bash
-# any table, straight out of the live database, as CSV
-npm run db:query:local -- --command "SELECT * FROM vehicles" --json
+npx wrangler r2 object get portals-backup/fleet/2026-08-28.json --remote --file=b.json
+node scripts/export-csv.mjs b.json --out csv/
 ```
 
-The JSON backup is also plain text with an obvious shape, so any spreadsheet
-tool that imports JSON will take it:
+That writes one CSV per table into `csv/`. Double-click any of them in Excel,
+or File → Import in Google Sheets.
+
+Three things it does that a naive dump would not:
+
+- **Money is converted to ringgit and the header says so.** It is stored as an
+  integer count of sen, so `24550` means RM 245.50 — exporting that raw would
+  read as twenty-four thousand ringgit. Columns come out as `cost_rm`,
+  `purchase_price_rm`, `amount_rm`. Pass `--raw-money` if you want the integers.
+- **It writes a UTF-8 BOM**, because Excel guesses the encoding without one and
+  mangles anything non-ASCII. `--no-bom` if some other tool objects.
+- **It defuses formula injection.** Excel and Sheets execute a cell starting
+  with `=`, `+`, `-` or `@`. A workshop named `=SUM` in your own data would
+  otherwise run when you opened the file.
+
+Useful flags: `--table vehicles` for just one, `--out somewhere/` to choose the
+directory.
+
+The JSON is also plain text with an obvious shape, if you would rather read it
+directly:
 
 ```jsonc
 {
@@ -174,13 +188,15 @@ tool that imports JSON will take it:
 **Today, trivially — because nothing has moved yet.** Coinbox's ledger is
 empty; the Sheet is still the real one. "Reverting" means continuing to use it.
 
-**After the import, it depends on something not yet built.** The JSON backup
-means your data is never trapped, but JSON is not a Sheet. Two things would
-close that gap, and neither exists:
+**After the import: export the CSV and paste it into a Sheet.** That path is
+built and is the answer to this question. What is still missing is only the
+*automatic* version — something that keeps a Sheet current without you running
+a command:
 
-- **A CSV export.** Small — one file per table, openable in Excel or
-  importable into Sheets directly. This is the practical answer to "let me look
-  at my own data."
+- ~~A CSV export.~~ **Built 2026-08-28** — `scripts/export-csv.mjs`, above.
+  This is the practical answer to "let me look at my own data", and it landed
+  before the import deliberately, so the readable path exists from the first
+  row rather than after.
 - **The Sheets mirror** (`docs/coinbox-spec.md` §7, decision 6). A nightly
   overwrite of a Google Sheet, so a readable copy always exists without anyone
   running a command. Deferred until the ledger has rows worth mirroring, and it
@@ -197,7 +213,8 @@ reasonable thing to want from a system that replaced a spreadsheet.
 
 - **Alerting on failure.** Logs are kept; nobody is told. Needs an email
   provider.
-- **CSV / XLSX export.** See above.
+- **XLSX specifically.** CSV is built (see above) and opens in Excel; a real
+  `.xlsx` with one sheet per table is not, and has not been needed.
 - **The Sheets mirror.** See above.
 - **Off-Cloudflare copies.** Every backup is in R2, which is in the same
   account as the database. That covers deletion and corruption, not account
