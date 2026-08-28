@@ -285,6 +285,17 @@ You cannot do these. Ask, and give exact steps:
 - **D1's SQLite has a low `SQLITE_MAX_COMPOUND_SELECT`.** A seven-term
   `UNION ALL` chain fails with `too many terms in compound SELECT`. Write
   repeated `INSERT ... SELECT` statements instead. Multi-row `VALUES` is fine.
+- **A newly registered Cron Trigger takes ~15 minutes to start firing.** On
+  2026-08-28 a trigger registered at 03:01:28Z produced its first run at
+  03:16:34Z, with nothing in between -- no invocations in analytics, no object
+  in R2. Everything looked broken and nothing was. Before debugging a cron that
+  "does not fire", check how long ago it was deployed.
+
+  `npx wrangler tail` is not the tool for this: it prints nothing from a
+  non-interactive shell, even for live traffic. `observability.enabled` in
+  `wrangler.jsonc` persists logs instead, which is why it is switched on.
+  Registered schedules can be read authoritatively from
+  `/accounts/<id>/workers/scripts/<name>/schedules`.
 - **D1 ignores `PRAGMA foreign_keys = OFF`.** It keeps enforcing constraints
   statement by statement, so the textbook SQLite restore idiom -- suspend
   foreign keys, insert in any order, check at the end -- does not work. Insert

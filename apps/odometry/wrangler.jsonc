@@ -20,6 +20,16 @@
       "migrations_dir": "../../migrations"
     }
   ],
+  // Persisted logs, queryable from the dashboard and the API.
+  //
+  // Added because the backup job is the one thing here with no user watching
+  // it: a scheduled handler that fails writes to console and nobody reads
+  // console. `wrangler tail` only shows what happens while it is attached, and
+  // it does not attach at all from a non-interactive shell -- which is exactly
+  // when you need it. This keeps the logs after the fact.
+  "observability": {
+    "enabled": true
+  },
   // Nightly whole-database export. 18:00 UTC is 02:00 Asia/Kuala_Lumpur, so
   // the dump lands on a day that has finished locally rather than mid-evening.
   //
@@ -29,7 +39,7 @@
   // cadence of the thing being changed. Table discovery is generic, so Coinbox
   // adding tables never requires redeploying this Worker.
   "triggers": {
-    "crons": ["* * * * *"]
+    "crons": ["0 18 * * *"]
   },
   // Retention is 90 days (packages/core/src/worker/backup.ts). Deliberately
   // longer than D1 Time Travel's 30-day window -- measured, not assumed, on

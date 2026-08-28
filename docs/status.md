@@ -72,13 +72,8 @@ build in phase one.
 1. **A Coinbox wordmark.** Odometry's Bukhari Script woff2 is subset to its own
    eight glyphs and is licensed for personal use only, so it cannot be reused.
    Coinbox stays on body type until it has its own face. Nothing depends on it.
-2. **An R2 bucket named `portals-backup`.** The backup code is BUILT and
-   ships with the next deploy — this bucket is now the only thing between it
-   and running. Cloudflare dashboard → R2 → Overview → Enable, then create the
-   bucket. R2 has a 10 GB free tier; Cloudflare asks for billing details to
-   switch it on. At roughly 300 KB/day and 90 days retention (~27 MB) it stays
-   free. Until the bucket exists the nightly job logs
-   "Backup skipped: no BACKUPS binding" and does nothing, which fails safe.
+2. **Nothing.** The R2 bucket was created on 2026-08-28 and the nightly backup
+   is live and verified. The wordmark above is the only outstanding item.
 
 ### Cleared on 2026-08-28
 
@@ -227,8 +222,14 @@ Verified against the deployed app, not just the test suite.
   account, and be a file you can read and move.
 
   `scripts/restore.mjs` is the operator path, and the round trip runs on every
-  `npm test`. It was also exercised by hand: 208 rows across 15 tables wiped
-  and restored, foreign key check clean.
+  `npm test`. It was also exercised against **production**, not just locally:
+  the cron wrote `fleet/2026-08-28.json` (47 KB, 15 tables), that object was
+  pulled from R2 and restored into the local database, and local came back
+  holding production's 3 vehicles and 96 maintenance intervals -- 255 rows,
+  foreign key check clean. That is the drill §7.6 asks for, done end to end.
+
+  `observability.enabled` is on for this Worker so a failed nightly run leaves
+  a log behind. It is the one job here with nobody watching it.
 - Every Phase 1 API endpoint
 - 73 tests: tenant isolation, derived logic, and the Access JWT fallback
 
