@@ -319,10 +319,16 @@ code) unless you are certain there is no pending migration.
   comments as violations and a fresh clone could not run `npm test` or
   therefore `npm run deploy`. If you ever see that lint flagging prose, suspect
   line endings first.
-- **`github.com` is blocked on the home ISP.** `git push` hangs for ~21
-  seconds and fails, while `gh` commands succeed, because those hit
-  `api.github.com`. It is not a git or credential problem. Tether to a phone
-  hotspot and retry. Unknown whether this affects other networks.
+- **`github.com` is blocked by the office wifi policy.** `git push` hangs for
+  ~21 seconds and fails, while `gh` commands succeed, because those hit
+  `api.github.com`. It is not a git or credential problem. Tethering to a phone
+  hotspot clears it. It is network-dependent, not permanent -- the push on
+  2026-08-28 went straight through.
+
+  **Always attempt the push before mentioning any of this.** The owner may
+  already be on a hotspot, or off the office network entirely, and being told
+  to switch when the push would have worked is noise. Push first; raise the
+  hotspot only if it actually fails.
 - **`ctx.access` is not populated in production**, despite a correctly
   configured Worker-attached Access application. `auth.ts` therefore verifies
   the `Cf-Access-Jwt-Assertion` header itself, using `ACCESS_TEAM_DOMAIN` and
