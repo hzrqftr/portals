@@ -72,7 +72,7 @@ build in phase one.
 1. **A Coinbox wordmark.** Odometry's Bukhari Script woff2 is subset to its own
    eight glyphs and is licensed for personal use only, so it cannot be reused.
    Coinbox stays on body type until it has its own face. Nothing depends on it.
-2. **An R2 bucket named `portals-backups`.** The backup code is BUILT and
+2. **An R2 bucket named `portals-backup`.** The backup code is BUILT and
    ships with the next deploy — this bucket is now the only thing between it
    and running. Cloudflare dashboard → R2 → Overview → Enable, then create the
    bucket. R2 has a 10 GB free tier; Cloudflare asks for billing details to
@@ -216,7 +216,7 @@ Verified against the deployed app, not just the test suite.
   under `electrical`. A plain data `UPDATE`, not a rebuild — `electrical` was
   already legal under the category `CHECK`. Eleven categories now, not twelve
 - **Nightly whole-database backup to R2** (2026-08-28): a Cron Trigger on
-  fleet-portal exports every table as JSON to `portals-backups`, keyed
+  fleet-portal exports every table as JSON to `portals-backup`, keyed
   `fleet/YYYY-MM-DD.json`, keeping 90 days. One D1 means one backup covering
   both portals. Table discovery reads `sqlite_master` rather than a hardcoded
   list, so a table added later is included without anyone remembering.

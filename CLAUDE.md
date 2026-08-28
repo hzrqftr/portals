@@ -189,7 +189,7 @@ node scripts/restore.mjs <backup.json> --remote --i-mean-it
 ### Backups
 
 A nightly Cron Trigger on the **fleet-portal** Worker writes the whole database
-to R2 (`portals-backups`, key `fleet/YYYY-MM-DD.json`, 90-day retention). One
+to R2 (`portals-backup`, key `fleet/YYYY-MM-DD.json`, 90-day retention). One
 D1 means one backup covering both portals, which is why it is not Coinbox's
 job even though Coinbox is what motivated it.
 
@@ -203,7 +203,7 @@ Retention is 90 days on purpose: **D1 Time Travel already covers 30** (measured
 earns its keep on what Time Travel cannot do -- survive loss of the Cloudflare
 account, and hand you a file you can read, diff and move to Postgres.
 
-Fetch one with `npx wrangler r2 object get portals-backups/fleet/<date>.json
+Fetch one with `npx wrangler r2 object get portals-backup/fleet/<date>.json
 --file=b.json --remote`. `apps/odometry/tests/backup.test.ts` runs the restore
 round trip on every `npm test`, because a backup nobody has restored from is a
 belief rather than a backup.

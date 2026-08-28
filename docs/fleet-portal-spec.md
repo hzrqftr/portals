@@ -574,7 +574,7 @@ Workers run in UTC. At UTC+8, "today" computed in UTC is the previous day for ei
 
 That narrows what an export is for, rather than removing the need. Time Travel cannot cover: anything older than 30 days; loss of the Cloudflare account, since the recovery mechanism lives inside the thing it protects; and portability, since a bookmark is not a file — §11.9's claim that exiting to Postgres is a weekend holds only if the data is in a form you can hold.
 
-**Built:** a nightly Cron Trigger on `fleet-portal` writing the whole database as JSON to R2 (`portals-backups`, `fleet/YYYY-MM-DD.json`), retaining **90 days** — deliberately longer than Time Travel's 30, since matching it would add nothing on the time axis. It covers both portals, because there is one D1.
+**Built:** a nightly Cron Trigger on `fleet-portal` writing the whole database as JSON to R2 (`portals-backup`, `fleet/YYYY-MM-DD.json`), retaining **90 days** — deliberately longer than Time Travel's 30, since matching it would add nothing on the time axis. It covers both portals, because there is one D1.
 
 Two things turned out to matter more than the thirty-line estimate suggested. Table discovery is driven by `sqlite_master`, never a hardcoded list, so a table added later is backed up without anyone remembering. And D1 **ignores** `PRAGMA foreign_keys = OFF`, so the standard restore idiom does not work and insert order is derived from `PRAGMA foreign_key_list` instead.
 

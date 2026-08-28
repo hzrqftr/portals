@@ -29,7 +29,7 @@
   // cadence of the thing being changed. Table discovery is generic, so Coinbox
   // adding tables never requires redeploying this Worker.
   "triggers": {
-    "crons": ["0 18 * * *"]
+    "crons": ["* * * * *"]
   },
   // Retention is 90 days (packages/core/src/worker/backup.ts). Deliberately
   // longer than D1 Time Travel's 30-day window -- measured, not assumed, on
@@ -37,7 +37,7 @@
   "r2_buckets": [
     {
       "binding": "BACKUPS",
-      "bucket_name": "portals-backups"
+      "bucket_name": "portals-backup"
     }
   ],
   // Access is enabled on the Worker itself from the dashboard, not from here.
