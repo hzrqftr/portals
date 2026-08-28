@@ -109,6 +109,25 @@ appear as both: `Household` (2 in / 68 out), `Miscellaneous` (12/3), `Family`
 (1/16), `Savings` (2/8). A schema binding direction to category could not hold
 his own data. `tests/schema.test.ts` asserts the column's absence.
 
+**The picker REORDERS by direction; it must never filter.** Asked for directly
+in 2026-08, and the answer was to give the ergonomics without the cost:
+`partitionByDirection()` floats the likely categories under a "usually money
+in/out" group and leaves the rest under "Other". Filtering instead would make
+these five real entries unenterable —
+
+| Date | Category | Dir | |
+|---|---|---|---|
+| 17 Jan | Household | in | RM 2,500 from Mom, porch tilings |
+| 24 Jan | Household | in | RM 3,000 from Mom, roof |
+| 02 Mar | Savings | in | KWSP Akaun 3 withdrawal |
+| 02 Mar | Savings | in | Wahed withdrawal |
+| 22 Mar | Family | in | From Kdik, Raya packets |
+
+— plus three outbound Miscellaneous penalties. The person would have to pick a
+wrong category, save, then edit it, which is worse than a longer list.
+`tests/form-logic.test.ts` asserts no category is ever dropped in either
+direction.
+
 ### Import provenance is not editable
 
 `source_type_raw` and `source_category_raw` record what the Sheet said —

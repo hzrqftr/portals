@@ -132,10 +132,44 @@ export function applyDirectionChange(state: FormState, direction: Direction): Fo
 }
 
 /**
- * Whether this entry contradicts its category's usual direction. Not used to
- * block anything -- 8 real rows do exactly this. It exists so the UI can note
- * it quietly if that is ever wanted, and so the condition has one definition.
+ * Whether this entry contradicts its category's usual direction.
+ *
+ * NEVER used to block anything. Eight real rows do exactly this -- money from
+ * the owner's mother for house repairs is Household-in, a KWSP withdrawal is
+ * Savings-in, a card service charge is Miscellaneous-out. It exists so the UI
+ * can say so quietly, and so the condition has one definition.
  */
 export function isUnusualDirection(state: FormState): boolean {
+  if (!state.categoryCode) return false;
   return state.direction !== ruleFor(state.categoryCode).defaultDirection;
+}
+
+/**
+ * Split the category list into the ones that usually go this direction and the
+ * rest. REORDERING, NOT FILTERING, and the distinction is the whole point.
+ *
+ * Both CLAUDE.md files say "do not filter the category picker by the selected
+ * direction", and the owner's own data says why: hiding the outbound-leaning
+ * categories while Money In is selected would make five real entries
+ * unenterable, including RM 3,000 from his mother for the roof. The person
+ * would have to pick a wrong category, save, and edit it afterwards -- which
+ * is worse than a longer list.
+ *
+ * Ordering gets the ergonomic half for free. Picking Money In floats Salary,
+ * Extra Income and Miscellaneous to the top, which is the mis-tap this guards
+ * against, while everything stays reachable underneath.
+ */
+export function partitionByDirection<T extends { code: string }>(
+  all: readonly T[],
+  direction: Direction,
+): { usual: T[]; other: T[] } {
+  const usual: T[] = [];
+  const other: T[] = [];
+
+  for (const c of all) {
+    if (ruleFor(c.code).defaultDirection === direction) usual.push(c);
+    else other.push(c);
+  }
+
+  return { usual, other };
 }

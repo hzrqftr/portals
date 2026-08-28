@@ -13,6 +13,8 @@ import {
   applyCategoryChange,
   applyDirectionChange,
   showsVehicle,
+  isUnusualDirection,
+  partitionByDirection,
   type FormState,
 } from "@shared/categoryRules";
 
@@ -97,6 +99,15 @@ export function TransactionSheet({
 
   const vehicleVisible = showsVehicle(form.categoryCode);
 
+  const { usual, other } = partitionByDirection(categories.data ?? [], form.direction);
+
+  // Never blocking. Eight of the owner's 648 rows are exactly this case, and
+  // all eight are legitimate -- money from his mother for house repairs is
+  // Household-in, a KWSP withdrawal is Savings-in. The note is for the mis-tap,
+  // not for the exception.
+  const unusual = isUnusualDirection(form);
+  const categoryName = categories.data?.find((c) => c.id === categoryId)?.name;
+
   return (
     <Sheet title={editing ? "Edit entry" : "New entry"} onClose={onClose}>
       {/*
@@ -137,6 +148,12 @@ export function TransactionSheet({
         ))}
       </div>
 
+      {unusual && categoryName && (
+        <p className="mt-2 text-sm text-ink-faint">
+          Unusual for {categoryName} — saving anyway is fine.
+        </p>
+      )}
+
       <Field label="Amount">
         <div className="relative">
           <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-faint">
@@ -166,13 +183,30 @@ export function TransactionSheet({
       </Field>
 
       <Field label="Category">
+        {/*
+          REORDERED BY DIRECTION, NEVER FILTERED. Picking Money In floats
+          Salary, Extra Income and Miscellaneous to the top, which is the
+          mis-tap this guards against -- but everything stays reachable under
+          "Other". Filtering would make five real entries unenterable,
+          including RM 3,000 from the owner's mother for the roof, which is
+          filed as Household and arrives as money in.
+        */}
         <select className={INPUT} value={categoryId} onChange={(e) => pickCategory(e.target.value)}>
           <option value="">Choose one</option>
-          {categories.data?.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
+          <optgroup label={form.direction === "in" ? "Usually money in" : "Usually money out"}>
+            {usual.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Other">
+            {other.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </optgroup>
         </select>
       </Field>
 
