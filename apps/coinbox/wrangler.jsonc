@@ -38,10 +38,11 @@
   "vars": {
     "ENVIRONMENT": "production",
     "ACCESS_TEAM_DOMAIN": "effortless-hf95.cloudflareaccess.com",
-    // PLACEHOLDER. Replace with the Application Audience (AUD) Tag from
-    // Cloudflare One > Access > Applications > coinbox. Until this is a real
-    // tag, the assertion fallback in packages/core rejects every request --
-    // which fails closed, and is the correct direction to be wrong in.
-    "ACCESS_AUD": "REPLACE_WITH_COINBOX_ACCESS_AUD"
+    // The Application Audience (AUD) Tag from Cloudflare One > Access >
+    // Applications > coinbox. MUST differ from Odometry's: accepting the
+    // other portal's audience would let a token minted for the fleet portal
+    // open the ledger. Rename the team or recreate the Access application
+    // without updating this and every request 401s.
+    "ACCESS_AUD": "72edbf25e9c4affaac78778e280350df57de7b4a65ea08ccb76b9ded85da1238"
   }
 }

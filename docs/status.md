@@ -69,23 +69,27 @@ build in phase one.
 
 ## Blocked on the owner — cannot be done from a coding session
 
-1. **`wrangler login`.** The CLI is not currently authorised for this account
-   (`code: 7403`), so the remote migration ledger cannot be verified and
-   nothing can be deployed.
-2. **The Coinbox Access application.** Google IdP, **narrower allowlist than
-   Odometry's — owner only**. Its AUD tag replaces the placeholder
-   `REPLACE_WITH_COINBOX_ACCESS_AUD` in `apps/coinbox/wrangler.jsonc`. Until
-   then Coinbox rejects every request, which fails closed.
-3. **A Coinbox wordmark.** Odometry's Bukhari Script woff2 is subset to its own
+1. **A Coinbox wordmark.** Odometry's Bukhari Script woff2 is subset to its own
    eight glyphs and is licensed for personal use only, so it cannot be reused.
-4. **An R2 bucket**, when backups start.
+   Coinbox stays on body type until it has its own face. Nothing depends on it.
+2. **An R2 bucket**, when backups start. **Do not create it ahead of the code**
+   — an empty bucket looks like progress on the one item where looking like
+   progress is dangerous. Create it as part of building the export, so its
+   first use is a real restore round-trip.
+
+### Cleared on 2026-08-28
+
+- **`wrangler login`** — done. The CLI is authorised again; `whoami` reports
+  `hazriq.fitri95@gmail.com`, account `d635376dc2be247b10234d81a23a15f5`.
+- **The Coinbox Access application** — created, owner-only policy
+  `coinbox-allowlist`, its AUD tag now in `apps/coinbox/wrangler.jsonc`.
 
 ## Traps in the current state
 
-- **`0010_ledgers.sql` is applied LOCALLY ONLY.** It is pending on remote. It
-  adds one table Odometry never reads, so the fleet portal is unaffected either
-  way — but `npm run deploy -w odometry` would apply it to production as part
-  of its normal ordering. That is safe; just know it will happen.
+- **The migration ledger is fully applied.** `0001`–`0010` are applied both
+  locally and remotely as of 2026-08-28. There is no pending migration, so the
+  next deploy of either portal has nothing to land. Confirm with
+  `npx wrangler d1 migrations list fleet --remote -c wrangler.jsonc`.
 - **Both apps share `.wrangler/state` at the repo root**, because they share
   one D1 in production. If either app starts creating its own, a transaction
   will not be able to see the vehicle it references.
@@ -105,26 +109,31 @@ root `CLAUDE.md`, "One database, one repo".
 |---|---|
 | Repo | `hzrqftr/portals`, private, branch `main` |
 | Odometry app | https://fleet-portal.hazriq-fitri95.workers.dev |
-| Coinbox app | NOT DEPLOYED. Skeleton only; no Access application yet |
-| Worker | `fleet-portal` |
+| Coinbox app | https://coinbox.hazriq-fitri95.workers.dev — live, owner-only |
+| Workers | `fleet-portal`, `coinbox` |
 | Database | D1 `fleet` (`e4bdd9c3-e885-42de-a709-4daf8f4a6edb`) |
 | Access team | `effortless-hf95.cloudflareaccess.com` |
-| Access app | "fleet-portal - Cloudflare Workers", policy `fleet-portal-allowlist` |
+| Access apps | fleet-portal → policy `fleet-portal-allowlist` (household); coinbox → policy `coinbox-allowlist` (owner only) |
 | Identity provider | Google (not Google Workspace) |
 
-**Coinbox is built but not deployable yet.** It needs its own Access
-application with a **narrower allowlist than Odometry's — owner only** — and
-its AUD tag pasted into `apps/coinbox/wrangler.jsonc`, which currently holds
-the placeholder `REPLACE_WITH_COINBOX_ACCESS_AUD`. Until then the assertion
-check rejects every request, which fails closed.
+**Both portals are deployed and Access-protected as of 2026-08-28.** Coinbox
+has its own Access application and its own audience tag, with the policy
+`coinbox-allowlist` admitting the owner alone — deliberately narrower than
+Odometry's, which admits the household so a fleet can be co-owned.
 
-Odometry is deployed and working end to end. **Migration `0010_ledgers.sql`
-is applied LOCALLY ONLY — it is pending on remote.** 0001–0009 are applied
-both locally and remotely. Confirm with
-`npx wrangler d1 migrations list fleet --remote -c wrangler.jsonc`.
+The two AUD tags differ, and must keep differing: accepting the other portal's
+audience would let a token minted for the fleet portal open the ledger.
 
-`0010` adds only the `ledgers` table and touches nothing Odometry reads, so
-the fleet portal is unaffected either way.
+Verified at deploy time rather than assumed: unauthenticated requests to
+Coinbox return `302` to
+`effortless-hf95.cloudflareaccess.com/cdn-cgi/access/login/...`, with the
+redirect's `kid` matching the configured AUD; Odometry was unaffected
+throughout.
+
+**Migration `0010_ledgers.sql` is now applied remotely.** Production went from
+17 tables to 18; views, users, garages and vehicles were unchanged, as expected
+for a migration that only adds a table and an index. `ledgers` is empty until
+someone signs in to Coinbox and the bootstrap runs.
 
 Production schema: 15 tables, 4 views, 61 seeded part types across 11
 categories, 83 part-type defaults, foreign keys enforced. Local adds
