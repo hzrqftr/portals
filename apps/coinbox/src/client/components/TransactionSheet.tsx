@@ -100,11 +100,23 @@ export function TransactionSheet({
   return (
     <Sheet title={editing ? "Edit entry" : "New entry"} onClose={onClose}>
       {/*
+        Sheet renders its close button in a zero-height sticky row, so the
+        first thing a child paints sits underneath it. `pr-9` is how every
+        other sheet in the workspace keeps clear of it (see VehicleSheet and
+        PartDetailSheet, which say so). Without this heading the direction
+        buttons ran straight under the X.
+
+        The heading also gives the sheet a visible name: `title` on Sheet is
+        only an aria-label, so without an h2 the panel is unlabelled on screen.
+      */}
+      <h2 className="pr-9 text-lg font-semibold">{editing ? "Edit entry" : "New entry"}</h2>
+
+      {/*
         Direction leads the form, per spec 8: `out` is the overwhelming
         majority, so a miscategorised inflow should be visually obvious rather
         than buried in a dropdown.
       */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="mt-4 grid grid-cols-2 gap-3">
         {(["out", "in"] as const).map((d) => (
           <button
             key={d}
