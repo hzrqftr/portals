@@ -53,27 +53,84 @@ the problem — this is strictly a "moved the folder" concern.
 `.wrangler/state` needed nothing: it resolves relative to the repo root, so the
 local D1 and its data moved with the folder and no migration was re-applied.
 
+## Coinbox is live on the real ledger — 2026-08-28
+
+**The Google Form can be retired.** Coinbox holds the complete history and
+every entry path the Form had, plus the four things it could not do.
+
+| | |
+|---|---|
+| Transactions in production | **4,421** |
+| Span | 2022-01-03 → 2026-08-28, 56 months |
+| Money in / out | RM 350,805.89 / RM 350,809.67 |
+| Net | −RM 3.78 |
+| Categories | 20, seeded globally |
+| Vehicle-attributed | 699 |
+
+Reconciled exactly on the first production run, against figures written into
+`docs/coinbox-spec.md` §6 **before** the importer existed. Foreign key check
+clean. Both portals still 302 to Access.
+
+### What the full history changed
+
+The 2026-only sample it was all built against was wrong about three things.
+
+1. **A zero amount is real data.** `CHECK (amount_sen > 0)` rejected eight
+   RM 0.00 water bills, recorded on purpose so a monthly-average dashboard has
+   a value for every month. The constraint is now `>= 0`; the guard that was
+   actually wanted — blank versus typed zero — moved to the form and the table,
+   where the slip happens.
+2. **A default tuned on a slice lied.** Miscellaneous is 12 in / 3 out across
+   2026 and 34 in / 66 out across five years. It defaulted to `in`; it now
+   defaults to `out`.
+3. **Four categories were missing** — Accommodation, Dividend, Fundings, Debt
+   appear only before 2026.
+
+### Import decisions, for the record
+
+- The **"Elai's" row** (12-May-2022) was dropped: a restaurant name landed in
+  the Amount column and no figure is recoverable.
+- **Six duplicate pairs** were double submissions; the second of each was
+  dropped, worth RM 102.83. That is the whole difference from the Sheet's
+  totals, so an import matching the Sheet exactly would be wrong.
+- **124 ambiguous `Car fuel` rows → the City.** An **owner decision, not
+  evidence**: the file names the Waja 44 times to the City's 33 and leans Waja
+  heavily in 2023. Recorded here so four years of attribution is never mistaken
+  for something the Sheet said.
+
+### Still on the Sheet, deliberately
+
+The owner is dropping the **Form**, not the **Sheet**. Features he still wants
+live there and are not built here yet — dashboards and the monthly averages the
+zero-amount rows feed. Coinbox is the system of record for entries; the Sheet
+is still where some analysis happens.
+
+---
+
 ## What is deliberately NOT built
 
-**The `transactions` and `categories` schema.** It is the open design question
-in the kickoff document, so it is a proposal in `docs/coinbox-spec.md` §4, with
-what is still undecided in §7. A document is cheap to argue with; a migration
-against financial history is not.
+Everything in `docs/coinbox-spec.md` §4 IS built as of 2026-08-28 — this
+section used to say the opposite and was the stale part of this file. What
+remains deliberately absent:
 
-Only `ledgers` (migration `0010`) exists, because scope resolution and the
-isolation test cannot exist without it.
-
-**Do not implement §4.2 onward without asking the owner.** §7 lists six open
-decisions, including category structure and how much of the Odometry link to
-build in phase one.
+- **The reverse Odometry link.** Transactions carry a nullable `vehicle_id`;
+  service records carry no `transaction_id`. Settled as §7.2 — the reverse link
+  couples the two portals' write paths, which is the half that can leak.
+- **`ledger_members`.** Sharing a ledger is unrepresentable on purpose. Adding
+  it is a product decision, not a refactor.
+- **Deleting a transaction.** Editing was the §1.1 requirement; delete was not,
+  and a delete on financial history wants more thought than an afternoon.
+- **Budgets** (§8.6, Phase 2) and **multi-user** (Phase 3).
 
 ## Blocked on the owner — cannot be done from a coding session
 
-1. **A Coinbox wordmark.** Odometry's Bukhari Script woff2 is subset to its own
-   eight glyphs and is licensed for personal use only, so it cannot be reused.
-   Coinbox stays on body type until it has its own face. Nothing depends on it.
-2. **Nothing.** The R2 bucket was created on 2026-08-28 and the nightly backup
-   is live and verified. The wordmark above is the only outstanding item.
+**Nothing is blocking.** Every dashboard task is done: `wrangler login`, the
+Coinbox Access application and its AUD tag, and the `portals-backup` R2 bucket.
+
+One optional item remains, and it is cosmetic: a **Coinbox wordmark**.
+Odometry's Bukhari Script woff2 is subset to its own eight glyphs and licensed
+for personal use only, so it cannot be reused. Coinbox uses body type and looks
+fine. `docs/coinbox-spec.md` §7.5 closes this — do not reopen it as a task.
 
 ### Cleared on 2026-08-28
 
@@ -84,7 +141,7 @@ build in phase one.
 
 ## Traps in the current state
 
-- **The migration ledger is fully applied.** `0001`–`0010` are applied both
+- **The migration ledger is fully applied.** `0001`–`0011` are applied both
   locally and remotely as of 2026-08-28. There is no pending migration, so the
   next deploy of either portal has nothing to land. Confirm with
   `npx wrangler d1 migrations list fleet --remote -c wrangler.jsonc`.
@@ -235,60 +292,6 @@ Verified against the deployed app, not just the test suite.
 
 ---
 
-## Coinbox is live on the real ledger — 2026-08-28
-
-**The Google Form can be retired.** Coinbox holds the complete history and
-every entry path the Form had, plus the four things it could not do.
-
-| | |
-|---|---|
-| Transactions in production | **4,421** |
-| Span | 2022-01-03 → 2026-08-28, 56 months |
-| Money in / out | RM 350,805.89 / RM 350,809.67 |
-| Net | −RM 3.78 |
-| Categories | 20, seeded globally |
-| Vehicle-attributed | 699 |
-
-Reconciled exactly on the first production run, against figures written into
-`docs/coinbox-spec.md` §6 **before** the importer existed. Foreign key check
-clean. Both portals still 302 to Access.
-
-### What the full history changed
-
-The 2026-only sample it was all built against was wrong about three things.
-
-1. **A zero amount is real data.** `CHECK (amount_sen > 0)` rejected eight
-   RM 0.00 water bills, recorded on purpose so a monthly-average dashboard has
-   a value for every month. The constraint is now `>= 0`; the guard that was
-   actually wanted — blank versus typed zero — moved to the form and the table,
-   where the slip happens.
-2. **A default tuned on a slice lied.** Miscellaneous is 12 in / 3 out across
-   2026 and 34 in / 66 out across five years. It defaulted to `in`; it now
-   defaults to `out`.
-3. **Four categories were missing** — Accommodation, Dividend, Fundings, Debt
-   appear only before 2026.
-
-### Import decisions, for the record
-
-- The **"Elai's" row** (12-May-2022) was dropped: a restaurant name landed in
-  the Amount column and no figure is recoverable.
-- **Six duplicate pairs** were double submissions; the second of each was
-  dropped, worth RM 102.83. That is the whole difference from the Sheet's
-  totals, so an import matching the Sheet exactly would be wrong.
-- **124 ambiguous `Car fuel` rows → the City.** An **owner decision, not
-  evidence**: the file names the Waja 44 times to the City's 33 and leans Waja
-  heavily in 2023. Recorded here so four years of attribution is never mistaken
-  for something the Sheet said.
-
-### Still on the Sheet, deliberately
-
-The owner is dropping the **Form**, not the **Sheet**. Features he still wants
-live there and are not built here yet — dashboards and the monthly averages the
-zero-amount rows feed. Coinbox is the system of record for entries; the Sheet
-is still where some analysis happens.
-
----
-
 ## What is not built
 
 The API is complete for Phase 1. All of the following are **client gaps** —
@@ -325,38 +328,41 @@ Everything except the skeleton. `GET /api/me` is the only endpoint.
 
 ## Next
 
-Two independent tracks. **Ask the owner which**, rather than assuming — the
-workspace split was done to unblock Coinbox, but Odometry's renewals gap
-predates it and is the older commitment.
+Coinbox's Phase 1 is done and in production. Nothing is blocked. The open
+choices, in no particular order:
 
-**Coinbox:** settle `docs/coinbox-spec.md` §7 with the owner, then write the
-transactions schema, then import the Google Sheet. Backups (§7.6) are DONE for
-R2 as of 2026-08-28 and no longer gate this — that was the point of doing them
-first. The Sheets mirror is still open, deliberately deferred until there are
-rows worth mirroring.
+**Odometry — renewals (§4.6, §6.3).** The oldest outstanding commitment in this
+repo, and half the reason the fleet portal exists: road tax and insurance.
+Client-only work — all four endpoints are built and isolation-tested
+(`GET /api/vehicles/:id/renewals`, `.../renewals/status`, `POST`, and
+`PATCH /api/renewals/:id`).
 
-The owner's stated direction: Coinbox replaces a Google Form feeding a Sheet,
-reproducing that workflow and then improving on it (§1.1 — conditional fields,
-editing past entries, real validation, vehicle attribution). §6 describes the
-import, including the ~80 car fuel rows that need manual triage.
+One rule is easy to get wrong: **renewing INSERTS a new row and never updates
+`expires_on` in place** (invariant 8). The active renewal per `(vehicle, type)`
+is the greatest `expires_on`; superseded rows stay as the cost history the
+forecast is built from. `renewalPatch` is `.strict()` and omits every date and
+cost field, so re-dating a renewal is a 422 rather than a silent rewrite. A
+missing renewal type is a setup prompt, not an alert.
 
-**Odometry — renewals (§4.6, §6.3):** road tax and insurance. Comparatively simple, and it mirrors what already
-exists — with one rule that is easy to get wrong:
+**Coinbox — the Sheets mirror** (§7.6). The owner is retiring the Form, NOT the
+Sheet: dashboards and the monthly averages the RM 0.00 rows feed still live
+there. A nightly D1 → Sheet overwrite would close that gap. Costs a Google
+service account, JWT signing in the Worker, and a secret to rotate.
 
-**Renewing inserts a new row. It never updates `expires_on` in place**
-(invariant 8). The active renewal per `(vehicle, type)` is the greatest
-`expires_on`; superseded rows stay as the cost history the forecast is built
-from. `renewalPatch` is `.strict()` and omits every date and cost field, so an
-attempt to re-date a renewal is a 422 rather than a silent rewrite.
+**Backup alerting.** A failed nightly run writes to the log and tells nobody.
+`observability` is on so the evidence persists, but real alerting needs an
+email provider (fleet spec §12). The obvious weakness of what is built.
 
-Endpoints, all built and isolation-tested: `GET /api/vehicles/:id/renewals`,
-`GET /api/vehicles/:id/renewals/status`, `POST /api/vehicles/:id/renewals`,
-`PATCH /api/renewals/:id`.
+**Off-Cloudflare backup copies.** Every backup sits in R2, in the same account
+as the database. That covers deletion and corruption, not account loss.
+Downloading one object a month elsewhere closes it.
 
-A missing renewal type is a setup prompt, not an alert — the same reasoning as
-a maintenance part with no baseline.
+**The shared `Sheet` close button.** Reviewed and deferred — see the papercut
+row in the Odometry gap table above.
 
----
+**Mobile.** Never verified on a real device. The layout is written for it (the
+table scrolls inside its own container, the entry sheet is a bottom sheet at
+narrow widths) but nobody has opened it on a phone.
 
 ## Picking this up on another machine
 
