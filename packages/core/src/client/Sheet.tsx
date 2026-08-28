@@ -29,6 +29,38 @@ export function Sheet({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  /**
+   * Lock the page behind the sheet.
+   *
+   * Without this, dragging anywhere on a phone -- over the scrim, or inside a
+   * panel that has nothing to scroll -- scrolls the list underneath instead.
+   * The sheet appears to be sitting on a surface that moves when you touch it,
+   * and it gets worse as a form grows past one screen: you reach the last
+   * field and the page starts travelling.
+   *
+   * `position: fixed` rather than `overflow: hidden`, because iOS Safari has
+   * never honoured overflow-hidden on body reliably. The cost is that fixing
+   * the body throws away the scroll offset, so it is captured first and
+   * restored on close -- otherwise dismissing a sheet would jump you back to
+   * the top of a 4,000-row ledger.
+   */
+  useEffect(() => {
+    const { scrollY } = window;
+    const { style } = document.body;
+    const previous = { position: style.position, top: style.top, width: style.width };
+
+    style.position = "fixed";
+    style.top = `-${scrollY}px`;
+    style.width = "100%";
+
+    return () => {
+      style.position = previous.position;
+      style.top = previous.top;
+      style.width = previous.width;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-6"
@@ -40,7 +72,9 @@ export function Sheet({
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
         className={
-          "relative max-h-[92vh] w-full overflow-y-auto rounded-t-2xl border border-edge bg-surface p-5 pb-8 " +
+          // overscroll-contain: when the panel is scrolled to its end, keep
+          // the momentum inside it instead of handing it to whatever is behind.
+          "relative max-h-[92vh] w-full overflow-y-auto overscroll-contain rounded-t-2xl border border-edge bg-surface p-5 pb-8 " +
           "sm:rounded-2xl sm:pb-5 sm:shadow-2xl " +
           (wide ? "sm:max-w-2xl" : "sm:max-w-lg")
         }
