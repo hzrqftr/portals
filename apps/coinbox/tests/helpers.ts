@@ -156,6 +156,28 @@ export async function addToGarageOf(ownerEmail: string, email: string): Promise<
     .run();
 }
 
+/**
+ * Puts a vehicle in `email`'s garage and returns its id.
+ *
+ * Raw SQL for the same reason as the helpers around it: `vehicles` is
+ * Odometry's table and is deliberately absent from Coinbox's Drizzle schema,
+ * so the test reaching for it directly is the test acknowledging it is
+ * crossing a boundary the application code cannot.
+ */
+export async function giveVehicle(email: string, nickname: string): Promise<string> {
+  const id = crypto.randomUUID();
+  await env.DB.prepare(
+    `INSERT INTO vehicles (id, garage_id, nickname, fuel_type, current_odometer_km, is_active, vehicle_type, created_at, updated_at)
+     SELECT ?, g.id, ?, 'petrol', 0, 1, 'car', '2026-08-28T00:00:00.000Z', '2026-08-28T00:00:00.000Z'
+       FROM garages g
+       JOIN users u ON u.id = g.created_by
+      WHERE u.email = ?`,
+  )
+    .bind(id, nickname, email)
+    .run();
+  return id;
+}
+
 /** Creates a garage owned by `email`, as Odometry's bootstrap would. */
 export async function giveGarage(email: string): Promise<void> {
   await env.DB.batch([

@@ -1,23 +1,28 @@
 import type { Env, Scope } from "../types";
 import { makeDb } from "./base";
+import { TransactionRepo } from "./transactions";
+import { CategoryRepo, VehicleRepo } from "./categories";
 
 /**
  * Repository factory. Route handlers receive these already scoped and never
  * see the binding.
  *
- * Empty for now: the transactions and categories schema is an open design
- * question (see docs/coinbox-spec.md) and has deliberately not been written.
- * The wiring exists so that adding the first repository is adding a line
- * here, not introducing a pattern.
+ * `transactions` and `categories` carry the ledger predicate through
+ * LedgerScopedRepo. `vehicles` is the deliberate exception -- it answers
+ * Odometry's garage question, because that is the axis vehicles live on. See
+ * the comment on VehicleRepo before assuming that is a bug.
  */
 export interface Repos {
-  // transactions: TransactionRepo;
-  // categories: CategoryRepo;
+  transactions: TransactionRepo;
+  categories: CategoryRepo;
+  vehicles: VehicleRepo;
 }
 
-export function makeRepos(env: Env, _scope: Scope): Repos {
-  // Touches the binding so the shape is proven before there is a repo to use
-  // it, and so `makeDb` is not dead code the typechecker prunes.
-  void makeDb(env);
-  return {};
+export function makeRepos(env: Env, scope: Scope): Repos {
+  const { db, raw } = makeDb(env);
+  return {
+    transactions: new TransactionRepo(db, raw, scope),
+    categories: new CategoryRepo(db, raw, scope),
+    vehicles: new VehicleRepo(db, raw, scope),
+  };
 }

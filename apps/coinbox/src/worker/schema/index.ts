@@ -59,8 +59,20 @@ export const transactions = sqliteTable("transactions", {
   vehicleId: text("vehicle_id"),
   amountSen: integer("amount_sen").notNull(),
   direction: text("direction").notNull().$type<"in" | "out">(),
-  /** READ-ONLY. Generated in SQL; never insert or update this. */
-  signedSen: integer("signed_sen"),
+  //
+  // `signed_sen` IS DELIBERATELY ABSENT.
+  //
+  // It exists in the database as a VIRTUAL generated column, and it is not
+  // declared here because Drizzle's SQLite insert names EVERY column of the
+  // table, filling unprovided ones with DEFAULT -- it does not emit only the
+  // keys you pass. So merely declaring it, without ever setting it, made every
+  // insert fail with "cannot INSERT into generated column". Found by the
+  // isolation suite on the first POST.
+  //
+  // Reading it goes through raw SQL (see monthlySummary and the v_txn_monthly
+  // view), which is where aggregation belongs anyway under invariant 4.
+  // Leaving it out makes the mistake unmakeable rather than merely documented.
+  //
   sourceTypeRaw: text("source_type_raw"),
   sourceCategoryRaw: text("source_category_raw"),
   createdAt: text("created_at").notNull(),

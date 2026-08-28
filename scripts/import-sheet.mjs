@@ -132,9 +132,12 @@ function parseSen(s) {
  * longer reproduces the source exactly, and that has to be recoverable.
  */
 const CATEGORY_FIXES = [
-  { on: "2026-04-11", item: "Ceiling light & screwdriver", to: "household" },
-  { on: "2026-08-07", item: "Dinner", to: "food_drinks" },
-  { on: "2026-08-17", item: "Lunch", to: "food_drinks" },
+  { on: "2026-04-11", item: "Ceiling light & screwdriver", from: "Transportation", to: "household" },
+  { on: "2026-08-07", item: "Dinner", from: "Transportation", to: "food_drinks" },
+  { on: "2026-08-17", item: "Lunch", from: "Transportation", to: "food_drinks" },
+  // Found only after the first import, by asking which rows carried a vehicle
+  // while sitting outside Transportation. Exactly one did.
+  { on: "2026-08-04", item: "Motorcycle fuel", from: "Food/ Drinks", to: "transportation" },
 ];
 
 /**
@@ -253,7 +256,12 @@ for (let i = 1; i < table.length; i++) {
   }
 
   // RULE 3.
-  const fix = CATEGORY_FIXES.find((f) => f.on === occurredOn && f.item === item);
+  // Matched on the SOURCE category too, so a fix cannot fire on a row that was
+  // already filed correctly -- which would mark it as corrected in
+  // source_category_raw when nothing was actually changed.
+  const fix = CATEGORY_FIXES.find(
+    (f) => f.on === occurredOn && f.item === item && f.from === rawCategory,
+  );
   const wantedCode = fix ? fix.to : null;
   let category = wantedCode ? byCode.get(wantedCode) : byName.get(rawCategory.toLowerCase());
   if (!category) { problems.push(`line ${line}: no category matches "${rawCategory}"`); continue; }

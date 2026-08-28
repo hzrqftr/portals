@@ -1,0 +1,153 @@
+import { describe, it, expect } from "vitest";
+import {
+  ruleFor,
+  showsVehicle,
+  initialFormState,
+  applyCategoryChange,
+  applyDirectionChange,
+  isUnusualDirection,
+} from "@shared/categoryRules";
+
+/**
+ * The entry form's interaction rules, as pure functions.
+ *
+ * These are here rather than in a component test because they are the part
+ * that is wrong in a way nobody notices. A form that quietly overwrites a
+ * direction, or submits a vehicle you can no longer see, produces rows that
+ * look fine in a list and are wrong in a total. Clicking through the UI once
+ * would not catch either.
+ *
+ * Written to fail first, per CLAUDE.md.
+ */
+
+describe("category rules", () => {
+  it("defaults to money-out, because almost everything is", () => {
+    // 607 of 649 real rows are outbound. An unknown category is far likelier
+    // to be a new expense than a new source of income.
+    expect(ruleFor("food_drinks").defaultDirection).toBe("out");
+    expect(ruleFor("household").defaultDirection).toBe("out");
+    expect(ruleFor(null).defaultDirection).toBe("out");
+    expect(ruleFor("a_category_added_next_year").defaultDirection).toBe("out");
+  });
+
+  it("defaults to money-in only where the data is unambiguous", () => {
+    expect(ruleFor("salary").defaultDirection).toBe("in");
+    expect(ruleFor("extra_income").defaultDirection).toBe("in");
+    expect(ruleFor("miscellaneous").defaultDirection).toBe("in");
+  });
+
+  it("reveals the vehicle picker for transportation and nothing else", () => {
+    expect(showsVehicle("transportation")).toBe(true);
+    for (const c of ["food_drinks", "household", "salary", "insurance", null]) {
+      expect(`${c}: ${showsVehicle(c)}`).toBe(`${c}: false`);
+    }
+  });
+
+  it("does not constrain direction, only suggests it", () => {
+    // The 8 rows that contradict their category's default are real entries in
+    // Household, Family, Savings and Miscellaneous. Nothing here may make them
+    // unenterable -- these are defaults, not rules.
+    const unusual = applyDirectionChange(initialFormState("household"), "in");
+    expect(unusual.direction).toBe("in");
+    expect(isUnusualDirection(unusual)).toBe(true);
+  });
+});
+
+describe("rule 1 — the direction default applies only until you touch it", () => {
+  it("follows the category while the user has not chosen", () => {
+    let s = initialFormState();
+    expect(s.direction).toBe("out");
+
+    s = applyCategoryChange(s, "salary");
+    expect(s.direction).toBe("in");
+
+    s = applyCategoryChange(s, "food_drinks");
+    expect(s.direction).toBe("out");
+  });
+
+  it("stops following once the user picks a direction", () => {
+    // The bug this prevents: pick Salary, deliberately tap `out` because this
+    // one is a repayment, then correct the category -- and watch the form
+    // silently put it back to `in`.
+    let s = initialFormState("salary");
+    expect(s.direction).toBe("in");
+
+    s = applyDirectionChange(s, "out");
+    expect(s.directionTouched).toBe(true);
+
+    s = applyCategoryChange(s, "miscellaneous"); // would default to `in`
+    expect(s.direction).toBe("out");
+
+    s = applyCategoryChange(s, "extra_income"); // would also default to `in`
+    expect(s.direction).toBe("out");
+  });
+
+  it("latches even when the tapped direction matches the current one", () => {
+    // Tapping the already-selected button is still the user saying "this one",
+    // and it should stop the category from second-guessing it afterwards.
+    let s = initialFormState("food_drinks");
+    expect(s.direction).toBe("out");
+
+    s = applyDirectionChange(s, "out");
+    s = applyCategoryChange(s, "salary");
+    expect(s.direction).toBe("out");
+  });
+});
+
+describe("rule 2 — hiding the vehicle field clears it", () => {
+  it("keeps the vehicle while the category still shows the field", () => {
+    let s = applyCategoryChange(initialFormState(), "transportation");
+    s = { ...s, vehicleId: "veh_waja" };
+
+    s = applyCategoryChange(s, "transportation");
+    expect(s.vehicleId).toBe("veh_waja");
+  });
+
+  it("clears it the moment the field is hidden", () => {
+    // Without this the grocery run is filed against the car, invisibly --
+    // the field is no longer on screen to contradict it.
+    let s = applyCategoryChange(initialFormState(), "transportation");
+    s = { ...s, vehicleId: "veh_waja" };
+
+    s = applyCategoryChange(s, "household");
+    expect(s.vehicleId).toBeNull();
+  });
+
+  it("does not resurrect a cleared vehicle on the way back", () => {
+    let s = applyCategoryChange(initialFormState(), "transportation");
+    s = { ...s, vehicleId: "veh_city" };
+    s = applyCategoryChange(s, "food_drinks");
+    s = applyCategoryChange(s, "transportation");
+
+    expect(s.vehicleId).toBeNull();
+  });
+
+  it("stays clear when moving between two categories that both hide it", () => {
+    let s = applyCategoryChange(initialFormState(), "transportation");
+    s = { ...s, vehicleId: "veh_rs150" };
+    s = applyCategoryChange(s, "household");
+    s = applyCategoryChange(s, "personal");
+
+    expect(s.vehicleId).toBeNull();
+  });
+});
+
+describe("the two rules together", () => {
+  it("survives a realistic edit sequence", () => {
+    // Petrol at the pump, then realising it was actually a car wash on the
+    // household card -- the sort of correction that happens mid-entry.
+    let s = initialFormState();
+
+    s = applyCategoryChange(s, "transportation");
+    s = { ...s, vehicleId: "veh_city" };
+    expect(s.direction).toBe("out");
+    expect(s.vehicleId).toBe("veh_city");
+
+    s = applyDirectionChange(s, "in"); // a fuel refund
+    s = applyCategoryChange(s, "household");
+
+    expect(s.direction).toBe("in"); // rule 1: the user's choice held
+    expect(s.vehicleId).toBeNull(); // rule 2: the hidden field was cleared
+    expect(isUnusualDirection(s)).toBe(true);
+  });
+});
