@@ -101,9 +101,26 @@ function CellInput({
   const ref = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select();
-  }, []);
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+
+    if (type === "date") {
+      // A date cell's first click should open the calendar, not select the
+      // text and wait for a second click on an icon that only appears once
+      // focused. Typing still works with the picker open, so keying in a date
+      // stays available -- it is just no longer the only thing on offer.
+      try {
+        el.showPicker?.();
+      } catch {
+        /* unsupported: the field is focused and typeable, picker on click */
+      }
+      return;
+    }
+
+    // Everything else selects, so typing replaces rather than appends.
+    el.select();
+  }, [type]);
 
   return (
     <input
@@ -234,7 +251,9 @@ export function TransactionTable({
     editing?.id === t.id && editing.field === field;
 
   /** Click anywhere in a cell to focus it. */
-  const PICKERS: Field[] = ["categoryId", "direction", "vehicleId"];
+  // Cells whose first click opens something rather than placing a caret.
+  // occurredOn is here even though it is still typeable -- the picker leads.
+  const PICKERS: Field[] = ["occurredOn", "categoryId", "direction", "vehicleId"];
 
   function cellProps(t: Transaction, field: Field, extra = "") {
     const active = isEditing(t, field);
