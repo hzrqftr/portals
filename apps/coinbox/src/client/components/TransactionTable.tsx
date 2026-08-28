@@ -55,13 +55,28 @@ interface Editing {
  * select, which has its own intrinsic sizing, cannot push the row around.
  */
 const CELL = "px-3 py-1.5 align-middle transition-colors";
-const CELL_HOVER = "cursor-text hover:bg-inset";
 const CONTENT = "flex h-9 items-center text-sm leading-5";
 
 /** Editor and display must be metrically identical. Change both or neither. */
 const EDITOR =
-  "h-9 w-full appearance-none border-0 bg-transparent p-0 text-sm leading-5 text-ink " +
+  "h-9 w-full appearance-none border-0 p-0 text-sm leading-5 text-ink " +
   "focus:outline-none focus:ring-0";
+
+const EDITOR_INPUT = EDITOR + " bg-transparent";
+
+/**
+ * A SELECT MUST NOT BE bg-transparent.
+ *
+ * `color-scheme: dark` normally makes Chrome paint the option popup dark, but
+ * once `appearance-none` is set the browser stops using the native rendering
+ * and paints the popup from the author's background instead. Transparent
+ * resolves to white, which is how this ended up as pale grey text on a white
+ * list -- unreadable, and nothing about it looked like a CSS bug.
+ *
+ * So the control and its options get explicit colours from the palette.
+ */
+const EDITOR_SELECT =
+  EDITOR + " bg-inset [&>option]:bg-surface [&>option]:text-ink";
 
 const HEAD =
   "px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-ink-faint whitespace-nowrap";
@@ -93,7 +108,7 @@ function CellInput({
   return (
     <input
       ref={ref}
-      className={EDITOR + (align === "right" ? " text-right tabular-nums" : "")}
+      className={EDITOR_INPUT + (align === "right" ? " text-right tabular-nums" : "")}
       type={type === "date" ? "date" : "text"}
       inputMode={type === "decimal" ? "decimal" : undefined}
       value={draft}
@@ -123,12 +138,26 @@ function CellSelect({
   onCancel: () => void;
 }) {
   const ref = useRef<HTMLSelectElement>(null);
-  useEffect(() => ref.current?.focus(), []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    // One click should open the list, not merely focus a control that then
+    // needs a second click. There is no other way to open a native select
+    // programmatically; showPicker is the supported one, and it throws where
+    // it is unavailable rather than no-opping, so it is guarded.
+    try {
+      el.showPicker?.();
+    } catch {
+      /* older browsers: the select is focused, a second click opens it */
+    }
+  }, []);
 
   return (
     <select
       ref={ref}
-      className={EDITOR}
+      className={EDITOR_SELECT}
       value={value}
       onChange={(e) => onCommit(e.target.value)}
       onBlur={onCancel}
@@ -205,10 +234,14 @@ export function TransactionTable({
     editing?.id === t.id && editing.field === field;
 
   /** Click anywhere in a cell to focus it. */
+  const PICKERS: Field[] = ["categoryId", "direction", "vehicleId"];
+
   function cellProps(t: Transaction, field: Field, extra = "") {
     const active = isEditing(t, field);
+    // A text cursor over a dropdown promises typing that is not on offer.
+    const cursor = PICKERS.includes(field) ? "cursor-pointer" : "cursor-text";
     return {
-      className: `${CELL} ${CELL_HOVER} ${active ? RING : ""} ${extra}`,
+      className: `${CELL} ${cursor} hover:bg-inset ${active ? RING : ""} ${extra}`,
       onClick: () => setEditing({ id: t.id, field }),
     };
   }
