@@ -230,19 +230,83 @@ Three mechanisms, per Odometry's §5.2 "implement at least two of":
 
 ## 6. Migration from the Sheet
 
-Current columns: `Timestamp, Item, Amount, Category, Description, Type`, where
-`Type` is `Debit` (money in) or `Credit` (money out).
+**Measured against the real export on 2026-08-28** (`ledger.csv`, 649 rows,
+2026-01-01 to 2026-08-28). Everything below is from that file, not estimated.
 
-- `Debit → in`, `Credit → out`. Keep the original string in `source_type_raw`
-  during import, so anything looking backwards can be checked against what the
-  row actually said, and drop the column once totals are verified against the
-  sheet.
-- **Idempotent re-runs.** An `import_batches` table plus a `UNIQUE` hash of the
-  source row, so the import can be re-run after fixing the category mapping —
-  expected at least twice.
-- **Fuel attribution.** Motorcycle rows are unambiguous from `Item`. Car rows
-  are indistinguishable between the two cars and need a manual triage screen,
-  roughly 80 rows.
+Columns: `Timestamp, Item, Amount, Category, Description, Type`.
+
+- `Timestamp` is a **calendar date**, format `DD-MMM-YYYY` (`01-Jan-2026`). No
+  time component, so it maps to `occurred_on` directly.
+- `Amount` is a **string with a currency prefix**, `RM197.90`. Strip and
+  convert to sen. All 649 parsed; no thousands separators appeared, but the
+  parser should accept them.
+- `Type` is `Debit` (money in, 42 rows) or `Credit` (money out, 607 rows).
+  `Debit → in`, `Credit → out`. Keep the original string in `source_type_raw`,
+  and drop the column once totals are verified.
+- **16 categories, flat**, confirming §7 decision 1. Import the labels
+  verbatim, including `Food/ Drinks` with its odd internal space — normalising
+  it silently makes the source and the import disagree for no gain.
+
+### Reconciliation targets
+
+| | Sheet | Expected after import |
+|---|---|---|
+| Rows | 649 | 648 |
+| Money in | RM 63,884.68 | RM 63,884.68 |
+| Money out | RM 66,285.20 | RM 66,280.21 |
+| Net | −RM 2,400.52 | −RM 2,395.53 |
+
+The RM 4.99 difference is the deliberately dropped duplicate below. **An import
+that reconciles exactly to the Sheet is wrong**, which is exactly the kind of
+thing to write down before it is rediscovered as a bug.
+
+### Categories are not bound to direction — now demonstrated, not argued
+
+Four categories appear as **both** directions in the real data: `Household`
+(2 in / 68 out), `Miscellaneous` (12/3), `Family` (1/16), `Savings` (2/8). Any
+schema that binds a category to a direction cannot represent this file.
+
+### Idempotent re-runs
+
+An `import_batches` table plus a `UNIQUE` hash of the source row.
+
+**The hash MUST include the source line number.** The file contains two rows
+identical in every field — `19-May-2026, Motorcycle fuel, RM4.99, Setel`, lines
+375 and 377. A hash over content alone makes them collide, so one is silently
+dropped and the total is quietly RM 4.99 light with no error anywhere. Line
+number keeps a genuine repeat distinct from a re-run.
+
+### Fuel and vehicle attribution — the triage screen is NOT needed
+
+The earlier estimate of "roughly 80 ambiguous car rows needing a manual triage
+screen" was wrong by more than five times. Actual counts:
+
+| | Rows |
+|---|---|
+| `Motorcycle fuel` — unambiguous, → RS150R | 95 |
+| `Car fuel` naming a car in `Description` | 1 |
+| **`Car fuel` genuinely ambiguous** | **14** |
+
+Fourteen rows is a conversation, not a UI. **Do not build the triage screen.**
+
+`Description` resolves more than expected: `Engine oil + filter / City`,
+`Insurance & roadtax renewal / City - To Kdik`, `Engine oil & filter / Waja`.
+Overall 117 rows resolve to RS150R, 5 to City, 3 to Waja.
+
+### Import rules settled with the owner, 2026-08-28
+
+1. **The 14 ambiguous `Car fuel` rows → City.** An owner decision, not evidence
+   from the file — the one row that names a car says Waja. Record it as a
+   decision so it is never mistaken for something the Sheet recorded.
+2. **Toll fare, parking and similar (56 rows) → no vehicle.** A toll is a trip
+   cost, not a vehicle cost, and attributing it would dilute cost-per-km.
+3. **Three miscategorised rows are corrected on the way in:**
+   `Ceiling light & screwdriver` (11-Apr) → Household; `Dinner` (07-Aug) and
+   `Lunch` (17-Aug) → Food/ Drinks; all three currently `Transportation`.
+   **Keep the original in `source_category_raw`**, the same way `Type` is kept,
+   so the correction stays auditable and the source remains recoverable.
+4. **The duplicate pair is a double Form submission — import one.** Hence 648
+   rows, and the reconciliation table above.
 
 ---
 
