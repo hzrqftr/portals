@@ -3,15 +3,16 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-08-27
+**Last updated:** 2026-08-28
 
 ---
 
 ## READ THIS FIRST: work in progress on an unmerged branch
 
-**The two-portal workspace lives on branch `workspace-split`, three commits,
-not merged and not pushed.** `main` is still the single-app Odometry repo at
-`94b0e5e`. If you are on `main` and none of this file matches what you see:
+**The two-portal workspace lives on branch `workspace-split`, four commits,
+pushed to `origin` but not merged.** `main` is still the single-app Odometry
+repo at `94b0e5e`. If you are on `main` and none of this file matches what you
+see:
 
 ```bash
 git checkout workspace-split
@@ -19,13 +20,14 @@ git checkout workspace-split
 
 Nothing is uncommitted. The working tree was clean at handover.
 
-### What those three commits did
+### What those four commits did
 
 | Commit | What |
 |---|---|
 | `bb9c87f` | Moved Odometry to `apps/odometry`, npm workspaces, `migrations/` and `.wrangler/state` to the root |
 | `d3f3668` | Extracted `packages/core` — one `getAuthenticatedUser()` across both portals, generic `BaseScopedRepo` |
 | `8f19f63` | Coinbox skeleton: `ledgers` table, ledger-scoped repo, isolation suite, docs |
+| `d48b38c` | Wrote this handover into `docs/status.md` |
 
 Everything was verified, not assumed:
 
@@ -60,13 +62,9 @@ build in phase one.
    Odometry's — owner only**. Its AUD tag replaces the placeholder
    `REPLACE_WITH_COINBOX_ACCESS_AUD` in `apps/coinbox/wrangler.jsonc`. Until
    then Coinbox rejects every request, which fails closed.
-3. **Renaming the workspace.** The repo root folder is still `odometry` while
-   containing `apps/odometry`, and the sibling `github/coinbox` folder is
-   empty. Suggested: rename the root to `portals` (matching the root package
-   name), plus the GitHub-side rename and `git remote set-url`.
-4. **A Coinbox wordmark.** Odometry's Bukhari Script woff2 is subset to its own
+3. **A Coinbox wordmark.** Odometry's Bukhari Script woff2 is subset to its own
    eight glyphs and is licensed for personal use only, so it cannot be reused.
-5. **An R2 bucket**, when backups start.
+4. **An R2 bucket**, when backups start.
 
 ### Traps specific to this in-flight state
 
@@ -91,7 +89,7 @@ root `CLAUDE.md`, "One database, one repo".
 
 | | |
 |---|---|
-| Repo | `hzrqftr/odometry`, private, branch `main` |
+| Repo | `hzrqftr/portals`, private, branch `main` |
 | Odometry app | https://fleet-portal.hazriq-fitri95.workers.dev |
 | Coinbox app | NOT DEPLOYED. Skeleton only; no Access application yet |
 | Worker | `fleet-portal` |
@@ -260,8 +258,8 @@ a maintenance part with no baseline.
 ## Picking this up on another machine
 
 ```bash
-git clone https://github.com/hzrqftr/odometry.git
-cd odometry
+git clone https://github.com/hzrqftr/portals.git
+cd portals
 npm ci                    # not `npm install` -- the lockfile is committed
 npx wrangler login        # needs a real terminal; opens a browser
 npm run db:apply:local    # shared local D1, safe to re-run
