@@ -50,10 +50,21 @@ CREATE UNIQUE INDEX uq_category_code ON categories(COALESCE(ledger_id, ''), code
 --
 -- MAGNITUDE PLUS DIRECTION, SIGN DERIVED.
 --
--- amount_sen is constrained positive so a sign error is impossible at write
--- time. That matters because a missed negation on one insert path is silent
--- rather than visible -- it produces a total that is merely wrong, not an
--- error anyone sees.
+-- amount_sen is constrained NON-NEGATIVE so a sign error is impossible at
+-- write time. That matters because a missed negation on one insert path is
+-- silent rather than visible -- it produces a total that is merely wrong, not
+-- an error anyone sees.
+--
+-- WHY >= 0 AND NOT > 0. The first version forbade zero, on the reasoning that
+-- a zero-amount transaction is almost always a slip. The owner's real ledger
+-- disproved it: eight months carry a RM 0.00 water bill, recorded on purpose
+-- because a dashboard averages utility cost month over month and a missing
+-- month would shorten the denominator and inflate the average. "Billed
+-- nothing" is a fact, and the schema has to be able to hold it.
+--
+-- The guard that was actually wanted lives at the UI instead, where the slip
+-- happens: a BLANK amount cannot be saved, a typed 0 can. Blank is a slip;
+-- zero is a statement.
 --
 -- signed_sen is GENERATED, so aggregation is SUM(signed_sen) with no CASE
 -- repeated across queries and no chance of two reports disagreeing. VIRTUAL
@@ -92,7 +103,7 @@ CREATE TABLE transactions (
   -- CLAUDE.md, "the one place the two axes meet".
   vehicle_id          TEXT,
 
-  amount_sen          INTEGER NOT NULL CHECK (amount_sen > 0),
+  amount_sen          INTEGER NOT NULL CHECK (amount_sen >= 0),
   direction           TEXT NOT NULL CHECK (direction IN ('in', 'out')),
   signed_sen          INTEGER GENERATED ALWAYS AS
                         (CASE direction WHEN 'out' THEN -amount_sen ELSE amount_sen END) VIRTUAL,
@@ -224,4 +235,11 @@ INSERT INTO categories (id, ledger_id, code, name, sort_order, is_active, create
   ('cat_savings',        NULL, 'savings',        'Savings',        130, 1, '2026-08-28T00:00:00.000Z'),
   ('cat_entertainment',  NULL, 'entertainment',  'Entertainment',  140, 1, '2026-08-28T00:00:00.000Z'),
   ('cat_salary',         NULL, 'salary',         'Salary',         150, 1, '2026-08-28T00:00:00.000Z'),
-  ('cat_medications',    NULL, 'medications',    'Medications',    160, 1, '2026-08-28T00:00:00.000Z');
+  ('cat_medications',    NULL, 'medications',    'Medications',    160, 1, '2026-08-28T00:00:00.000Z'),
+  -- Present only in the full 2022-2026 history, so they were missing from the
+  -- first seed. Rare but real distinctions the owner drew, and merging them
+  -- into their nearest neighbour would destroy information he chose to record.
+  ('cat_accommodation',  NULL, 'accommodation',  'Accommodation',  170, 1, '2026-08-28T00:00:00.000Z'),
+  ('cat_dividend',       NULL, 'dividend',       'Dividend',       180, 1, '2026-08-28T00:00:00.000Z'),
+  ('cat_fundings',       NULL, 'fundings',       'Fundings',       190, 1, '2026-08-28T00:00:00.000Z'),
+  ('cat_debt',           NULL, 'debt',           'Debt',           200, 1, '2026-08-28T00:00:00.000Z');

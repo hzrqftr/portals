@@ -14,15 +14,21 @@ import type { Direction } from "./zod";
  * here keeps that warning literally true: there is nothing direction-shaped in
  * the schema to filter by.
  *
- * DEFAULTS, NEVER CONSTRAINTS. Measured against the owner's real 648 rows: a
- * per-category default would have been right 640 times. The other 8 are real
- * entries in categories that genuinely go both ways --
+ * DEFAULTS, NEVER CONSTRAINTS. Measured against the owner's full 4,428-row
+ * history, 2022-2026: a per-category default is right on 4,380 of them (98%).
+ * Six categories genuinely go both ways --
  *
- *   Household     2 in / 69 out        Savings        2 in / 8 out
- *   Family        1 in / 16 out        Miscellaneous 12 in / 3 out
+ *   Miscellaneous 34 in / 66 out       Savings   6 in / 43 out
+ *   Loans          3 in / 164 out      Household 2 in / 271 out
+ *   Family         2 in / 175 out      Fundings  1 in / 1 out
  *
  * -- so any rule that made those unenterable would be wrong about his own
  * history. The form pre-selects; the user always wins.
+ *
+ * THESE WERE FIRST DERIVED FROM A 648-ROW SAMPLE AND ONE WAS WRONG.
+ * Miscellaneous read 12 in / 3 out in 2026 alone and was defaulted to `in`;
+ * across all five years it is 34 in / 66 out and defaults to `out`. Worth
+ * remembering before tuning anything else here on a slice of the data.
  */
 
 export interface CategoryRule {
@@ -33,20 +39,24 @@ export interface CategoryRule {
 }
 
 /**
- * Only three categories default to money-in, and all three are unambiguous in
- * the source data: Salary and Extra Income are 100% inbound across 25 rows,
- * and Miscellaneous is 12 in / 3 out -- reimbursements and reclaims.
+ * Only three categories default to money-in. Salary and Extra Income are 100%
+ * inbound across 168 rows, and Dividend is 2 for 2. Miscellaneous used to be
+ * here and was removed: it looked inbound in the 2026 slice and is outbound
+ * over five years.
  *
- * `transportation` is the only category that reveals the vehicle picker: 137
- * of the 138 vehicle-attributed rows are in it. The remaining one is a
- * `Motorcycle fuel` row miscategorised as `Food/ Drinks` in the Sheet, which
- * is a data error rather than a reason to widen this.
+ * `transportation` is the only category that reveals the vehicle picker:
+ * essentially every vehicle-attributed row in five years of history is in it.
+ * The handful that are not are miscategorised rows in the Sheet, which is a
+ * data error rather than a reason to widen this.
  */
 const RULES: Record<string, CategoryRule> = {
   transportation: { defaultDirection: "out", showVehicle: true },
+  // The only three categories that are inbound on the balance of the full
+  // history. Salary (56) and Extra Income (112) are 100% inbound; Dividend is
+  // 2 for 2.
   salary: { defaultDirection: "in", showVehicle: false },
   extra_income: { defaultDirection: "in", showVehicle: false },
-  miscellaneous: { defaultDirection: "in", showVehicle: false },
+  dividend: { defaultDirection: "in", showVehicle: false },
 };
 
 /**

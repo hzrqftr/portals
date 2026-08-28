@@ -208,10 +208,11 @@ export function TransactionTable({
     const body: Record<string, unknown> = {};
 
     if (field === "amountSen") {
+      // A BLANK cell is a slip and must not write; a typed 0 is a real value.
+      // Eight RM 0.00 water bills exist on purpose -- see migration 0011.
+      if (raw.trim() === "") return;
       const sen = parseSen(raw);
-      // A blank or unparseable amount is a slip, not an instruction to zero
-      // the row -- and the CHECK constraint would reject it anyway.
-      if (sen === null || sen <= 0 || sen === t.amountSen) return;
+      if (sen === null || sen < 0 || sen === t.amountSen) return;
       body.amountSen = sen;
     } else if (field === "description") {
       const next = raw.trim() || null;

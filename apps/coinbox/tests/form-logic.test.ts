@@ -34,7 +34,15 @@ describe("category rules", () => {
   it("defaults to money-in only where the data is unambiguous", () => {
     expect(ruleFor("salary").defaultDirection).toBe("in");
     expect(ruleFor("extra_income").defaultDirection).toBe("in");
-    expect(ruleFor("miscellaneous").defaultDirection).toBe("in");
+    expect(ruleFor("dividend").defaultDirection).toBe("in");
+  });
+
+  it("does not default Miscellaneous to money-in", () => {
+    // It did, and that was wrong. The rule was derived from 2026 alone, where
+    // Miscellaneous reads 12 in / 3 out. Across all 4,428 rows it is 34 in /
+    // 66 out. A default tuned on a slice of the data is the failure this
+    // asserts against, not the category itself.
+    expect(ruleFor("miscellaneous").defaultDirection).toBe("out");
   });
 
   it("reveals the vehicle picker for transportation and nothing else", () => {
@@ -154,23 +162,24 @@ describe("the two rules together", () => {
 });
 
 describe("rule 3 — the picker reorders, it never removes", () => {
-  // The owner's 16, in seeded order.
+  // The owner's 20, in seeded order.
   const ALL = [
     "transportation", "food_drinks", "household", "personal", "utility",
     "loans", "vices", "family", "extra_income", "insurance", "miscellaneous",
     "electronics", "savings", "entertainment", "salary", "medications",
+    "accommodation", "dividend", "fundings", "debt",
   ].map((code) => ({ code }));
 
   it("floats the likely categories for money-in", () => {
     const { usual, other } = partitionByDirection(ALL, "in");
-    expect(usual.map((c) => c.code)).toEqual(["extra_income", "miscellaneous", "salary"]);
-    expect(other).toHaveLength(13);
+    expect(usual.map((c) => c.code)).toEqual(["extra_income", "salary", "dividend"]);
+    expect(other).toHaveLength(17);
   });
 
   it("floats the likely categories for money-out", () => {
     const { usual, other } = partitionByDirection(ALL, "out");
-    expect(usual).toHaveLength(13);
-    expect(other.map((c) => c.code)).toEqual(["extra_income", "miscellaneous", "salary"]);
+    expect(usual).toHaveLength(17);
+    expect(other.map((c) => c.code)).toEqual(["extra_income", "salary", "dividend"]);
   });
 
   it("NEVER drops a category, in either direction", () => {

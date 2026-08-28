@@ -71,8 +71,13 @@ export function TransactionSheet({
     occurredOn !== "" &&
     item.trim() !== "" &&
     categoryId !== "" &&
+    // A BLANK amount is a slip; a typed 0 is a statement. The owner records
+    // RM 0.00 water bills on purpose -- a month billed nothing still has to
+    // appear, or the monthly average he tracks is computed over fewer months
+    // and comes out high. So the guard is on emptiness, not on the value.
+    amount.trim() !== "" &&
     amountSen !== null &&
-    amountSen > 0;
+    amountSen >= 0;
 
   function pickCategory(id: string) {
     setCategoryId(id);

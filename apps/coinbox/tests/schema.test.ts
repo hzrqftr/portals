@@ -103,13 +103,29 @@ describe("transactions", () => {
     ).rejects.toThrow(/generated column/i);
   });
 
-  it("rejects a non-positive amount", async () => {
+  it("rejects a negative amount", async () => {
     // Magnitude plus direction. A sign error must be impossible at write time,
     // because a missed negation on one insert path is silent rather than loud.
     // Asserting the message, not merely that something threw: a bare
     // rejects.toThrow() would also pass on a typo in the test's own SQL.
-    await expect(insertTxn(ledgerId, { amount_sen: 0 })).rejects.toThrow(/CHECK constraint/i);
     await expect(insertTxn(ledgerId, { amount_sen: -500 })).rejects.toThrow(/CHECK constraint/i);
+    await expect(insertTxn(ledgerId, { amount_sen: -1 })).rejects.toThrow(/CHECK constraint/i);
+  });
+
+  it("ACCEPTS a zero amount, because those are real", async () => {
+    // The constraint was `> 0` until the full history arrived and disproved
+    // it: eight months carry a RM 0.00 water bill, recorded deliberately so a
+    // dashboard averaging utility cost has a value for every month. "Billed
+    // nothing" is a fact the schema has to be able to hold.
+    await insertTxn(ledgerId, { amount_sen: 0, item: "Water" });
+
+    const row = await env.DB.prepare(
+      "SELECT amount_sen, signed_sen FROM transactions WHERE item = 'Water'",
+    ).first<{ amount_sen: number; signed_sen: number }>();
+
+    expect(row!.amount_sen).toBe(0);
+    // Zero has no sign, so the generated column must not invent one.
+    expect(row!.signed_sen).toBe(0);
   });
 
   it("rejects a direction outside in/out", async () => {
@@ -151,17 +167,23 @@ describe("categories", () => {
     ledgerId = await giveLedger(OWNER);
   });
 
-  it("seeds the owner's 16 categories, labels verbatim", async () => {
+  it("seeds the owner's 20 categories, labels verbatim", async () => {
     const rows = await env.DB.prepare(
       "SELECT code, name FROM categories WHERE ledger_id IS NULL ORDER BY sort_order",
     ).all<{ code: string; name: string }>();
 
-    expect(rows.results).toHaveLength(16);
+    expect(rows.results).toHaveLength(20);
     expect(rows.results[0]).toEqual({ code: "transportation", name: "Transportation" });
 
     // The odd internal space is kept on purpose: it is what the Sheet says,
     // and normalising it silently would make source and import disagree.
     expect(rows.results.map((r) => r.name)).toContain("Food/ Drinks");
+
+    // Four appear only in the 2022-2025 history and were missing from the
+    // first seed, which was written from a 2026-only export.
+    for (const c of ["accommodation", "dividend", "fundings", "debt"]) {
+      expect(`${c}: ${rows.results.some((r) => r.code === c)}`).toBe(`${c}: true`);
+    }
   });
 
   it("is not bound to direction", async () => {

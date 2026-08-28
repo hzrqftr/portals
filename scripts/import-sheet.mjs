@@ -141,16 +141,31 @@ const CATEGORY_FIXES = [
 ];
 
 /**
- * RULE 4. A double Form submission. Identified by content so it does not
- * depend on line numbers staying put. Any OTHER content-duplicate is kept and
- * warned about rather than silently dropped -- two genuine RM4.99 top-ups on
- * one day are entirely possible, and this rule is about one known mistake.
+ * RULE 4. Double Form submissions, reviewed one by one with the owner across
+ * the full 2022-2026 history and confirmed as mistakes rather than repeats.
+ *
+ * Identified by content so the list does not depend on line numbers staying
+ * put. Only the SECOND occurrence of each is dropped; a third would be kept
+ * and warned about, because this is a list of known errors and not a licence
+ * to dedupe.
  */
-const DROP_DUPLICATE = {
-  on: "2026-05-19",
-  item: "Motorcycle fuel",
-  amountSen: 499,
-};
+const DROP_DUPLICATES = [
+  { on: "2022-12-18", item: "Toll fare", amountSen: 566 },
+  { on: "2023-01-01", item: "Roti canai", amountSen: 450 },
+  { on: "2024-12-10", item: "Motorcycle fuel", amountSen: 650 },
+  { on: "2025-07-22", item: "Lunch", amountSen: 1900 },
+  { on: "2025-10-31", item: "Car fuel", amountSen: 6218 },
+  { on: "2026-05-19", item: "Motorcycle fuel", amountSen: 499 },
+];
+
+/**
+ * A row whose Amount column holds something that is not money at all. On
+ * 12-May-2022 the restaurant name "Elai’s" landed in Amount and the
+ * Description came through blank -- a Form submission error, confirmed with
+ * the owner, with no amount recoverable from the file. Dropped rather than
+ * guessed at.
+ */
+const DROP_BROKEN = [{ on: "2022-05-12", item: "Capati & iced tea" }];
 
 const BIKE = /motorcycle|rs150|\bbike\b/i;
 
@@ -167,11 +182,13 @@ function attributeVehicle(item, description) {
   if (/\bcity\b/i.test(blob)) return { nickname: "City", why: "named" };
   if (/\bwaja\b/i.test(blob)) return { nickname: "Waja", why: "named" };
 
-  // RULE 1. The 14 'Car fuel' rows that say only "Setel" go to the City. This
-  // is an OWNER DECISION, not evidence from the file -- the single row that
-  // does name a car says Waja. Kept narrow to exactly 'Car fuel': 'Car
-  // service' and 'Car wash' were not part of the decision and stay
-  // unattributed rather than being quietly included.
+  // RULE 1. Ambiguous 'Car fuel' rows -- 124 across 2022-2026, all saying only
+  // "Setel" or similar -- go to the City. AN OWNER DECISION, NOT EVIDENCE.
+  // The file leans the other way if anything: the Waja is named 44 times to
+  // the City's 33, and dominates 2023 by 23 to 2. Recorded as a decision so
+  // that four years of attribution is never mistaken for something the Sheet
+  // actually said. Kept narrow to exactly 'Car fuel': 'Car service' and 'Car
+  // wash' were not part of the decision and stay unattributed.
   if (item.trim().toLowerCase() === "car fuel") return { nickname: "City", why: "rule-1" };
 
   // RULE 2. Tolls, parking and everything else carry no vehicle. A toll is a
@@ -215,6 +232,7 @@ const out = [];
 const problems = [];
 const unattributedVehicles = new Set();
 let droppedDuplicate = 0;
+let droppedBroken = 0;
 
 for (let i = 1; i < table.length; i++) {
   const line = i + 1; // 1-based including the header, matching a text editor
@@ -229,8 +247,18 @@ for (let i = 1; i < table.length; i++) {
   const rawCategory = get("Category");
 
   if (!occurredOn) { problems.push(`line ${line}: unparseable date "${get("Timestamp")}"`); continue; }
+
+  // Known-broken rows leave before anything tries to read money out of them,
+  // so they are reported as a deliberate drop rather than a parse failure.
+  if (DROP_BROKEN.some((d) => d.on === occurredOn && d.item === item)) {
+    droppedBroken++;
+    continue;
+  }
   if (amountSen === null) { problems.push(`line ${line}: unparseable amount "${get("Amount")}"`); continue; }
-  if (amountSen <= 0) { problems.push(`line ${line}: non-positive amount "${get("Amount")}"`); continue; }
+  // Zero is legal and meaningful -- eight months carry a RM 0.00 water bill,
+  // recorded on purpose so a monthly-average dashboard has a value for every
+  // month. Only a NEGATIVE amount is a fault here; the schema agrees.
+  if (amountSen < 0) { problems.push(`line ${line}: negative amount "${get("Amount")}"`); continue; }
 
   // Debit is money IN, Credit is money OUT. That is the Sheet's convention and
   // it is the opposite of what a bank statement means by the same words, which
@@ -246,9 +274,10 @@ for (let i = 1; i < table.length; i++) {
   seenContent.set(contentKey, before + 1);
   if (before > 0) {
     const isKnown =
-      occurredOn === DROP_DUPLICATE.on &&
-      item === DROP_DUPLICATE.item &&
-      amountSen === DROP_DUPLICATE.amountSen;
+      before === 1 &&
+      DROP_DUPLICATES.some(
+        (d) => d.on === occurredOn && d.item === item && d.amountSen === amountSen,
+      );
     if (isKnown) { droppedDuplicate++; continue; }
     problems.push(
       `line ${line}: content-identical to an earlier row and NOT the known double submission -- KEPT. "${item}" ${get("Amount")} on ${occurredOn}`,
@@ -311,6 +340,7 @@ for (const t of out) {
 console.log("  Parsed:");
 console.log(`    rows to import      ${out.length}`);
 console.log(`    duplicate dropped   ${droppedDuplicate}`);
+console.log(`    broken dropped      ${droppedBroken}`);
 console.log(`    money in            ${rm(totalIn)}`);
 console.log(`    money out           ${rm(totalOut)}`);
 console.log(`    net                 ${rm(totalIn - totalOut)}`);

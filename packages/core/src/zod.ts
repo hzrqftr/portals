@@ -18,7 +18,14 @@ export const calendarDate = z
  * Money, in sen. Integer only -- a float here is the exact failure invariant
  * 1 exists to prevent, and it would arrive from the client looking harmless.
  */
-export const sen = z.number().int("Money must be a whole number of sen");
+export const sen = z
+  .number()
+  .int("Money must be a whole number of sen")
+  // Money is stored as a magnitude everywhere in this workspace -- direction
+  // is a separate column in Coinbox, and Odometry's costs are magnitudes by
+  // nature. A negative arriving here is a bug in the caller, and the database
+  // would reject it anyway; catching it at the boundary makes it say so.
+  .nonnegative("Money cannot be negative");
 
 /** Quantities are integer thousandths. See money.ts. */
 export const quantityMilli = z.number().int().positive();
