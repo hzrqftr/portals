@@ -103,6 +103,24 @@ describe("whole-database backup and restore", () => {
     expect(second.row_counts).toEqual(first.row_counts);
   });
 
+  it("picks up new tables without being told, generated columns included", async () => {
+    // The claim made when this was built: discovery reads sqlite_master, so a
+    // table added later is backed up without anyone remembering. Migration
+    // 0011 then added transactions, categories and the import tables. This
+    // asserts the claim against them rather than trusting it.
+    const backup = await createBackup(env.DB);
+
+    for (const t of ["transactions", "categories", "import_batches", "import_rows"]) {
+      expect(`${t} in backup: ${t in backup.tables}`).toBe(`${t} in backup: true`);
+    }
+
+    // And the generated column is excluded from the REAL table now, not just
+    // from the synthetic probe below. transactions.signed_sen cannot be
+    // inserted into, so a dump containing it would fail on restore.
+    expect(backup.tables.transactions!.columns).toContain("amount_sen");
+    expect(backup.tables.transactions!.columns).not.toContain("signed_sen");
+  });
+
   it("excludes d1_migrations and D1's internal tables", async () => {
     const tables = await listTables(env.DB);
 

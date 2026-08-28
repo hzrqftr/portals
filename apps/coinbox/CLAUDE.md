@@ -9,10 +9,13 @@ share one repo. This file holds only what is specific to the ledger.
 A personal **expense ledger**, replacing a Google Form feeding a Google Sheet.
 One Cloudflare Worker (`coinbox`) serving a React SPA and a JSON API.
 
-Design lives in `docs/coinbox-spec.md`. **Most of it is a proposal, not built.**
-Only `ledgers` (migration `0010`) exists; the transactions and categories
-schema is deliberately unwritten and open for revision. Do not implement §4.2
-onward without checking with the owner first — §7 lists what is still open.
+Design lives in `docs/coinbox-spec.md`. **The ledger schema is built as of
+2026-08-28** — `ledgers` (`0010`), then `transactions`, `categories` and the
+import tables (`0011`). §7's open decisions are settled and recorded there;
+§6 was rewritten from the owner's real 649-row export rather than from memory.
+
+Still unbuilt: the importer, every transaction endpoint, and the entry form.
+`GET /api/me` remains the only route.
 
 ## Scope line
 
@@ -94,12 +97,26 @@ Any category may appear as either `in` or `out`. Do not add a `direction`
 column to `categories`, and do not filter the category picker by the selected
 direction.
 
+**This is measured, not asserted.** In the owner's real export four categories
+appear as both: `Household` (2 in / 68 out), `Miscellaneous` (12/3), `Family`
+(1/16), `Savings` (2/8). A schema binding direction to category could not hold
+his own data. `tests/schema.test.ts` asserts the column's absence.
+
+### Import provenance is not editable
+
+`source_type_raw` and `source_category_raw` record what the Sheet said —
+including for the three rows deliberately recategorised on the way in. They are
+absent from `transactionPatch`, which is `.strict()`, so an edit cannot rewrite
+them. Losing them would destroy the only evidence of what was imported versus
+what was corrected afterwards.
+
 ## Style
 
 Entry happens on a phone at a petrol pump or a checkout, so the entry flow
 stays fast and full-width at every breakpoint even though the layout is
 desktop-first.
 
-There is no wordmark face yet — the header uses body type. Odometry's Bukhari
-Script is subset to its own eight letters and licensed for personal use only,
-so it cannot be reused. See `docs/coinbox-spec.md` §7.
+The header uses body type and that is settled, not pending — Odometry's
+Bukhari Script is subset to its own eight letters and licensed for personal use
+only, so it cannot be reused. `docs/coinbox-spec.md` §7.5 closes this; do not
+reopen it as an outstanding task.

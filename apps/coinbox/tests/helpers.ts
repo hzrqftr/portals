@@ -79,6 +79,11 @@ interface D1Migration {
  */
 export async function resetDb(): Promise<void> {
   const tables = [
+    // Children before parents: transactions and the import tables reference
+    // ledgers, so deleting ledgers first fails on foreign keys.
+    "import_rows",
+    "import_batches",
+    "transactions",
     "ledgers",
     "service_items",
     "service_records",
@@ -96,7 +101,35 @@ export async function resetDb(): Promise<void> {
   await env.DB.batch([
     ...tables.map((t) => env.DB.prepare(`DELETE FROM ${t}`)),
     env.DB.prepare(`DELETE FROM part_types WHERE garage_id IS NOT NULL`),
+    // Ledger-scoped categories go; the 16 global seed rows stay, the same way
+    // the global part_types do above.
+    env.DB.prepare(`DELETE FROM categories WHERE ledger_id IS NOT NULL`),
   ]);
+}
+
+/**
+ * Creates a user and their ledger, as first-login bootstrap would, and returns
+ * the ledger id.
+ *
+ * Raw SQL rather than a request through the app: these tests are about what
+ * the SCHEMA guarantees, so going through the API would mean a constraint
+ * failure and a handler bug look identical.
+ */
+export async function giveLedger(email: string): Promise<string> {
+  const userId = crypto.randomUUID();
+  const ledgerId = crypto.randomUUID();
+  const now = "2026-08-28T00:00:00.000Z";
+
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO users (id, email, timezone, created_at) VALUES (?, ?, 'Asia/Kuala_Lumpur', ?)`,
+    ).bind(userId, email, now),
+    env.DB.prepare(
+      `INSERT INTO ledgers (id, owner_user_id, name, created_at) VALUES (?, ?, 'My Ledger', ?)`,
+    ).bind(ledgerId, userId, now),
+  ]);
+
+  return ledgerId;
 }
 
 /**
