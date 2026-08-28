@@ -204,7 +204,8 @@ earns its keep on what Time Travel cannot do -- survive loss of the Cloudflare
 account, and hand you a file you can read, diff and move to Postgres.
 
 Fetch one with `npx wrangler r2 object get portals-backup/fleet/<date>.json
---file=b.json --remote`. `apps/odometry/tests/backup.test.ts` runs the restore
+--file=b.json --remote`. **`docs/backups.md` is the operating manual** — what
+runs, how to restore, and what is deliberately not built. `apps/odometry/tests/backup.test.ts` runs the restore
 round trip on every `npm test`, because a backup nobody has restored from is a
 belief rather than a backup.
 
