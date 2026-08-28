@@ -4,6 +4,7 @@
  * package root (`@portals/core`) for anything isomorphic.
  */
 export * from "./auth";
+export * from "./backup";
 export * from "./errors";
 export * from "./repo";
 export * from "./types";

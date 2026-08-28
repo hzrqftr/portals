@@ -269,11 +269,22 @@ Genuinely undecided. Whoever implements next should ask rather than pick.
 5. **The wordmark.** Odometry's Bukhari Script woff2 is subset to the eight
    letters of "Odometry" and is licensed free for personal use only. Coinbox
    needs its own face, or stays on body type as it currently does.
-6. **Backups.** A launch requirement, not a follow-up: there is currently no D1
-   backup at all. Nightly D1 → R2 export plus the Sheets mirror (overwrite,
-   idempotent by construction, so a missed run self-heals and a double-fire
-   writes the same thing twice). The **restore path must be exercised, not
-   assumed**, before any financial history is migrated in.
+6. **Backups — RESOLVED for R2, 2026-08-28. Sheets mirror still open.**
+   The nightly D1 → R2 export is built and runs from the fleet-portal Worker
+   (one D1, one backup, covering both portals). Retention is 90 days, chosen
+   because D1 Time Travel was measured at 30 and a shorter window would add
+   nothing.
+
+   The restore path is exercised rather than assumed, as this decision
+   required: `apps/odometry/tests/backup.test.ts` runs the full round trip on
+   every `npm test`, and it was run by hand against the local database — 208
+   rows, 15 tables, foreign key check clean.
+
+   **Still open: the Sheets mirror.** Deferred deliberately until the ledger
+   has rows worth mirroring. It needs a Google service account, JWT signing
+   inside the Worker, and a rotatable secret — a separate piece of work from
+   the durability guarantee, which is now met. Its appeal is that a mirror is
+   readable on a phone without the app, which the R2 JSON is not.
 
 ---
 

@@ -568,11 +568,17 @@ Workers run in UTC. At UTC+8, "today" computed in UTC is the previous day for ei
 
 **Action now:** store `timezone` on the user (§4.2), compute "today" in that zone for all status comparisons, store calendar dates as `YYYY-MM-DD` with no time component, and never round-trip a calendar date through a UTC timestamp.
 
-### 11.6 D1 durability and backup — MEDIUM
+### 11.6 D1 durability and backup — BUILT 2026-08-28
 
-D1 offers point-in-time recovery, but free-tier retention should be verified rather than assumed, and this database is the only copy of years of maintenance history you cannot reconstruct.
+**Retention was verified rather than assumed, as this section asked.** D1 Time Travel restores to any bookmark within **30 days** on this account (`wrangler d1 time-travel info fleet --timestamp=<31 days ago>` is rejected). So the risk this section described as unbounded was already bounded at 30 days, for free.
 
-**Action now:** a Cron Trigger exporting the full database as JSON to R2 weekly, retaining the last twelve. Roughly thirty lines of code, and it converts an unbounded risk into a bounded one. Do this in Phase 4 at the latest, sooner if you bulk-enter historical records.
+That narrows what an export is for, rather than removing the need. Time Travel cannot cover: anything older than 30 days; loss of the Cloudflare account, since the recovery mechanism lives inside the thing it protects; and portability, since a bookmark is not a file — §11.9's claim that exiting to Postgres is a weekend holds only if the data is in a form you can hold.
+
+**Built:** a nightly Cron Trigger on `fleet-portal` writing the whole database as JSON to R2 (`portals-backups`, `fleet/YYYY-MM-DD.json`), retaining **90 days** — deliberately longer than Time Travel's 30, since matching it would add nothing on the time axis. It covers both portals, because there is one D1.
+
+Two things turned out to matter more than the thirty-line estimate suggested. Table discovery is driven by `sqlite_master`, never a hardcoded list, so a table added later is backed up without anyone remembering. And D1 **ignores** `PRAGMA foreign_keys = OFF`, so the standard restore idiom does not work and insert order is derived from `PRAGMA foreign_key_list` instead.
+
+The restore path runs in CI (`apps/odometry/tests/backup.test.ts`) and was exercised by hand against the local database on 2026-08-28: 208 rows across 15 tables, restored, foreign key check clean.
 
 ### 11.7 Odometer staleness — HIGH (product risk, not technical)
 

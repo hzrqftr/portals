@@ -20,6 +20,26 @@
       "migrations_dir": "../../migrations"
     }
   ],
+  // Nightly whole-database export. 18:00 UTC is 02:00 Asia/Kuala_Lumpur, so
+  // the dump lands on a day that has finished locally rather than mid-evening.
+  //
+  // The cron lives on THIS Worker, not Coinbox, although it backs up both:
+  // there is one D1, so there is one backup, and Coinbox is the app under
+  // active development. Backup reliability should not ride on the deploy
+  // cadence of the thing being changed. Table discovery is generic, so Coinbox
+  // adding tables never requires redeploying this Worker.
+  "triggers": {
+    "crons": ["0 18 * * *"]
+  },
+  // Retention is 90 days (packages/core/src/worker/backup.ts). Deliberately
+  // longer than D1 Time Travel's 30-day window -- measured, not assumed, on
+  // 2026-08-28 -- because matching it would add nothing on the time axis.
+  "r2_buckets": [
+    {
+      "binding": "BACKUPS",
+      "bucket_name": "portals-backups"
+    }
+  ],
   // Access is enabled on the Worker itself from the dashboard, not from here.
   // This block ONLY simulates an identity for `wrangler dev` and tests, and is
   // ignored in production. It means ctx.access.getIdentity() behaves the same

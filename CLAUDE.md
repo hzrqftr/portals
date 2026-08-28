@@ -180,7 +180,33 @@ npm run db:query:local -- --command "SELECT ..."
 npm run db:new -- <name>       # create a migration file
 
 npx wrangler tail -c apps/odometry/wrangler.jsonc   # live logs, incl. CPU warnings
+
+node scripts/restore.mjs <backup.json>                  # restore into local D1
+node scripts/restore.mjs <backup.json> --dry-run        # show what it would run
+node scripts/restore.mjs <backup.json> --remote --i-mean-it
 ```
+
+### Backups
+
+A nightly Cron Trigger on the **fleet-portal** Worker writes the whole database
+to R2 (`portals-backups`, key `fleet/YYYY-MM-DD.json`, 90-day retention). One
+D1 means one backup covering both portals, which is why it is not Coinbox's
+job even though Coinbox is what motivated it.
+
+The logic is `packages/core/src/worker/backup.ts` -- **the one legitimate
+unscoped reader in the system.** It sits outside `BaseScopedRepo` rather than
+widening it, because widening it would put an unscoped read in the path of
+every repository in both portals to serve one caller that runs on a cron.
+
+Retention is 90 days on purpose: **D1 Time Travel already covers 30** (measured
+2026-08-28, not assumed), so a shorter window would add nothing. The export
+earns its keep on what Time Travel cannot do -- survive loss of the Cloudflare
+account, and hand you a file you can read, diff and move to Postgres.
+
+Fetch one with `npx wrangler r2 object get portals-backups/fleet/<date>.json
+--file=b.json --remote`. `apps/odometry/tests/backup.test.ts` runs the restore
+round trip on every `npm test`, because a backup nobody has restored from is a
+belief rather than a backup.
 
 ### `npm run deploy -w <app>` is ordered deliberately
 
@@ -259,6 +285,13 @@ You cannot do these. Ask, and give exact steps:
 - **D1's SQLite has a low `SQLITE_MAX_COMPOUND_SELECT`.** A seven-term
   `UNION ALL` chain fails with `too many terms in compound SELECT`. Write
   repeated `INSERT ... SELECT` statements instead. Multi-row `VALUES` is fine.
+- **D1 ignores `PRAGMA foreign_keys = OFF`.** It keeps enforcing constraints
+  statement by statement, so the textbook SQLite restore idiom -- suspend
+  foreign keys, insert in any order, check at the end -- does not work. Insert
+  order is load-bearing instead, and `packages/core/src/worker/backup.ts`
+  derives a parents-first order from `PRAGMA foreign_key_list`. The symptom is
+  `SQLITE_CONSTRAINT_FOREIGNKEY` on the first child row, which reads like bad
+  data rather than an ignored pragma.
 - **`UNIQUE` does not constrain NULLs in SQLite.** A `UNIQUE` including a
   nullable "applies to everything" column allows unlimited duplicates whenever
   it is NULL. Use partial unique indexes or `COALESCE(col, '')`.

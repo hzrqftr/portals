@@ -72,10 +72,13 @@ build in phase one.
 1. **A Coinbox wordmark.** Odometry's Bukhari Script woff2 is subset to its own
    eight glyphs and is licensed for personal use only, so it cannot be reused.
    Coinbox stays on body type until it has its own face. Nothing depends on it.
-2. **An R2 bucket**, when backups start. **Do not create it ahead of the code**
-   — an empty bucket looks like progress on the one item where looking like
-   progress is dangerous. Create it as part of building the export, so its
-   first use is a real restore round-trip.
+2. **An R2 bucket named `portals-backups`.** The backup code is BUILT and
+   ships with the next deploy — this bucket is now the only thing between it
+   and running. Cloudflare dashboard → R2 → Overview → Enable, then create the
+   bucket. R2 has a 10 GB free tier; Cloudflare asks for billing details to
+   switch it on. At roughly 300 KB/day and 90 days retention (~27 MB) it stays
+   free. Until the bucket exists the nightly job logs
+   "Backup skipped: no BACKUPS binding" and does nothing, which fails safe.
 
 ### Cleared on 2026-08-28
 
@@ -212,6 +215,20 @@ Verified against the deployed app, not just the test suite.
   with exactly one member, while spark plugs and ignition coils already sat
   under `electrical`. A plain data `UPDATE`, not a rebuild — `electrical` was
   already legal under the category `CHECK`. Eleven categories now, not twelve
+- **Nightly whole-database backup to R2** (2026-08-28): a Cron Trigger on
+  fleet-portal exports every table as JSON to `portals-backups`, keyed
+  `fleet/YYYY-MM-DD.json`, keeping 90 days. One D1 means one backup covering
+  both portals. Table discovery reads `sqlite_master` rather than a hardcoded
+  list, so a table added later is included without anyone remembering.
+
+  Retention is 90 days because **D1 Time Travel was measured at 30** — not
+  assumed, which both specs had asked for. The export earns its place on what
+  Time Travel cannot do: outlive 30 days, survive loss of the Cloudflare
+  account, and be a file you can read and move.
+
+  `scripts/restore.mjs` is the operator path, and the round trip runs on every
+  `npm test`. It was also exercised by hand: 208 rows across 15 tables wiped
+  and restored, foreign key check clean.
 - Every Phase 1 API endpoint
 - 73 tests: tenant isolation, derived logic, and the Access JWT fallback
 
@@ -245,7 +262,7 @@ Everything except the skeleton. `GET /api/me` is the only endpoint.
 | `transactions` + `categories` schema | §4.2, §4.3 | The whole app. Deliberately unwritten — see §7 open decisions |
 | Entry form | §1.1 | Conditional field visibility is the main thing Google Forms cannot do |
 | Sheet import | §6 | ~80 car fuel rows need a manual triage screen; motorcycle rows are unambiguous |
-| Backup + restore | §7.6 | A launch requirement, not a follow-up. There is currently NO D1 backup at all |
+| ~~Backup + restore~~ | §7.6 | **BUILT 2026-08-28.** Nightly whole-database export to R2, 90-day retention, restore round trip in CI. Needs the R2 bucket created (see blocked list) |
 | Cross-portal navigation | §7.4 | `AppHeader` takes a `portals` prop nothing passes. Blocked on Access groups reaching the Worker |
 
 ---
@@ -257,8 +274,15 @@ workspace split was done to unblock Coinbox, but Odometry's renewals gap
 predates it and is the older commitment.
 
 **Coinbox:** settle `docs/coinbox-spec.md` §7 with the owner, then write the
-transactions schema. Backups (§7.6) are a launch requirement and there is no
-D1 backup at all today, which arguably outranks new features.
+transactions schema, then import the Google Sheet. Backups (§7.6) are DONE for
+R2 as of 2026-08-28 and no longer gate this — that was the point of doing them
+first. The Sheets mirror is still open, deliberately deferred until there are
+rows worth mirroring.
+
+The owner's stated direction: Coinbox replaces a Google Form feeding a Sheet,
+reproducing that workflow and then improving on it (§1.1 — conditional fields,
+editing past entries, real validation, vehicle attribution). §6 describes the
+import, including the ~80 car fuel rows that need manual triage.
 
 **Odometry — renewals (§4.6, §6.3):** road tax and insurance. Comparatively simple, and it mirrors what already
 exists — with one rule that is easy to get wrong:
