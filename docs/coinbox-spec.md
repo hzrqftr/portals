@@ -293,6 +293,24 @@ Fourteen rows is a conversation, not a UI. **Do not build the triage screen.**
 `Insurance & roadtax renewal / City - To Kdik`, `Engine oil & filter / Waja`.
 Overall 117 rows resolve to RS150R, 5 to City, 3 to Waja.
 
+### Status: BUILT and run against local, 2026-08-28
+
+`scripts/import-sheet.mjs`. Reconciled exactly on the first real run — 648
+rows, RM 63,884.68 in, RM 66,280.21 out, net −RM 2,395.53, all four figures
+matching the parse against the database. The script **aborts rather than
+reporting success** if any of them disagree.
+
+Idempotency was verified rather than assumed: a second run reported 648 already
+imported, 0 to insert, and identical totals.
+
+Verified in the data, not just in the counters: one surviving row for the
+dropped duplicate; 3 rows carrying `source_category_raw = 'Transportation'`;
+138 rows attributed to a vehicle (116 RS150R, 19 City, 3 Waja); and the
+direction mapping exact at 42 `Debit → in` and 606 `Credit → out`.
+
+**Not yet run against production.** The remote import needs `--remote
+--i-mean-it`.
+
 ### Import rules settled with the owner, 2026-08-28
 
 1. **The 14 ambiguous `Car fuel` rows → City.** An owner decision, not evidence

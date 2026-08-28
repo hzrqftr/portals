@@ -14,8 +14,15 @@ Design lives in `docs/coinbox-spec.md`. **The ledger schema is built as of
 import tables (`0011`). §7's open decisions are settled and recorded there;
 §6 was rewritten from the owner's real 649-row export rather than from memory.
 
-Still unbuilt: the importer, every transaction endpoint, and the entry form.
-`GET /api/me` remains the only route.
+The importer is built too (`scripts/import-sheet.mjs`) and has been run
+against the local database: 648 rows reconciling exactly. It is idempotent —
+re-running inserts nothing — and it aborts rather than reporting success if the
+totals disagree.
+
+Still unbuilt: every transaction endpoint and the entry form. `GET /api/me`
+remains the only route, so **the isolation suite has nothing new to cover
+yet** — the moment a read endpoint lands, it goes in `tests/isolation.test.ts`.
+No exceptions.
 
 ## Scope line
 
