@@ -5,7 +5,7 @@ What protects your data, how to get it back, and how to get it out.
 Written for the owner, not for the machine. The design rationale lives in
 `packages/core/src/worker/backup.ts`; this is the operating manual.
 
-**Last verified:** 2026-08-28, against production.
+**Last verified:** 2026-08-29, against production, after the 4,421-row import.
 
 ---
 
@@ -18,10 +18,57 @@ Written for the owner, not for the machine. The design rationale lives in
 | What it copies | **The whole database** — both portals, every table |
 | Where it goes | R2 bucket `portals-backup`, key `fleet/YYYY-MM-DD.json` |
 | How long it keeps | 90 days, then the old object is deleted |
-| Size today | ~47 KB per night |
+| Size today | ~2.5 MB per night (was 47 KB before the ledger import) |
 
 One database means one backup. Odometry's maintenance history and Coinbox's
 ledger are in the same file, because they are in the same D1.
+
+---
+
+## Where everything lives, and how to reach it
+
+The commands below all use `wrangler`, Cloudflare's command-line tool. It is
+already installed with the project and already logged in as
+`hazriq.fitri95@gmail.com`, so `npx wrangler ...` works from the repo root with
+no setup. If it ever says you are logged out, `npx wrangler login` opens a
+browser and fixes it.
+
+**Everything must be run from the repo root** (`C:\Users\Hazriq Fitri\github\portals`).
+The `-c wrangler.jsonc` in some commands points at the root config, which is
+the one that knows about the database.
+
+| Thing | Name | Where |
+|---|---|---|
+| Account ID | `d635376dc2be247b10234d81a23a15f5` | appears in every dashboard URL |
+| The database | `fleet` | D1 |
+| The backup bucket | `portals-backup` | R2 |
+| The Worker that runs the backup | `fleet-portal` | Workers & Pages |
+| The backup files | `fleet/YYYY-MM-DD.json` | inside the bucket |
+
+### Clicking to it in the dashboard
+
+You do not need the dashboard for any recovery step -- the commands are
+enough -- but it is the easier way to confirm a file simply *exists*.
+
+- **The backup files:** dash.cloudflare.com -> **R2 Object Storage** in the left
+  sidebar -> **portals-backup** -> open the `fleet/` folder. You will see one
+  object per night, named by date. Clicking one downloads it.
+  Direct: `https://dash.cloudflare.com/d635376dc2be247b10234d81a23a15f5/r2/default/buckets/portals-backup`
+- **Did the job run, and did it fail:** dash.cloudflare.com -> **Workers & Pages**
+  -> **fleet-portal** -> **Logs**. Successful runs log one line; failures leave
+  a stack trace, because `observability` is enabled on the Worker.
+  Direct: `https://dash.cloudflare.com/d635376dc2be247b10234d81a23a15f5/workers/services/view/fleet-portal`
+- **The database itself:** dash.cloudflare.com -> **Storage & Databases** ->
+  **D1** -> **fleet**. This is also where Time Travel lives if you would rather
+  click than type.
+
+### Orienting from the command line instead
+
+```bash
+npx wrangler whoami                         # which account am I logged into
+npx wrangler r2 bucket list                 # what buckets exist
+npx wrangler d1 list                        # what databases exist
+```
 
 ---
 
@@ -70,9 +117,14 @@ window would have added nothing.
 
 ## Checking it ran
 
+**The key carries the UTC date, and the job runs at 02:00 Malaysian time.**
+02:00 MYT is 18:00 UTC on the *previous* day, so the backup taken at 2am on the
+29th is stored as `fleet/2026-08-28.json`. Looking for today's date will always
+report a missing object and always be a false alarm. **Subtract a day.**
+
 ```bash
-# is last night's there?
-npx wrangler r2 object get portals-backup/fleet/2026-08-29.json --remote --file=b.json
+# is last night's there? (2am today MYT == yesterday's UTC date)
+npx wrangler r2 object get portals-backup/fleet/2026-08-28.json --remote --file=b.json
 ```
 
 If it is missing, the logs are kept — `observability` is enabled on the Worker,
@@ -82,7 +134,7 @@ Workers & Pages → fleet-portal → Logs.
 The job logs one line on success:
 
 ```
-Backup fleet/2026-08-29.json: 255 rows across 15 tables, 47481 bytes
+Backup fleet/2026-08-28.json: 9123 rows across 19 tables, 2525555 bytes
 ```
 
 **Nobody is alerted if it fails.** That is the known weakness. Real alerting
@@ -185,8 +237,9 @@ directly:
 
 ## Can I go back to Google Sheets?
 
-**Today, trivially — because nothing has moved yet.** Coinbox's ledger is
-empty; the Sheet is still the real one. "Reverting" means continuing to use it.
+**The import has landed, so this is no longer hypothetical.** Coinbox holds
+4,421 rows and is the real ledger now; the Sheet is the historical copy. Going
+back means exporting the CSV below and pasting it into a Sheet.
 
 **After the import: export the CSV and paste it into a Sheet.** That path is
 built and is the answer to this question. What is still missing is only the
@@ -233,5 +286,12 @@ Not claimed — run.
   and restored into the local database, and local came back holding
   production's 3 vehicles and 96 maintenance intervals — 255 rows, foreign keys
   clean.
+- **Again on 2026-08-29, at real volume.** The 255-row check above predates the
+  ledger import and proved nothing about 4,421 rows. Repeated end to end: the
+  scheduled 18:00 UTC run wrote 9,123 rows across 19 tables (2.5 MB), that
+  object was restored into local, and it brought back 5 rows local did not have
+  — so the restore demonstrably wrote rather than matching by luck. Foreign
+  keys clean. `export-csv.mjs` was run on the same file: 19 CSVs, and a
+  `24550`-sen row came out as `173.80` in `amount_rm`.
 
 A backup nobody has restored from is a belief, not a backup.
