@@ -56,7 +56,24 @@ export class TransactionRepo extends LedgerScopedRepo {
       .from(transactions)
       .innerJoin(categories, eq(categories.id, transactions.categoryId))
       .where(this.where(transactions, ...conditions))
-      .orderBy(desc(transactions.occurredOn), desc(transactions.createdAt))
+      // Date first, then submission order within the day: entries the owner
+      // files in the order he spent (lunch, then fuel) come back newest-first
+      // inside their date. `created_at` is never shown and never sortable --
+      // it exists only to give the day a stable internal sequence.
+      //
+      // `id` is the final tiebreak and is LOAD-BEARING, not decoration. All
+      // 4,421 imported rows share ONE created_at (the import batch's
+      // timestamp), so for any past date the first two keys tie completely and
+      // SQLite is then free to return those rows in whatever order the chosen
+      // plan happens to produce -- which can differ between a filtered and an
+      // unfiltered query, since only one of them uses idx_txn_ledger_date. The
+      // resulting order is arbitrary either way (UUIDs carry no meaning), but
+      // it must at least be the SAME arbitrary order on every refresh.
+      .orderBy(
+        desc(transactions.occurredOn),
+        desc(transactions.createdAt),
+        desc(transactions.id),
+      )
       // 500 by default: the whole ledger is 648 rows and grows by roughly 80
       // a month, so the table shows everything for a filtered month and very
       // nearly everything unfiltered. Past a few thousand this wants
