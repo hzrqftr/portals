@@ -1,6 +1,6 @@
-import { eq, type SQL } from "drizzle-orm";
+import { and, eq, or, sql, type SQL } from "drizzle-orm";
 import { BaseScopedRepo, makeDb as makeCoreDb, NotFoundError } from "@portals/core/worker";
-import type { Env, Scope } from "../types";
+import type { Scope } from "../types";
 import * as schema from "../schema";
 
 /**
@@ -50,6 +50,36 @@ export abstract class LedgerScopedRepo extends BaseScopedRepo<
    * because it is the subtlest rule in this portal and the isolation suite
    * asserts it from the start.
    */
+  /**
+   * A category is usable if it is a global seed row or belongs to this ledger.
+   * Mirrors Odometry's assertUsablePartType: the same "global or mine" shape
+   * that `uq_category_code` indexes.
+   *
+   * Deliberately NOT `this.where()`: the ledger predicate alone would reject
+   * the 20 global seed rows, which have a NULL ledger_id and belong to
+   * everyone.
+   *
+   * Lives here rather than on one repository because both transactions and
+   * recurring rules reference a category, and two copies of a validation rule
+   * are two chances for one of them to be relaxed alone.
+   */
+  protected async assertUsableCategory(categoryId: string): Promise<void> {
+    const [row] = await this.db
+      .select({ id: schema.categories.id })
+      .from(schema.categories)
+      .where(
+        and(
+          eq(schema.categories.id, categoryId),
+          or(
+            sql`${schema.categories.ledgerId} IS NULL`,
+            eq(schema.categories.ledgerId, this.ledgerId),
+          ),
+        ),
+      )
+      .limit(1);
+    if (!row) throw new NotFoundError("Category not found");
+  }
+
   protected async assertUsableVehicle(vehicleId: string): Promise<void> {
     const row = await this.raw
       .prepare(
@@ -65,7 +95,12 @@ export abstract class LedgerScopedRepo extends BaseScopedRepo<
   }
 }
 
-export function makeDb(env: Env): {
+/**
+ * Widened from `Env` to just the binding it uses, so the scheduled runner --
+ * which is handed a minimal env -- can share this one construction rather than
+ * growing a second, subtly different one.
+ */
+export function makeDb(env: { DB: D1Database }): {
   db: ReturnType<typeof makeCoreDb<typeof schema>>["db"];
   raw: D1Database;
 } {

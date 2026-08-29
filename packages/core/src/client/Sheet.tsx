@@ -122,12 +122,24 @@ export function SheetActions({
   confirmLabel,
   busy = false,
   disabled = false,
+  tone = "default",
+  busyLabel = "Saving…",
 }: {
   onCancel: () => void;
   onConfirm: () => void;
   confirmLabel: string;
   busy?: boolean;
   disabled?: boolean;
+  /**
+   * `danger` for an action that destroys something.
+   *
+   * Defaults to today's look, so every existing call site is unchanged. It
+   * exists because a delete on financial history styled identically to Save is
+   * a real misclick: the two buttons occupy the same position, in the same
+   * colour, one row apart in muscle memory.
+   */
+  tone?: "default" | "danger";
+  busyLabel?: string;
 }) {
   return (
     <div className="mt-5 flex gap-3">
@@ -140,9 +152,14 @@ export function SheetActions({
       <button
         onClick={onConfirm}
         disabled={disabled || busy}
-        className="flex-1 rounded-xl bg-ink py-3 font-medium text-page disabled:opacity-40"
+        className={
+          "flex-1 rounded-xl py-3 font-medium disabled:opacity-40 " +
+          (tone === "danger"
+            ? "bg-status-overdue-fg text-page"
+            : "bg-ink text-page")
+        }
       >
-        {busy ? "Saving…" : confirmLabel}
+        {busy ? busyLabel : confirmLabel}
       </button>
     </div>
   );

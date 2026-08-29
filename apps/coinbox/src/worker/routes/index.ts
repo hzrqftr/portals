@@ -1,7 +1,13 @@
 import type { Hono } from "hono";
 import { z } from "zod";
 import type { AppContext } from "../index";
-import { transactionCreate, transactionPatch, direction } from "@shared/zod";
+import {
+  transactionCreate,
+  transactionPatch,
+  recurringCreate,
+  recurringPatch,
+  direction,
+} from "@shared/zod";
 
 /**
  * Query parameters are parsed, not read.
@@ -18,6 +24,11 @@ const listQuery = z.object({
   categoryId: z.string().min(1).optional(),
   direction: direction.optional(),
   q: z.string().trim().min(1).max(100).optional(),
+  /**
+   * Which entries the system posted. "1" = only auto-posted, "0" = only ones
+   * the owner typed. Absent means both, which is the ledger's normal view.
+   */
+  recurring: z.enum(["0", "1"]).optional(),
   limit: z.coerce.number().int().positive().max(1000).optional(),
 });
 
@@ -107,6 +118,60 @@ export function registerRoutes(app: Hono<AppContext>): void {
   app.patch("/api/transactions/:id", async (c) => {
     const patch = transactionPatch.parse(await c.req.json());
     return c.json(await c.get("repos").transactions.update(c.req.param("id"), patch));
+  });
+
+  /**
+   * Deleting an entry.
+   *
+   * This reopens a deferral -- docs/status.md recorded delete as wanting "more
+   * thought than an afternoon" -- and recurring entries are the reason. A rule
+   * that auto-posts with no confirmation will eventually post something wrong:
+   * a cancelled subscription, a failed charge. Editing that entry to RM 0.00
+   * is not an undo; it leaves a row asserting a payment that never happened,
+   * still counted in v_txn_monthly. Auto-post without delete is the unsafe
+   * combination, so the two ship together.
+   *
+   * Hard delete, not a `deleted_at` flag: a soft delete would need
+   * `WHERE deleted_at IS NULL` in list, get, monthlySummary, both views and
+   * every report written from here on, and one omission silently returns a
+   * deleted row to a total. Recovery is the nightly R2 export (90 days,
+   * round-tripped on every `npm test`) plus D1 Time Travel (30 days).
+   */
+  app.delete("/api/transactions/:id", async (c) => {
+    await c.get("repos").transactions.remove(c.req.param("id"));
+    return c.body(null, 204);
+  });
+
+  // --- recurring entries ---
+
+  /**
+   * Declared recurring entries. DECLARED, not detected: nothing here inspects
+   * history to infer a pattern, which is what the spec's non-goal rules out.
+   */
+  app.get("/api/recurring", async (c) => c.json(await c.get("repos").recurring.list()));
+
+  app.get("/api/recurring/:id", async (c) =>
+    c.json(await c.get("repos").recurring.get(c.req.param("id"))),
+  );
+
+  app.post("/api/recurring", async (c) => {
+    const input = recurringCreate.parse(await c.req.json());
+    return c.json(await c.get("repos").recurring.create(input), 201);
+  });
+
+  /** Pausing is a PATCH of `isActive`, not its own endpoint: one write path. */
+  app.patch("/api/recurring/:id", async (c) => {
+    const patch = recurringPatch.parse(await c.req.json());
+    return c.json(await c.get("repos").recurring.update(c.req.param("id"), patch));
+  });
+
+  /**
+   * Deleting a rule stops the series and leaves every entry it already posted
+   * exactly where it is. The money was real whatever happens to the schedule.
+   */
+  app.delete("/api/recurring/:id", async (c) => {
+    await c.get("repos").recurring.remove(c.req.param("id"));
+    return c.body(null, 204);
   });
 }
 

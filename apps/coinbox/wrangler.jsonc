@@ -35,6 +35,27 @@
       }
     }
   },
+  // 17:00 UTC = 01:00 Asia/Kuala_Lumpur, one hour into the owner's day, so a
+  // rule due on the 15th has posted before he wakes on the 15th.
+  //
+  // DELIBERATELY ONE HOUR BEFORE fleet-portal's 18:00 UTC backup, so the
+  // night's auto-posted entries are in that night's dump. Do not invert these.
+  //
+  // Correctness does not depend on the hour: the runner posts only
+  // occurrences dated on or before todayIn(owner.timezone), so it can be late
+  // by at most one run and can never be early, in any timezone.
+  //
+  // A newly registered Cron Trigger takes ~15 minutes to start firing. Check
+  // how long ago this deployed before concluding it is broken.
+  "triggers": {
+    "crons": ["0 17 * * *"]
+  },
+  // This job writes money and nobody is watching it. Without persisted logs a
+  // failed run leaves no evidence at all -- `wrangler tail` prints nothing
+  // from a non-interactive shell, even for live traffic.
+  "observability": {
+    "enabled": true
+  },
   "vars": {
     "ENVIRONMENT": "production",
     "ACCESS_TEAM_DOMAIN": "effortless-hf95.cloudflareaccess.com",

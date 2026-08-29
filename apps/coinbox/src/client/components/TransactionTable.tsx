@@ -7,6 +7,7 @@ import {
   type Transaction,
   type Vehicle,
 } from "../api/hooks";
+import { ConfirmDeleteSheet } from "./ConfirmDeleteSheet";
 
 /**
  * The ledger as a table, with every cell editable in place.
@@ -199,6 +200,7 @@ export function TransactionTable({
   const [editing, setEditing] = useState<Editing | null>(null);
   const patch = usePatchTransaction();
 
+  const [deleting, setDeleting] = useState<Transaction | null>(null);
   const categoryById = new Map(categories.map((c) => [c.id, c]));
   const vehicleById = new Map(vehicles.map((v) => [v.id, v]));
 
@@ -289,14 +291,24 @@ export function TransactionTable({
           behaves. Nothing can move by being clicked.
         */}
         <table className="w-full min-w-[64rem] table-fixed border-collapse text-sm">
+          {/*
+            Date is wider than the text needs: it carries a fixed-width marker
+            slot for auto-posted rows (below). The slot is present on EVERY
+            row, empty or not, so no width depends on the data.
+
+            The last column is a 3rem actions well. The flexible Description
+            col absorbs both, so the six pinned widths above it are unchanged
+            and the layout the owner is used to does not shift.
+          */}
           <colgroup>
-            <col className="w-[7.5rem]" />
+            <col className="w-[8.5rem]" />
             <col className="w-[14rem]" />
             <col className="w-[8rem]" />
             <col className="w-[10rem]" />
             <col />
             <col className="w-[5rem]" />
             <col className="w-[8rem]" />
+            <col className="w-[3rem]" />
           </colgroup>
           <thead className="bg-inset">
             <tr>
@@ -307,6 +319,9 @@ export function TransactionTable({
               <th className={HEAD}>Description</th>
               <th className={HEAD}>Type</th>
               <th className={HEAD}>Vehicle</th>
+              <th className={HEAD}>
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-edge bg-surface">
@@ -315,10 +330,31 @@ export function TransactionTable({
               const hasVehicleCell = showsVehicle(code);
 
               return (
-                <tr key={t.id} className={patch.isPending ? "opacity-60" : undefined}>
+                <tr key={t.id} className={"group " + (patch.isPending ? "opacity-60" : "")}>
                   {/* Date */}
                   <td {...cellProps(t, "occurredOn")}>
                     <div className={CONTENT}>
+                      {/*
+                        THE RECURRING MARKER, and the reason it is shaped this
+                        way. CONTENT is already a flex row fixed at h-9, and
+                        CONTENT/EDITOR are deliberately metrically identical so
+                        clicking a cell cannot move anything. A marker rendered
+                        only on recurring rows would shift the date on those
+                        rows and shift it again when the editor opens. So the
+                        slot is always here, always the same width, and only
+                        its contents change.
+                      */}
+                      <span
+                        className="w-4 shrink-0 text-center text-ink-faint"
+                        title={t.isRecurring === 1 ? "Posted by a recurring entry" : undefined}
+                      >
+                        {t.isRecurring === 1 && (
+                          <>
+                            <span aria-hidden>&#8635;</span>
+                            <span className="sr-only">Posted by a recurring entry</span>
+                          </>
+                        )}
+                      </span>
                       {isEditing(t, "occurredOn") ? (
                         <CellInput
                           value={t.occurredOn}
@@ -476,6 +512,40 @@ export function TransactionTable({
                       </div>
                     </td>
                   )}
+
+                  {/*
+                    Delete. Quiet on desktop, always visible on touch -- a
+                    hover-only control is unreachable on the phone where entry
+                    actually happens.
+
+                    NOT a cell you can click into: every other td here opens an
+                    inline editor, and a destructive action sharing that
+                    gesture is how a mis-tap deletes a row. It gets its own
+                    button and its own confirmation.
+                  */}
+                  <td className={CELL}>
+                    <div className={CONTENT + " justify-center"}>
+                      <button
+                        type="button"
+                        onClick={() => setDeleting(t)}
+                        aria-label={`Delete ${t.item}`}
+                        className="rounded-lg p-1.5 text-ink-faint opacity-100 transition hover:bg-inset hover:text-status-overdue-fg focus:outline-none focus:ring-2 focus:ring-ink-muted sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+                      >
+                        <svg
+                          viewBox="0 0 20 20"
+                          aria-hidden
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M4 6h12M8.5 6V4.5h3V6M6 6l.6 9h6.8L14 6" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               );
             })}
@@ -488,6 +558,10 @@ export function TransactionTable({
         {truncated && " — more exist; narrow with the filters above"}. Click any cell to edit it;
         Enter saves, Escape cancels.
       </p>
+
+      {deleting && (
+        <ConfirmDeleteSheet transaction={deleting} onClose={() => setDeleting(null)} />
+      )}
     </>
   );
 }

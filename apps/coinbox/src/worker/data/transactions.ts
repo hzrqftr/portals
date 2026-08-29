@@ -12,6 +12,8 @@ export interface TransactionFilters {
   direction?: "in" | "out";
   /** Substring of item or description. */
   q?: string;
+  /** "1" = only entries a recurring rule posted, "0" = only typed ones. */
+  recurring?: "0" | "1";
   limit?: number;
 }
 
@@ -35,6 +37,9 @@ export class TransactionRepo extends LedgerScopedRepo {
     }
     if (filters.categoryId) conditions.push(eq(transactions.categoryId, filters.categoryId));
     if (filters.direction) conditions.push(eq(transactions.direction, filters.direction));
+    if (filters.recurring) {
+      conditions.push(eq(transactions.isRecurring, filters.recurring === "1" ? 1 : 0));
+    }
     if (filters.q) {
       const needle = `%${filters.q}%`;
       conditions.push(or(like(transactions.item, needle), like(transactions.description, needle)));
@@ -52,6 +57,7 @@ export class TransactionRepo extends LedgerScopedRepo {
         vehicleId: transactions.vehicleId,
         amountSen: transactions.amountSen,
         direction: transactions.direction,
+        isRecurring: transactions.isRecurring,
       })
       .from(transactions)
       .innerJoin(categories, eq(categories.id, transactions.categoryId))
@@ -175,21 +181,22 @@ export class TransactionRepo extends LedgerScopedRepo {
   }
 
   /**
-   * A category is usable if it is a global seed row or belongs to this ledger.
-   * Mirrors Odometry's assertUsablePartType: the same "global or mine" shape
-   * that `uq_category_code` indexes.
+   * Deleting an entry. Hard, not a flag -- see the route comment for why.
+   *
+   * TWO GUARDS, not one, and that is deliberate. get() proves ownership and
+   * 404s on someone else's row; the where() below carries the ledger predicate
+   * again on the DELETE itself. Every other method here would merely LEAK on a
+   * missing predicate. This one would DESTROY another person's data, so it
+   * does not rely on a caller above it having done the right thing.
+   *
+   * `recurring_postings.transaction_id` is ON DELETE SET NULL, so the claim
+   * row survives with a null transaction. That is what stops the nightly run
+   * from cheerfully re-creating the entry the owner just deleted.
    */
-  private async assertUsableCategory(categoryId: string): Promise<void> {
-    const [row] = await this.db
-      .select({ id: categories.id })
-      .from(categories)
-      .where(
-        and(
-          eq(categories.id, categoryId),
-          or(sql`${categories.ledgerId} IS NULL`, eq(categories.ledgerId, this.ledgerId)),
-        ),
-      )
-      .limit(1);
-    if (!row) throw new NotFoundError("Category not found");
+  async remove(id: string): Promise<void> {
+    await this.get(id);
+    await this.db
+      .delete(transactions)
+      .where(this.where(transactions, eq(transactions.id, id)));
   }
 }

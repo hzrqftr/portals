@@ -18,15 +18,23 @@ export function isCalendarDate(value: string): value is CalendarDate {
   return DATE_RE.test(value);
 }
 
-/** Today, on the user's wall calendar. The only source of "now" in the app. */
-export function todayIn(timezone: string): CalendarDate {
+/**
+ * Today, on the user's wall calendar. The only source of "now" in the app.
+ *
+ * `now` exists so a scheduled job can be tested at a chosen instant. It is not
+ * an invitation to pass an arbitrary date around: every caller in production
+ * omits it. A cron that can only be tested at whatever moment the suite runs
+ * cannot be tested at the boundary that actually matters -- an owner at UTC+8
+ * on a day the UTC clock has not reached yet.
+ */
+export function todayIn(timezone: string, now: Date = new Date()): CalendarDate {
   // en-CA formats as YYYY-MM-DD, which is exactly the storage format.
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date());
+  }).format(now);
 }
 
 /**

@@ -1,7 +1,7 @@
 # Coinbox — Technical Specification
 
-**Version:** 0.1 (proposal)
-**Status:** Skeleton built; transaction schema NOT built and open for revision
+**Version:** 0.2
+**Status:** Live. 4,421 transactions in production; recurring entries built 2026-08-29
 **Target:** Replace a Google Form + Sheet expense log
 
 ---
@@ -26,7 +26,14 @@ was the right long-term answer.
 This is an expense ledger, not a personal finance app. Explicitly out of scope:
 account balances (the banks and wallets have no API, so reconciliation is not
 feasible), budgets, net worth tracking, loan amortisation, multi-currency, and
-recurring-transaction detection. Parity with the Form, plus §1.1.
+recurring-transaction **detection** — inferring from history that a set of past
+entries forms a pattern. Parity with the Form, plus §1.1.
+
+**Recurring *entry* is in scope and is built — see §9.** The distinction is the
+whole difference: the owner declares "Insurance, RM 230, the 15th of every
+month" and a nightly job posts it. Nothing inspects the ledger to guess. Read
+the non-goal above as "Coinbox will not tell you that you have a subscription",
+not "Coinbox cannot repeat an entry".
 
 ### 1.3 Relationship to Odometry
 
@@ -114,9 +121,16 @@ violation on a brand new account.
 
 ## 4. Data model
 
-> **§4.2 onward is a PROPOSAL and is not built.** Only `ledgers` (migration
-> `0010`) exists. This section is written to be argued with: a migration
-> against financial history is expensive to reverse, a document is not.
+> **§4.2 onward was written as a proposal and is now BUILT** — migrations
+> `0010` (ledgers), `0011` (transactions, categories, import tables) and `0012`
+> (recurring). Two things changed on the way in, and the built version wins
+> where this text disagrees:
+>
+> - `amount_sen` is `CHECK (amount_sen >= 0)`, not `> 0`. Eight RM 0.00 water
+>   bills are real data, recorded so a monthly average has a value for every
+>   month.
+> - `vehicle_id` carries **no** foreign key, so a garage deletion cannot
+>   cascade into financial history. It is validated on write instead.
 
 ### 4.1 Type conventions
 
@@ -384,3 +398,102 @@ Genuinely undecided. Whoever implements next should ask rather than pick.
   `out`, since that is the overwhelming majority of rows — a miscategorised
   inflow should be visually obvious rather than buried in a dropdown.
 - Fast on mobile: that is where entry actually happens.
+
+## 9. Recurring entries
+
+Built 2026-08-29. Fixed monthly commitments — personal insurance at RM 230,
+Astro, subscriptions — were the last routine reason to open the Google Sheet.
+The owner declares a rule once and the ledger posts it.
+
+**This is recurring *entry*, not the recurring-transaction *detection* §1.2
+rules out.** Nothing here inspects history to infer a pattern.
+
+### 9.1 Decisions, as settled with the owner
+
+| Decision | Choice |
+|---|---|
+| On the due date | **Post automatically.** No confirmation step |
+| Patterns | Monthly, every N months, yearly. **No weekly** |
+| Day 31 in February | **Clamp to the last day**, back to the 31st in March |
+| A rule added with a past start date | **Forward-only.** Never backfills |
+| Pausing | A toggle, separate from the optional end date |
+| Vehicle link | Yes, mirroring the transaction form |
+| Deleting a transaction | **Built** — see 9.5 |
+| Editing a rule | A `Sheet`, not a page per rule |
+
+**The accepted risk, recorded because it was accepted rather than overlooked:**
+auto-posting means the ledger can assert a payment that did not happen — a
+cancelled subscription keeps posting until noticed. The owner was shown this and
+chose it over a confirm step. The marker and filter in 9.4, and delete in 9.5,
+are what make it recoverable rather than invisible.
+
+### 9.2 Schema
+
+`recurring_rules` holds the transaction template — the same magnitude-plus-
+direction shape as `transactions`, `amount_sen >= 0` — plus the schedule as
+`interval_months` and `day_of_month`, with the phase carried by `starts_on`.
+
+**No `frequency` enum beside `interval_months`**, which would be the
+`categories.direction` mistake again: a second column encoding a fact the first
+already carries and free to disagree with it. **No `next_due_on` cursor**
+either — it would cache what `recurring_postings` already knows, and a cache
+that is wrong posts money on the wrong day. Both absences are asserted in
+`tests/recurring-schema.test.ts`.
+
+`recurring_postings(rule_id, occurred_on)` is the idempotency interlock; its
+primary key is what makes the nightly run safe to repeat. `transaction_id` is
+`ON DELETE SET NULL`, so deleting a posted entry leaves the claim behind and the
+next run does not re-create it.
+
+### 9.3 The clamp is unexpressible in SQL
+
+`date('2026-01-31','+1 month')` is `2026-03-03` — SQLite normalises forward
+rather than clamping. Measured, not assumed. So the arithmetic lives in
+`src/shared/recurrence.ts`, no view is added, and no due date is computed in
+SQL. Each occurrence is derived from `day_of_month` against its own month;
+iterating from the previous occurrence drifts permanently after one February.
+
+### 9.4 What the ledger shows
+
+Auto-posted entries carry `transactions.is_recurring = 1`, rendered as a marker
+in the Date cell and filterable from the ledger toolbar. The column exists
+rather than being derived from `recurring_postings` because it **survives**:
+deleting a rule cascades its claims away, and without it "was this auto-posted?"
+would become unanswerable for entries already in the ledger.
+
+It is immutable — absent from `transactionPatch`, which is `.strict()`.
+
+### 9.5 Delete, and why it was reopened
+
+`docs/status.md` recorded deleting a transaction as deliberately deferred,
+wanting "more thought than an afternoon". Recurring entries are the reason it
+was reopened: a rule that posts without confirmation will eventually post
+something wrong, and editing that entry to RM 0.00 is not an undo — it leaves a
+row asserting a payment that never happened, still counted in `v_txn_monthly`.
+
+**Auto-post without delete is the unsafe combination**, so the two shipped
+together. Hard delete, not a `deleted_at` flag: a soft delete would need
+`WHERE deleted_at IS NULL` in every read, view and future report, and one
+omission silently returns a deleted row to a total. Recovery is the nightly R2
+export (90 days) plus D1 Time Travel (30).
+
+### 9.6 The cron
+
+`0 17 * * *` on the **coinbox** Worker — 01:00 Asia/Kuala_Lumpur, deliberately
+one hour before fleet-portal's 18:00 UTC backup so the night's entries are in
+that night's dump.
+
+Correctness does not depend on the hour: the runner posts only occurrences
+dated on or before `todayIn(owner.timezone)`, computed **per ledger**. It can
+therefore be late by at most one run and can never be early, in any timezone.
+
+It is the only unscoped writer in the portal. It runs one unscoped statement —
+a roster of which ledgers have work and in whose timezone — then builds a real
+`Scope` per ledger and goes back through the ordinary `LedgerScopedRepo`, so
+every insert carries the tenant predicate. `BaseScopedRepo` was not widened.
+
+### 9.7 Navigation
+
+Three top-level sections: Home at `/` (empty, holding the root for a dashboard
+later), Ledger at `/ledger`, Recurring at `/recurring`. `AppHeader` gained an
+optional `nav` prop defaulting to `[]`, so Odometry is untouched.

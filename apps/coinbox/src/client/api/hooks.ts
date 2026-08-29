@@ -56,6 +56,8 @@ export interface Transaction {
   vehicleId: string | null;
   amountSen: number;
   direction: "in" | "out";
+  /** 1 when a recurring rule posted this row rather than the owner typing it. */
+  isRecurring: number;
 }
 
 export interface TransactionFilters {
@@ -63,6 +65,8 @@ export interface TransactionFilters {
   categoryId?: string;
   direction?: "in" | "out";
   q?: string;
+  /** "1" = only auto-posted, "0" = only typed. Absent shows both. */
+  recurring?: "0" | "1";
 }
 
 export interface MonthSummary {
@@ -151,6 +155,95 @@ export function useUpdateTransaction(id: string) {
   return useMutation({
     mutationFn: (patch: Partial<TransactionDraft>) =>
       api<Transaction>(`/transactions/${id}`, { method: "PATCH", json: patch }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["summary"] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------- recurring
+
+export interface RecurringRule {
+  id: string;
+  item: string;
+  description: string | null;
+  categoryId: string;
+  categoryName: string;
+  categoryCode: string;
+  vehicleId: string | null;
+  amountSen: number;
+  direction: "in" | "out";
+  intervalMonths: number;
+  dayOfMonth: number;
+  startsOn: string;
+  endsOn: string | null;
+  isActive: number;
+  /** From the claims table, so it reflects what actually posted. */
+  lastPostedOn: string | null;
+  postedCount: number;
+}
+
+export interface RecurringDraft {
+  item: string;
+  description?: string | null;
+  categoryId: string;
+  vehicleId?: string | null;
+  amountSen: number;
+  direction: "in" | "out";
+  intervalMonths: number;
+  dayOfMonth: number;
+  startsOn: string;
+  endsOn?: string | null;
+  isActive?: boolean;
+}
+
+export function useRecurring() {
+  return useQuery({
+    queryKey: ["recurring"],
+    queryFn: () => api<RecurringRule[]>("/recurring"),
+  });
+}
+
+/**
+ * Rule mutations invalidate ["recurring"] only: editing a schedule posts
+ * nothing immediately, so the ledger and the summary are unaffected until the
+ * nightly run. Deleting a TRANSACTION is the one that touches both.
+ */
+export function useCreateRecurring() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RecurringDraft) =>
+      api<RecurringRule>("/recurring", { method: "POST", json: input }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["recurring"] }),
+  });
+}
+
+export function usePatchRecurring() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<RecurringDraft> }) =>
+      api<RecurringRule>(`/recurring/${id}`, { method: "PATCH", json: patch }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["recurring"] }),
+  });
+}
+
+export function useDeleteRecurring() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/recurring/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["recurring"] }),
+  });
+}
+
+/**
+ * Deleting an entry. Not optimistic, like every other mutation here: money
+ * must not appear -- or disappear -- before the server has agreed.
+ */
+export function useDeleteTransaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/transactions/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });

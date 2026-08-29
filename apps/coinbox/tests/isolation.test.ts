@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
-import { as, migrate, resetDb, giveGarage, addToGarageOf, giveVehicle } from "./helpers";
+import {
+  as,
+  migrate,
+  resetDb,
+  giveGarage,
+  addToGarageOf,
+  giveVehicle,
+  giveRule,
+} from "./helpers";
+import { runRecurringPosting } from "@worker/data/recurring-runner";
 
 /**
  * THE MOST IMPORTANT TEST IN THIS PORTAL.
@@ -31,12 +40,17 @@ const readEndpoints = [
   "/api/vehicles",
   "/api/transactions",
   "/api/summary",
+  "/api/recurring",
 ];
 
 /** Markers unique to one person. If one ever appears in another's response,
  *  isolation is broken -- whichever endpoint leaked it. */
 const ALICE_ITEM = "ALICE_SECRET_SALARY";
 const ALICE_NOTE = "ALICE_PRIVATE_NOTE";
+/** Recurring rules carry their own text, so they need their own marker. The
+ *  sweep loops only look for these strings -- a new resource whose content is
+ *  never seeded would be swept vacuously and prove nothing. */
+const ALICE_RULE = "ALICE_SECRET_STANDING_ORDER";
 
 async function seedTransaction(email: string, item: string, description: string) {
   const res = await as(email)("/api/transactions", {
@@ -48,6 +62,25 @@ async function seedTransaction(email: string, item: string, description: string)
       categoryId: "cat_food_drinks",
       amountSen: 12_345,
       direction: "out",
+    },
+  });
+  expect(res.status).toBe(201);
+  return res.body.id as string;
+}
+
+async function seedRecurring(email: string, item: string) {
+  const res = await as(email)("/api/recurring", {
+    method: "POST",
+    json: {
+      item,
+      categoryId: "cat_food_drinks",
+      amountSen: 23_000,
+      direction: "out",
+      intervalMonths: 1,
+      dayOfMonth: 15,
+      // Forward-only is enforced against the caller's today, so a fixed past
+      // date here would 422 and the test would prove nothing.
+      startsOn: "2099-01-01",
     },
   });
   expect(res.status).toBe(201);
@@ -83,6 +116,7 @@ describe("cross-tenant isolation: separate people", () => {
 
   it("never returns another person's transactions on any read endpoint", async () => {
     await seedTransaction(ALICE, ALICE_ITEM, ALICE_NOTE);
+    await seedRecurring(ALICE, ALICE_RULE);
     const request = as(BOB);
 
     for (const path of readEndpoints) {
@@ -90,6 +124,7 @@ describe("cross-tenant isolation: separate people", () => {
       expect([200, 404]).toContain(res.status);
       expect(res.text, `Alice's item leaked from GET ${path}`).not.toContain(ALICE_ITEM);
       expect(res.text, `Alice's note leaked from GET ${path}`).not.toContain(ALICE_NOTE);
+      expect(res.text, `Alice's rule leaked from GET ${path}`).not.toContain(ALICE_RULE);
     }
   });
 
@@ -113,6 +148,60 @@ describe("cross-tenant isolation: separate people", () => {
 
     const still = await as(ALICE)(`/api/transactions/${id}`);
     expect(still.body.item).toBe(ALICE_ITEM);
+  });
+
+  /**
+   * THE MOST DANGEROUS NEW ENDPOINT IN THIS PORTAL.
+   *
+   * Every other missing-predicate bug here LEAKS data. This one DESTROYS it,
+   * and destroys someone else's. That asymmetry is why TransactionRepo.remove
+   * carries two guards -- get() to prove ownership and the ledger predicate on
+   * the DELETE itself -- rather than trusting the call above it.
+   */
+  it("refuses to let one person delete another's transaction", async () => {
+    const id = await seedTransaction(ALICE, ALICE_ITEM, ALICE_NOTE);
+
+    const res = await as(BOB)(`/api/transactions/${id}`, { method: "DELETE" });
+    // NotFound, never Forbidden: a 403 would confirm the id exists.
+    expect(res.status).toBe(404);
+  });
+
+  /**
+   * Deliberately SEPARATE from the 404 above, and not merged into it.
+   *
+   * remove() has two guards -- get() proves ownership, and the DELETE carries
+   * the ledger predicate again. If both assertions lived in one test, the
+   * status check would fail first and mask whether the row survived, so
+   * removing the second guard would look identical to removing the first.
+   * Split, the outcomes are distinguishable: break get() and only the test
+   * above fails; break both and this one fails too, which is the case where
+   * data is actually destroyed.
+   */
+  it("leaves the other person's transaction intact after a refused delete", async () => {
+    const id = await seedTransaction(ALICE, ALICE_ITEM, ALICE_NOTE);
+
+    await as(BOB)(`/api/transactions/${id}`, { method: "DELETE" });
+
+    const still = await as(ALICE)(`/api/transactions/${id}`);
+    expect(still.status).toBe(200);
+    expect(still.body.item).toBe(ALICE_ITEM);
+  });
+
+  it("refuses to let one person edit or delete another's recurring rule", async () => {
+    const id = await seedRecurring(ALICE, ALICE_RULE);
+
+    const patch = await as(BOB)(`/api/recurring/${id}`, {
+      method: "PATCH",
+      json: { item: "HIJACKED" },
+    });
+    expect(patch.status).toBe(404);
+
+    const del = await as(BOB)(`/api/recurring/${id}`, { method: "DELETE" });
+    expect(del.status).toBe(404);
+
+    const still = await as(ALICE)(`/api/recurring/${id}`);
+    expect(still.status).toBe(200);
+    expect(still.body.item).toBe(ALICE_RULE);
   });
 
   it("summary totals count only the caller's own ledger", async () => {
@@ -207,6 +296,7 @@ describe("cross-user isolation: co-members of one garage", () => {
     // Alice's car and must not see Alice's spending.
     await giveVehicle(ALICE, "SHARED_WAJA");
     await seedTransaction(ALICE, ALICE_ITEM, ALICE_NOTE);
+    await seedRecurring(ALICE, ALICE_RULE);
 
     const request = as(CAROL);
     for (const path of readEndpoints) {
@@ -216,6 +306,10 @@ describe("cross-user isolation: co-members of one garage", () => {
         ALICE_ITEM,
       );
       expect(res.text).not.toContain(ALICE_NOTE);
+      expect(
+        res.text,
+        `Alice's recurring rule leaked to a co-member from GET ${path}`,
+      ).not.toContain(ALICE_RULE);
     }
   });
 
@@ -235,6 +329,50 @@ describe("cross-user isolation: co-members of one garage", () => {
     });
     expect(res.status).toBe(201);
     expect(res.body.vehicleId).toBe(vehicleId);
+  });
+
+  it("lets a co-member attach a shared vehicle to their OWN recurring rule", async () => {
+    // A recurring rule is the SECOND write path where the two ownership axes
+    // meet, and the harder one: it authorises a vehicle now and writes with it
+    // months later. Creation must behave exactly like a transaction's.
+    const vehicleId = await giveVehicle(ALICE, "SHARED_WAJA");
+
+    const res = await as(CAROL)("/api/recurring", {
+      method: "POST",
+      json: {
+        item: "Carol car insurance",
+        categoryId: "cat_transportation",
+        vehicleId,
+        amountSen: 23_000,
+        direction: "out",
+        intervalMonths: 1,
+        dayOfMonth: 15,
+        startsOn: "2099-01-01",
+      },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.vehicleId).toBe(vehicleId);
+  });
+
+  it("refuses a recurring rule naming a vehicle the caller cannot reach", async () => {
+    const vehicleId = await giveVehicle(ALICE, "SHARED_WAJA");
+
+    // Bob is in no garage. 404 rather than 403, so a crafted id cannot be used
+    // to enumerate which vehicles exist.
+    const res = await as(BOB)("/api/recurring", {
+      method: "POST",
+      json: {
+        item: "Bob tries it on",
+        categoryId: "cat_transportation",
+        vehicleId,
+        amountSen: 1_000,
+        direction: "out",
+        intervalMonths: 1,
+        dayOfMonth: 15,
+        startsOn: "2099-01-01",
+      },
+    });
+    expect(res.status).toBe(404);
   });
 
   it("refuses a vehicle the caller has no garage membership for", async () => {
@@ -263,5 +401,68 @@ describe("cross-user isolation: co-members of one garage", () => {
     // by it. Assert it never appears.
     const res = await as(CAROL)("/api/me");
     expect(Object.keys(res.body)).not.toContain("garageId");
+  });
+});
+
+/**
+ * The scheduled runner writes into every ledger with work to do, so it is the
+ * one caller in this portal with no Cloudflare Access identity behind it.
+ *
+ * These live in the isolation suite rather than beside the other cron tests on
+ * purpose: this is a tenancy guarantee, and the file that sweeps every read
+ * endpoint is where someone changing the scoping model will look. A runner
+ * that built one Scope and reused it, or that dropped `this.where()` on the
+ * insert, would post one person's commitments into another's ledger -- and
+ * every existing test in this file would still pass.
+ */
+describe("cross-tenant isolation: the scheduled runner", () => {
+  const DUE_DAY = new Date("2026-09-15T02:00:00.000Z");
+
+  it("posts each ledger's entries into that ledger and no other", async () => {
+    const alice = (await as(ALICE)("/api/me")).body.ledgerId as string;
+    const bob = (await as(BOB)("/api/me")).body.ledgerId as string;
+
+    await giveRule(alice, { item: ALICE_ITEM, starts_on: "2026-09-01", day_of_month: 15 });
+    await giveRule(bob, { item: "BOB_OWN_RULE", starts_on: "2026-09-01", day_of_month: 15 });
+
+    const result = await runRecurringPosting(env, { now: DUE_DAY });
+    expect(result.posted).toBe(2);
+
+    // Each got exactly their own, and the sweep proves the other's never
+    // surfaces on ANY read endpoint -- not just the obvious one.
+    const bobLedger = as(BOB);
+    for (const path of readEndpoints) {
+      const res = await bobLedger(path);
+      expect([200, 404]).toContain(res.status);
+      expect(res.text, `Alice's posted entry leaked from GET ${path}`).not.toContain(ALICE_ITEM);
+      expect(res.text, `Alice's ledger id leaked from GET ${path}`).not.toContain(alice);
+    }
+
+    const bobTxns = await as(BOB)("/api/transactions");
+    expect(bobTxns.body).toHaveLength(1);
+    expect(bobTxns.body[0].item).toBe("BOB_OWN_RULE");
+  });
+
+  it("does not post a co-member's garage-shared rule into the wrong ledger", async () => {
+    const alice = (await as(ALICE)("/api/me")).body.ledgerId as string;
+    await as(CAROL)("/api/me");
+    await giveGarage(ALICE);
+    await addToGarageOf(ALICE, CAROL);
+    const vehicleId = await giveVehicle(ALICE, "SHARED_WAJA");
+
+    // Alice's rule names the shared car. Carol is in the garage, so she can
+    // SEE that car -- and must still get none of the money.
+    await giveRule(alice, {
+      item: ALICE_ITEM,
+      starts_on: "2026-09-01",
+      day_of_month: 15,
+      vehicle_id: vehicleId,
+    });
+
+    await runRecurringPosting(env, { now: DUE_DAY });
+
+    const carol = await as(CAROL)("/api/transactions");
+    expect(carol.body).toHaveLength(0);
+    expect(carol.text).not.toContain(ALICE_ITEM);
   });
 });

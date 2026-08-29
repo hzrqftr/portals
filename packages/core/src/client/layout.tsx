@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
 /**
  * Page shell shared by every portal. Desktop-first, responsive down to 375px.
@@ -39,6 +39,17 @@ export function SectionTitle({ children }: { children: ReactNode }) {
 export type Portal = { name: string; href: string };
 
 /**
+ * A top-level section of this portal.
+ *
+ * This is a different thing from `crumb`, and the distinction is worth
+ * keeping: `crumb` expresses DEPTH -- you are inside something, here is the
+ * way back -- while `nav` expresses BREADTH, the sections the app is divided
+ * into. Odometry has depth and no breadth; Coinbox has breadth and, for now,
+ * no depth. An app can want both, and neither implies the other.
+ */
+export type NavItem = { label: string; href: string };
+
+/**
  * The top bar. The root link changes identity with depth, which is
  * deliberate: at the root it is the WORDMARK -- the app name in its display
  * face, the one piece of branding on screen -- while inside a breadcrumb it
@@ -52,12 +63,15 @@ export function AppHeader({
   wordmark,
   homeLabel,
   crumb,
+  nav = [],
   settingsHref,
   portals = [],
 }: {
   wordmark: ReactNode;
   homeLabel: string;
   crumb?: string;
+  /** Defaults to [], so a portal that passes nothing renders exactly as before. */
+  nav?: NavItem[];
   settingsHref?: string;
   portals?: Portal[];
 }) {
@@ -85,6 +99,27 @@ export function AppHeader({
             </span>
             <span className="min-w-0 truncate text-ink-muted">{crumb}</span>
           </>
+        )}
+        {nav.length > 0 && (
+          <nav aria-label="Sections" className="ml-2 flex min-w-0 shrink items-center gap-0.5">
+            {nav.map((n) => (
+              <NavLink
+                key={n.href}
+                to={n.href}
+                // Load-bearing: "/" is a prefix of every route, so without
+                // `end` the home link is active on every page.
+                end={n.href === "/"}
+                className={({ isActive }) =>
+                  "shrink-0 rounded-lg px-2 py-1.5 text-sm transition sm:px-2.5 " +
+                  (isActive
+                    ? "bg-inset font-medium text-ink"
+                    : "text-ink-muted hover:bg-inset hover:text-ink")
+                }
+              >
+                {n.label}
+              </NavLink>
+            ))}
+          </nav>
         )}
         <div className="ml-auto flex items-center gap-4">
           {portals.map((p) => (

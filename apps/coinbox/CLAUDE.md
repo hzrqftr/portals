@@ -19,19 +19,25 @@ against the local database: 648 rows reconciling exactly. It is idempotent —
 re-running inserts nothing — and it aborts rather than reporting success if the
 totals disagree.
 
-Still unbuilt: every transaction endpoint and the entry form. `GET /api/me`
-remains the only route, so **the isolation suite has nothing new to cover
-yet** — the moment a read endpoint lands, it goes in `tests/isolation.test.ts`.
-No exceptions.
+**The portal is live.** 4,421 transactions in production, the full ledger UI,
+and as of 2026-08-29 recurring entries with a nightly cron. Every read endpoint
+is in `readEndpoints` in `tests/isolation.test.ts` — the moment another one
+lands, it goes there too. No exceptions.
 
 ## Scope line
 
 This is an expense ledger, **not a personal finance app**. Out of scope: account
 balances (the banks have no API, so reconciliation is not feasible), budgets,
-net worth, loan amortisation, multi-currency, recurring-transaction detection.
+net worth, loan amortisation, multi-currency, recurring-transaction **detection**.
 Parity with the Google Form, plus the things the Form cannot do: conditional
 fields, editing past entries, real validation, and vehicle attribution as a
 first-class field.
+
+**Recurring *entry* is in scope and was built 2026-08-29. It is not the same
+thing as detection.** The owner declares a rule and a nightly cron posts it;
+nothing infers a pattern from history. If you are reading the non-goal above and
+about to conclude this feature violates the spec, that is the distinction it is
+drawing. See `docs/coinbox-spec.md` §9.
 
 ## Ownership axis: the ledger
 
@@ -82,7 +88,7 @@ re-couple them.
 
 ### Store magnitude plus direction; derive the sign
 
-`amount_sen INTEGER NOT NULL CHECK (amount_sen > 0)` with `direction TEXT NOT
+`amount_sen INTEGER NOT NULL CHECK (amount_sen >= 0)` with `direction TEXT NOT
 NULL CHECK (direction IN ('in','out'))`, plus a `VIRTUAL` generated column
 `signed_sen`.
 
@@ -135,6 +141,73 @@ including for the three rows deliberately recategorised on the way in. They are
 absent from `transactionPatch`, which is `.strict()`, so an edit cannot rewrite
 them. Losing them would destroy the only evidence of what was imported versus
 what was corrected afterwards.
+
+`transactions.is_recurring` is provenance too, and is absent from
+`transactionPatch` for the same reason: it records that the nightly job wrote
+the row, so an edit must not be able to forge it. Editing an auto-posted
+entry's amount leaves it flagged, because it *was* auto-posted — that is a fact
+about its origin, not about its current values.
+
+## Recurring entries
+
+### The month-end clamp CANNOT be written in SQL
+
+**`date('2026-01-31','+1 month')` returns `2026-03-03`, not `2026-02-28`.**
+Measured against the real database, not assumed. SQLite normalises an
+impossible date forward; it does not clamp. `date('2026-03-31','+1 month')` is
+`2026-05-01`.
+
+The owner asked for 31 → 28/29 Feb → back to 31 in March, so the schedule
+arithmetic lives in `src/shared/recurrence.ts` and **nothing computes a due date
+in SQL**. This is a real exception to "aggregate in SQL, never in JavaScript",
+written down here because that invariant is standing instruction and someone
+will eventually try to honour it in this one place. The failure it prevents is a
+payment three days late, once a year, with nothing in any log.
+
+The second half of the same trap: **each occurrence is computed from
+`day_of_month` against its own month, never from the previous occurrence.**
+`addMonths` in `@portals/core` clamps correctly, but iterating it drifts — once
+a day-31 rule clamps to 28 Feb it yields 28 Mar, and sits on the 28th for the
+rest of its life. `tests/recurrence.test.ts` asserts the round trip, not just
+the February step, because the one-step version passes against exactly that bug.
+
+### `(rule_id, occurred_on)` is the idempotency guarantee
+
+The primary key on `recurring_postings` is the only thing that makes the
+nightly run safe to repeat — the cron can fire twice, be retried, or overlap,
+and careful code is not a substitute. Two consequences:
+
+- **Never `INSERT OR IGNORE` the claim.** The claim would be skipped while the
+  transaction insert succeeded, producing exactly the double-post the table
+  exists to prevent. It must be able to throw.
+- **The transaction is inserted BEFORE the claim, and the order is forced.**
+  `recurring_postings.transaction_id` references `transactions(id)`, and D1
+  enforces foreign keys statement by statement — it ignores
+  `PRAGMA foreign_keys = OFF`. Claiming first fails with
+  `SQLITE_CONSTRAINT_FOREIGNKEY`. Ordering costs nothing because the guarantee
+  comes from `batch()` being atomic, not from the order.
+
+Unlike `import_rows`, this key needs nothing extra. That hash includes the
+source line number because two genuinely identical rows exist in the owner's
+export; here two occurrences of one rule are at least a month apart by
+construction, so the collision is arithmetically impossible.
+
+### Deleting a rule must never reach the money
+
+`recurring_postings` cascades from `recurring_rules`; `transactions` does not,
+and carries no `recurring_rule_id`. The money was real whatever happens to the
+schedule that caused it. `is_recurring` is what lets those entries still say how
+they got there once the rule and its claims are gone.
+
+### The cron re-checks the vehicle, every time
+
+A rule's `vehicle_id` is authorised at creation and **re-validated against the
+ledger owner on every post**, because those are months apart and garage
+membership can change in between. Without the second check, revoking someone's
+garage access would revoke nothing — the scheduled writer would keep stamping
+the owner's vehicle into their ledger indefinitely. On failure the entry posts
+**without** the vehicle: the payment is real and must be recorded, and dropping
+attribution fails in the safe direction.
 
 ## Style
 

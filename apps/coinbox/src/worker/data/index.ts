@@ -2,6 +2,7 @@ import type { Env, Scope } from "../types";
 import { makeDb } from "./base";
 import { TransactionRepo } from "./transactions";
 import { CategoryRepo, VehicleRepo } from "./categories";
+import { RecurringRepo } from "./recurring";
 
 /**
  * Repository factory. Route handlers receive these already scoped and never
@@ -16,6 +17,7 @@ export interface Repos {
   transactions: TransactionRepo;
   categories: CategoryRepo;
   vehicles: VehicleRepo;
+  recurring: RecurringRepo;
 }
 
 export function makeRepos(env: Env, scope: Scope): Repos {
@@ -24,5 +26,6 @@ export function makeRepos(env: Env, scope: Scope): Repos {
     transactions: new TransactionRepo(db, raw, scope),
     categories: new CategoryRepo(db, raw, scope),
     vehicles: new VehicleRepo(db, raw, scope),
+    recurring: new RecurringRepo(db, raw, scope),
   };
 }

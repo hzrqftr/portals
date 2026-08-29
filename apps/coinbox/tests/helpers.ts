@@ -81,8 +81,13 @@ export async function resetDb(): Promise<void> {
   const tables = [
     // Children before parents: transactions and the import tables reference
     // ledgers, so deleting ledgers first fails on foreign keys.
+    //
+    // recurring_postings is first of all because it is a child of BOTH
+    // recurring_rules and transactions -- deleting either before it fails.
+    "recurring_postings",
     "import_rows",
     "import_batches",
+    "recurring_rules",
     "transactions",
     "ledgers",
     "service_items",
@@ -193,4 +198,66 @@ export async function giveGarage(email: string): Promise<void> {
         WHERE u.email = ?`,
     ).bind(email),
   ]);
+}
+
+/**
+ * Creates a recurring rule by raw SQL and returns its id.
+ *
+ * Raw SQL for the same reason as `giveLedger`: the schema tests are about what
+ * the DATABASE guarantees, and going through the API would make a constraint
+ * failure and a handler bug look identical. Defaults are a plain monthly rule;
+ * `over` replaces any column.
+ */
+export async function giveRule(
+  ledgerId: string,
+  over: Record<string, unknown> = {},
+): Promise<string> {
+  const row = {
+    id: crypto.randomUUID(),
+    ledger_id: ledgerId,
+    item: "Insurance",
+    description: null as string | null,
+    category_id: "cat_utility",
+    vehicle_id: null as string | null,
+    amount_sen: 23_000,
+    direction: "out",
+    interval_months: 1,
+    day_of_month: 15,
+    starts_on: "2026-09-01",
+    ends_on: null as string | null,
+    is_active: 1,
+    created_at: "2026-08-29T00:00:00.000Z",
+    updated_at: "2026-08-29T00:00:00.000Z",
+    ...over,
+  };
+
+  await env.DB.prepare(
+    `INSERT INTO recurring_rules
+       (id, ledger_id, item, description, category_id, vehicle_id, amount_sen,
+        direction, interval_months, day_of_month, starts_on, ends_on,
+        is_active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      row.id, row.ledger_id, row.item, row.description, row.category_id,
+      row.vehicle_id, row.amount_sen, row.direction, row.interval_months,
+      row.day_of_month, row.starts_on, row.ends_on, row.is_active,
+      row.created_at, row.updated_at,
+    )
+    .run();
+
+  return row.id as string;
+}
+
+/** Removes `email` from `ownerEmail`'s garage -- the inverse of addToGarageOf. */
+export async function removeFromGarageOf(ownerEmail: string, email: string): Promise<void> {
+  await env.DB.prepare(
+    `DELETE FROM garage_members
+      WHERE user_id = (SELECT id FROM users WHERE email = ?)
+        AND garage_id IN (SELECT g.id FROM garages g
+                            JOIN users owner ON owner.id = g.created_by
+                           WHERE owner.email = ?)`,
+  )
+    .bind(email, ownerEmail)
+    .run();
 }

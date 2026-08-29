@@ -3,7 +3,7 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-08-28
+**Last updated:** 2026-08-30
 
 ---
 
@@ -118,8 +118,18 @@ remains deliberately absent:
   couples the two portals' write paths, which is the half that can leak.
 - **`ledger_members`.** Sharing a ledger is unrepresentable on purpose. Adding
   it is a product decision, not a refactor.
-- **Deleting a transaction.** Editing was the §1.1 requirement; delete was not,
-  and a delete on financial history wants more thought than an afternoon.
+- ~~**Deleting a transaction.**~~ **BUILT 2026-08-30, and this deferral was
+  reopened deliberately.** Recurring entries are the reason: a rule that posts
+  without confirmation will eventually post something wrong, and editing that
+  entry to RM 0.00 is not an undo -- it leaves a row asserting a payment that
+  never happened, still counted in `v_txn_monthly`. Auto-post without delete is
+  the unsafe combination, so the two shipped together.
+
+  Hard delete, not a `deleted_at` flag: a soft delete would need
+  `WHERE deleted_at IS NULL` in `list`, `get`, `monthlySummary`, both views and
+  every report written from here on, and a single omission silently returns a
+  deleted row to a total. Recovery is the nightly R2 export (90 days) plus D1
+  Time Travel (30) -- a file the owner already has.
 - **Budgets** (§8.6, Phase 2) and **multi-user** (Phase 3).
 
 ## Blocked on the owner — cannot be done from a coding session
@@ -141,10 +151,21 @@ fine. `docs/coinbox-spec.md` §7.5 closes this — do not reopen it as a task.
 
 ## Traps in the current state
 
-- **The migration ledger is fully applied.** `0001`–`0011` are applied both
-  locally and remotely as of 2026-08-28. There is no pending migration, so the
-  next deploy of either portal has nothing to land. Confirm with
+- **`0012_recurring.sql` is applied LOCALLY ONLY.** `0001`-`0011` are applied
+  both locally and remotely; `0012` lands on the next
+  `npm run deploy -w coinbox`, which applies it before shipping the code that
+  needs it. Confirm with
   `npx wrangler d1 migrations list fleet --remote -c wrangler.jsonc`.
+- **Coinbox now has a Cron Trigger**, `0 17 * * *`, and `observability` is on
+  for that Worker. Two things follow. A newly registered cron takes **~15
+  minutes** to start firing, so do not debug silence before checking how long
+  ago it deployed. And the 17:00 UTC recurring run must stay **before**
+  fleet-portal's 18:00 UTC backup, so the night's auto-posted entries are in
+  that night's dump.
+- **The first production recurring run will post nothing**, because forward-only
+  means no rule can be due before it is created. A healthy quiet run is
+  distinguishable from a broken one only by the log line, which always reports
+  how many rules were *considered*, not just how many posted.
 - **Both apps share `.wrangler/state` at the repo root**, because they share
   one D1 in production. If either app starts creating its own, a transaction
   will not be able to see the vehicle it references.
@@ -314,22 +335,41 @@ and reminders are Phase 4.
 
 ### Coinbox
 
-Everything except the skeleton. `GET /api/me` is the only endpoint.
+**This table was badly out of date and was rewritten on 2026-08-30.** It still
+listed the schema, the entry form and the import as unbuilt, which the sections
+above it and production both contradict. If you are reading it against
+something that looks wrong, trust the code.
 
 | Gap | Spec | Why it matters |
 |---|---|---|
-| `transactions` + `categories` schema | §4.2, §4.3 | The whole app. Deliberately unwritten — see §7 open decisions |
-| Entry form | §1.1 | Conditional field visibility is the main thing Google Forms cannot do |
-| Sheet import | §6 | ~80 car fuel rows need a manual triage screen; motorcycle rows are unambiguous |
-| ~~Backup + restore~~ | §7.6 | **BUILT 2026-08-28.** Nightly whole-database export to R2, 90-day retention, restore round trip in CI. Needs the R2 bucket created (see blocked list) |
+| ~~`transactions` + `categories` schema~~ | §4.2, §4.3 | **BUILT 2026-08-28**, migration `0011`. 4,421 rows in production |
+| ~~Entry form~~ | §1.1 | **BUILT 2026-08-28.** Conditional vehicle field, direction-reordered category picker, inline cell editing |
+| ~~Sheet import~~ | §6 | **DONE 2026-08-28.** 4,421 rows reconciled exactly. The triage screen was not needed — the real count was 14, not ~80 |
+| ~~Backup + restore~~ | §7.6 | **BUILT 2026-08-28.** Nightly whole-database export to R2, 90-day retention, restore round trip in CI |
+| ~~Recurring entries~~ | §9 | **BUILT 2026-08-30.** Declared rules, nightly cron, delete. See below |
+| The Sheets mirror | §7.6 | Still open. A readable copy on a phone without the app; needs a Google service account and JWT signing in the Worker |
+| Backup failure alerting | — | A failed nightly run writes to the log and tells nobody. Needs an email provider |
+| Off-Cloudflare backup copies | — | Every backup is in the account it protects. One downloaded file a month closes it |
+| Home dashboard | §9.7 | `/` renders an honest empty state. The monthly averages the owner still opens the Sheet for belong here |
 | Cross-portal navigation | §7.4 | `AppHeader` takes a `portals` prop nothing passes. Blocked on Access groups reaching the Worker |
 
 ---
 
 ## Next
 
-Coinbox's Phase 1 is done and in production. Nothing is blocked. The open
-choices, in no particular order:
+Coinbox's Phase 1 is done and in production, and recurring entries landed
+2026-08-30. Nothing is blocked. The open choices, in no particular order:
+
+**Coinbox — the Home dashboard.** `/` exists and renders an honest empty state.
+This is the half of the Sheet that is not the log: monthly totals and the
+averages the RM 0.00 rows feed. `useSummary()` already returns per-month
+`in_sen`/`out_sen`/`net_sen`, so the first useful version is small.
+
+**Watch the first recurring runs.** Forward-only means nothing posts until a
+rule's first due date arrives, so the feature cannot be confirmed working on
+day one. Check the Worker's logs after the first rule comes due — the run
+always logs how many rules it considered, so a quiet night is distinguishable
+from a broken one.
 
 **Odometry — renewals (§4.6, §6.3).** The oldest outstanding commitment in this
 repo, and half the reason the fleet portal exists: road tax and insurance.

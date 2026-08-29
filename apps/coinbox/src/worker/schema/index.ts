@@ -75,8 +75,69 @@ export const transactions = sqliteTable("transactions", {
   //
   sourceTypeRaw: text("source_type_raw"),
   sourceCategoryRaw: text("source_category_raw"),
+  //
+  // How the row got here: 1 only when the recurring materialiser wrote it.
+  //
+  // Unlike `signed_sen` this IS a real stored column, so it belongs here --
+  // and it needs its default declared, because Drizzle names every column on
+  // insert and an undeclared default would arrive as NULL against a NOT NULL.
+  //
+  // It is PROVENANCE, not state. Absent from `transactionPatch` (which is
+  // `.strict()`) exactly as the two `source_*_raw` columns are, so an edit
+  // cannot rewrite how a row entered the ledger.
+  isRecurring: integer("is_recurring").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+});
+
+/**
+ * A declared recurring entry: "Insurance, RM 230, the 15th of every month".
+ *
+ * DECLARED, not detected -- nothing inspects history to infer a pattern, which
+ * is what the spec's non-goal rules out.
+ *
+ * The schedule is `intervalMonths` + `dayOfMonth`, and the phase comes from
+ * `startsOn`. There is deliberately no `frequency` enum beside them and no
+ * `nextDueOn` cursor: the first would be a second column encoding a fact the
+ * first already carries, and the second would be a cache of something derivable
+ * from `recurringPostings`, which is the actual source of truth.
+ *
+ * `vehicleId` carries no foreign key for the same reason `transactions` does
+ * not: it points into Odometry's garage-scoped tables, and a garage deletion
+ * must not cascade into a schedule. Validated on write, and RE-validated when
+ * the cron posts months later -- see data/recurring-runner.ts.
+ */
+export const recurringRules = sqliteTable("recurring_rules", {
+  id: text("id").primaryKey(),
+  ledgerId: text("ledger_id").notNull(),
+  item: text("item").notNull(),
+  description: text("description"),
+  categoryId: text("category_id").notNull(),
+  vehicleId: text("vehicle_id"),
+  amountSen: integer("amount_sen").notNull(),
+  direction: text("direction").notNull().$type<"in" | "out">(),
+  intervalMonths: integer("interval_months").notNull(),
+  dayOfMonth: integer("day_of_month").notNull(),
+  startsOn: text("starts_on").notNull(),
+  endsOn: text("ends_on"),
+  isActive: integer("is_active").notNull().default(1),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/**
+ * One row per occurrence that has been CLAIMED, and the reason the cron cannot
+ * double-post: the primary key `(rule_id, occurred_on)` makes a second attempt
+ * fail at the database rather than at a code path someone can reorder.
+ *
+ * `transactionId` goes NULL when its transaction is deleted while the claim
+ * row stays, so a deleted entry is not helpfully re-created on the next run.
+ */
+export const recurringPostings = sqliteTable("recurring_postings", {
+  ruleId: text("rule_id").notNull(),
+  occurredOn: text("occurred_on").notNull(),
+  transactionId: text("transaction_id"),
+  postedAt: text("posted_at").notNull(),
 });
 
 export const importBatches = sqliteTable("import_batches", {
