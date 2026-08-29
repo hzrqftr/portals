@@ -64,7 +64,7 @@ export default function Ledger() {
     <>
       <AppHeader crumb="Ledger" />
       <Page>
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 pt-6">
           <SectionTitle>Ledger</SectionTitle>
           <button
             type="button"

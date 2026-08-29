@@ -63,6 +63,7 @@ export function AppHeader({
   wordmark,
   homeLabel,
   crumb,
+  crumbPlacement = "inline",
   nav = [],
   settingsHref,
   portals = [],
@@ -70,6 +71,22 @@ export function AppHeader({
   wordmark: ReactNode;
   homeLabel: string;
   crumb?: string;
+  /**
+   * Where the breadcrumb sits.
+   *
+   * `inline` (the default, and what Odometry uses) puts it on the bar in place
+   * of the wordmark. `below` gives it a second row inside the same sticky
+   * header, which is what a portal with a `nav` strip wants: side by side, a
+   * crumb reading "Home / Ledger" next to a nav item reading "Home" is the
+   * same word twice in an inch, and the wordmark disappears to make room for
+   * the duplication.
+   *
+   * Both rows are inside the sticky <header>, so both stay pinned. That is a
+   * deliberate cost -- roughly 96px of permanent chrome instead of 56 -- taken
+   * because the back button is then always one tap away, wherever you are in a
+   * long list.
+   */
+  crumbPlacement?: "inline" | "below";
   /** Defaults to [], so a portal that passes nothing renders exactly as before. */
   nav?: NavItem[];
   settingsHref?: string;
@@ -79,11 +96,14 @@ export function AppHeader({
   // No point offering a link to the page you are already on.
   const onSettings = settingsHref !== undefined && pathname === settingsHref;
 
+  const showCrumbInline = crumb !== undefined && crumbPlacement === "inline";
+  const showCrumbBelow = crumb !== undefined && crumbPlacement === "below";
+
   return (
     <header className="sticky top-0 z-30 border-b border-edge bg-page/90 backdrop-blur">
       <div className={CONTAINER.replace("pb-24", "") + " flex h-14 items-center gap-2"}>
-        {crumb && <BackButton />}
-        {crumb ? (
+        {showCrumbInline && <BackButton />}
+        {showCrumbInline ? (
           <Link to="/" className="shrink-0 text-ink-muted hover:text-ink">
             {homeLabel}
           </Link>
@@ -92,7 +112,7 @@ export function AppHeader({
             {wordmark}
           </Link>
         )}
-        {crumb && (
+        {showCrumbInline && (
           <>
             <span aria-hidden className="text-ink-faint">
               /
@@ -134,6 +154,43 @@ export function AppHeader({
           )}
         </div>
       </div>
+
+      {/*
+        The breadcrumb's own row. INSIDE the sticky <header>, so it stays
+        pinned with the bar above it rather than scrolling away.
+
+        Anything positioned against the header's height must account for this:
+        a `sticky top-14` strip (Odometry's VehicleDetail tabs) assumes a 56px
+        header and would slide under a 96px one. Nothing does that in a portal
+        using `below` today, which is why this is a comment rather than a
+        shared constant.
+      */}
+      {showCrumbBelow && (
+        // The divider sits on this full-width wrapper, NOT on the container
+        // below it. On the container it inherits max-w-7xl and stops short at
+        // both ends, which reads as a rule that failed to draw rather than a
+        // deliberate inset -- especially directly above the header's own
+        // edge-to-edge border-b.
+        <div className="border-t border-edge">
+          <nav
+            aria-label="Breadcrumb"
+            className={
+              CONTAINER.replace("pb-24", "") + " flex h-10 items-center gap-2 text-sm"
+            }
+          >
+            <BackButton />
+            <Link to="/" className="shrink-0 text-ink-muted hover:text-ink">
+              {homeLabel}
+            </Link>
+            <span aria-hidden className="text-ink-faint">
+              /
+            </span>
+            <span className="min-w-0 truncate text-ink" aria-current="page">
+              {crumb}
+            </span>
+          </nav>
+        </div>
+      )}
     </header>
   );
 }

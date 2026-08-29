@@ -38,6 +38,10 @@ export function AppHeader({ crumb }: { crumb?: string }) {
       // label the breadcrumb uses for whatever "/" is.
       homeLabel="Home"
       crumb={crumb}
+      // Below the bar, not on it: beside a nav strip an inline crumb reads
+      // "Home / Ledger" next to a nav item reading "Home", and pushes the
+      // wordmark off screen to do it.
+      crumbPlacement="below"
       nav={NAV}
     />
   );
