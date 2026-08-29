@@ -7,6 +7,27 @@ Written for the owner, not for the machine. The design rationale lives in
 
 **Last verified:** 2026-08-29, against production, after the 4,421-row import.
 
+## Read this when you cannot reach the repo
+
+There is a published copy of this manual, reachable from any device with a
+browser and no checkout, no laptop and no wrangler:
+
+**https://claude.ai/code/artifact/cd23be9a-5d58-4ae8-a732-4a927dc870dc**
+
+It is private to the owner's Claude account. It carries the triage table, the
+restore steps with copy buttons, and the dashboard click paths.
+
+The reason it exists is the one failure this file cannot cover: **a recovery
+manual that lives only inside the repo is unreachable when the thing you have
+lost is the machine holding the repo.** That is not a hypothetical for a system
+whose whole point is surviving loss.
+
+> **This file stays the source of truth; the page is a snapshot.**
+> If you change anything below, republish the page from the same URL or the two
+> will drift, and a stale recovery manual is worse than none. Ask Claude to
+> "republish the recovery runbook" and give it that link -- publishing without
+> the URL creates a second page instead of updating this one.
+
 ---
 
 ## The short version
