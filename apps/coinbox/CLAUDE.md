@@ -209,6 +209,29 @@ the owner's vehicle into their ledger indefinitely. On failure the entry posts
 **without** the vehicle: the payment is real and must be recorded, and dropping
 attribution fails in the safe direction.
 
+## Pages
+
+Three top-level routes, in `src/client/App.tsx`:
+
+| Route | Component | What it is |
+|---|---|---|
+| `/` | `routes/Home.tsx` | **Empty on purpose.** It holds the root so the dashboard can land there without moving the ledger out from under a bookmark |
+| `/ledger` | `routes/Ledger.tsx` | The log. Inline cell editing, filters, delete |
+| `/recurring` | `routes/Recurring.tsx` | Declared rules |
+
+The header comes from `@portals/core/client`. Coinbox passes `nav` (the three
+sections) and `crumbPlacement="below"`, which puts the breadcrumb on its own
+row inside the same sticky header. Both are additive props defaulting to the
+old behaviour, so **Odometry renders exactly as it did** -- do not "tidy" them
+into always-on.
+
+`homeLabel` is `"Home"`, not `"Ledger"`: it is the label the breadcrumb uses
+for whatever `/` is, and `/` is Home now.
+
+Every page's title row carries `pt-6`. It is the only thing keeping the three
+pages' headings and action buttons on the same line; Ledger was missing it once
+and its button sat 24px high.
+
 ## Style
 
 Entry happens on a phone at a petrol pump or a checkout, so the entry flow

@@ -3,7 +3,7 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-08-30
+**Last updated:** 2026-08-30 (evening — recurring live with nine real rules)
 
 ---
 
@@ -350,26 +350,85 @@ something that looks wrong, trust the code.
 | The Sheets mirror | §7.6 | Still open. A readable copy on a phone without the app; needs a Google service account and JWT signing in the Worker |
 | Backup failure alerting | — | A failed nightly run writes to the log and tells nobody. Needs an email provider |
 | Off-Cloudflare backup copies | — | Every backup is in the account it protects. One downloaded file a month closes it |
-| Home dashboard | §9.7 | `/` renders an honest empty state. The monthly averages the owner still opens the Sheet for belong here |
+| Home dashboard | — | `/` renders an honest empty state. The monthly averages the owner still opens the Sheet for belong here. **Agreed next piece of work** — see Next |
 | Cross-portal navigation | §7.4 | `AppHeader` takes a `portals` prop nothing passes. Blocked on Access groups reaching the Worker |
 
 ---
 
+## Recurring is live, and the first posts land 31 August
+
+**Deployed 2026-08-30.** Version `2df53a95`, cron `0 17 * * *` registered on the
+coinbox Worker. The owner has entered **nine real rules** totalling
+**RM 4,415.32 a month**. As of the evening of 2026-08-30, `recurring_postings`
+is empty and no transaction carries `is_recurring = 1` — correct, because
+forward-only means nothing can be due before its rule was created.
+
+| Rule | Amount | Day | First post |
+|---|---|---|---|
+| AKPK | RM 240.00 | last day | **2026-08-31** |
+| Family fund | RM 200.00 | last day | **2026-08-31** |
+| ASB | RM 50.00 | 5th | 2026-09-05 |
+| House loan | RM 2,910.00 | 5th | 2026-09-05 |
+| Balance transfer | RM 311.32 | 9th | 2026-09-09, last 2027-06-09 |
+| MARA | RM 250.00 | 15th | 2026-09-15, last 2027-05-15 |
+| House insurance | RM 170.00 | 24th | 2026-09-24 |
+| Etiqa | RM 230.00 | 26th | 2026-09-26 |
+| Astro | RM 54.00 | 30th | 2026-09-30 |
+
+**AKPK and Family fund post on the night of 30 → 31 August**, and that run is
+the first end-to-end proof the cron works in production. Two entries totalling
+RM 440 should appear dated `2026-08-31`, marked with the recurring glyph. If
+they do not, check how long ago the Worker deployed before anything else — a
+newly registered trigger takes ~15 minutes to start firing.
+
+### Two rules the owner should confirm, and a new agent must NOT silently "fix"
+
+Both are data, not bugs; the system is doing exactly what the rows say. They are
+recorded here because they look like slips and someone will otherwise either
+ignore them or edit production on a guess. **Ask before changing either.**
+
+- **Astro** — `day_of_month = 30` but `starts_on = 2026-09-05`. The first post
+  is therefore **30 September, not the 5th**. If the 5th was intended, the day
+  is wrong; if the 30th was intended, this is fine and the start date is just
+  the day it was entered.
+- **MARA** — `ends_on = 2027-06-05` with `day_of_month = 15`, so the last post
+  is **15 May 2027**, not June. Compare Balance transfer, whose `ends_on`
+  (2027-06-09) matches its day and therefore does include a final June payment.
+  If MARA is meant to run to June, its end date needs to be on or after
+  2027-06-15.
+
 ## Next
 
-Coinbox's Phase 1 is done and in production, and recurring entries landed
-2026-08-30. Nothing is blocked. The open choices, in no particular order:
+**Coinbox — the Home dashboard. This is the agreed next piece of work.**
 
-**Coinbox — the Home dashboard.** `/` exists and renders an honest empty state.
-This is the half of the Sheet that is not the log: monthly totals and the
-averages the RM 0.00 rows feed. `useSummary()` already returns per-month
-`in_sen`/`out_sen`/`net_sen`, so the first useful version is small.
+`/` exists and renders an honest empty state (`apps/coinbox/src/client/routes/Home.tsx`).
+What belongs here is the half of the Google Sheet that is not the log: the
+monthly totals and averages the owner still opens the Sheet for. Starting
+points, so nobody re-derives them:
 
-**Watch the first recurring runs.** Forward-only means nothing posts until a
-rule's first due date arrives, so the feature cannot be confirmed working on
-day one. Check the Worker's logs after the first rule comes due — the run
-always logs how many rules it considered, so a quiet night is distinguishable
-from a broken one.
+- **`useSummary()` already exists** and returns one row per month with
+  `in_sen`, `out_sen`, `net_sen` and `txn_count`, straight from `v_txn_monthly`.
+  `GET /api/summary?month=YYYY-MM` additionally breaks one month down by
+  category. Both are built, isolation-tested, and currently used only to
+  populate the ledger's month filter — the dashboard needs **no new endpoint**
+  to get started.
+- **The RM 0.00 rows are load-bearing for averages.** Eight water bills are
+  recorded at zero on purpose so a monthly average has a value for every month.
+  A dashboard that filters them out, or that divides by "months with entries",
+  will disagree with the Sheet the owner is comparing against.
+- **Never render a negative number** (spec §8). Magnitude, colour and a prefix.
+- **Four categories appear only before 2026** (Accommodation, Dividend,
+  Fundings, Debt), so any "spend by category" view over all time shows
+  categories that are no longer in use. That is real, not a bug.
+- Aggregate in SQL, not in the browser: 4,425 rows is already too many to sum
+  in JS on every render, and invariant 4 applies to the client's own reasoning
+  as much as the Worker's.
+- Recurring commitments are now a known future cost — RM 4,415.32 a month — and
+  a forecast is a plausible second panel. `recurring_rules` plus
+  `src/shared/recurrence.ts` is everything needed; there is no new table.
+
+**Watch the first recurring run** (above) before starting the dashboard. It is
+the one thing that cannot be verified by running the suite.
 
 **Odometry — renewals (§4.6, §6.3).** The oldest outstanding commitment in this
 repo, and half the reason the fleet portal exists: road tax and insurance.
