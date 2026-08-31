@@ -325,6 +325,19 @@ You cannot do these. Ask, and give exact steps:
   matching and the lint reported success while enforcing nothing. If you move
   files, update the regexes and prove one still fails.
 
+  The anchoring is deliberate — a prefix match would let
+  `apps/coinbox/src/worker/routes/` inherit `.../data/`'s exemption — and it
+  has a second failure mode, met on 2026-08-31 and now fixed. **A git worktree
+  is a full second copy of this tree, and `git worktree add` puts it under
+  `.claude/`.** The walker scanned it, no allow list matched
+  `.claude/worktrees/x/packages/core/...`, and every legitimate exception in
+  the copy came back as a violation: 124 findings, all noise, failing
+  `npm run deploy` at its very FIRST step before anything was built. Same root
+  cause as the trap above, opposite symptom — silently enforcing nothing there,
+  loudly enforcing against the wrong tree here. `.claude` is in `SKIP_DIRS`
+  now. If the lint ever reports a hundred violations in files you did not
+  touch, run `git worktree list` before believing any of them.
+
 ## Style
 
 TypeScript strict mode, no `any`. Prefer explicit over clever. Comment the

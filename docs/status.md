@@ -3,7 +3,7 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-08-31 (the Coinbox Home dashboard is built)
+**Last updated:** 2026-08-31 (Coinbox Home dashboard built, merged and deployed)
 
 ---
 
@@ -100,10 +100,13 @@ The 2026-only sample it was all built against was wrong about three things.
 
 ### Still on the Sheet, deliberately
 
-The owner is dropping the **Form**, not the **Sheet**. Features he still wants
-live there and are not built here yet — dashboards and the monthly averages the
-zero-amount rows feed. Coinbox is the system of record for entries; the Sheet
-is still where some analysis happens.
+The owner is dropping the **Form**, not the **Sheet**.
+
+**Narrowed on 2026-08-31.** The monthly surplus/deficit table and its totals —
+the main reason the Sheet was still being opened — are now the Home dashboard.
+What remains on the Sheet is ad-hoc analysis: arbitrary slicing, and a copy
+readable on a phone without going through Access. Coinbox is the system of
+record for entries either way.
 
 ---
 
@@ -151,11 +154,18 @@ fine. `docs/coinbox-spec.md` §7.5 closes this — do not reopen it as a task.
 
 ## Traps in the current state
 
-- **`0012_recurring.sql` is applied LOCALLY ONLY.** `0001`-`0011` are applied
-  both locally and remotely; `0012` lands on the next
-  `npm run deploy -w coinbox`, which applies it before shipping the code that
-  needs it. Confirm with
-  `npx wrangler d1 migrations list fleet --remote -c wrangler.jsonc`.
+- ~~**`0012_recurring.sql` is applied LOCALLY ONLY.**~~ **RESOLVED.** All of
+  `0001`-`0012` are applied both locally and remotely; checked on 2026-08-31
+  with `npx wrangler d1 migrations list fleet --remote -c wrangler.jsonc`,
+  which reported nothing to apply. The dashboard added no migration, so there
+  is currently no gap between the two. Re-run that command before believing
+  this line — it is the only cheap way to know.
+- **A git worktree makes the isolation lint fail with ~100 bogus violations,**
+  because `.claude/worktrees/<name>/` is a full second copy of the tree and the
+  allow lists are anchored regexes. Fixed on 2026-08-31 by putting `.claude`
+  in `SKIP_DIRS`. If you see it anyway, you are on a checkout from before that
+  fix: run `git worktree list` before believing a single finding. See the root
+  `CLAUDE.md`, "Known traps".
 - **Coinbox now has a Cron Trigger**, `0 17 * * *`, and `observability` is on
   for that Worker. Two things follow. A newly registered cron takes **~15
   minutes** to start firing, so do not debug silence before checking how long
@@ -185,7 +195,7 @@ root `CLAUDE.md`, "One database, one repo".
 |---|---|
 | Repo | `hzrqftr/portals`, private, branch `main` |
 | Odometry app | https://fleet-portal.hazriq-fitri95.workers.dev |
-| Coinbox app | https://coinbox.hazriq-fitri95.workers.dev — LIVE with the full ledger, owner-only |
+| Coinbox app | https://coinbox.hazriq-fitri95.workers.dev — LIVE with the full ledger, recurring entries and the Home dashboard, owner-only |
 | Workers | `fleet-portal`, `coinbox` |
 | Database | D1 `fleet` (`e4bdd9c3-e885-42de-a709-4daf8f4a6edb`) |
 | Access team | `effortless-hf95.cloudflareaccess.com` |
@@ -350,7 +360,7 @@ something that looks wrong, trust the code.
 | The Sheets mirror | §7.6 | Still open. A readable copy on a phone without the app; needs a Google service account and JWT signing in the Worker |
 | Backup failure alerting | — | A failed nightly run writes to the log and tells nobody. Needs an email provider |
 | Off-Cloudflare backup copies | — | Every backup is in the account it protects. One downloaded file a month closes it |
-| Home dashboard | — | `/` renders an honest empty state. The monthly averages the owner still opens the Sheet for belong here. **Agreed next piece of work** — see Next |
+| ~~Home dashboard~~ | §10 | **BUILT AND DEPLOYED 2026-08-31.** The surplus/deficit table as a chart, a month drill-down, and cost per km. See below |
 | Cross-portal navigation | §7.4 | `AppHeader` takes a `portals` prop nothing passes. Blocked on Access groups reaching the Worker |
 
 ---
@@ -397,10 +407,17 @@ ignore them or edit production on a guess. **Ask before changing either.**
   If MARA is meant to run to June, its end date needs to be on or after
   2027-06-15.
 
-## The Home dashboard is built — 2026-08-31
+## The Home dashboard is built and live — 2026-08-31
 
 `/` was empty and is now the dashboard. Spec §10 has the design; the app's
 `CLAUDE.md` has the four rules that will look like bugs and are not.
+
+**Deployed to production 2026-08-31**, Worker version
+`1115cd1d-176e-4d64-b29d-3d1a668f05a0`. `main` fast-forwarded to `9613e43`, no
+merge commit. `wrangler d1 migrations list --remote` reported nothing to apply
+both before and during the deploy — this change adds no migration, so the
+production database was not touched. The nightly cron (`0 17 * * *`) and
+`ENVIRONMENT=production` both survived the deploy.
 
 **No migration.** Everything is derived from `v_txn_monthly` and existing
 tables, so there is nothing to apply and nothing new to back up.
@@ -460,10 +477,12 @@ forecast is built from. `renewalPatch` is `.strict()` and omits every date and
 cost field, so re-dating a renewal is a 422 rather than a silent rewrite. A
 missing renewal type is a setup prompt, not an alert.
 
-**Coinbox — the Sheets mirror** (§7.6). The owner is retiring the Form, NOT the
-Sheet: dashboards and the monthly averages the RM 0.00 rows feed still live
-there. A nightly D1 → Sheet overwrite would close that gap. Costs a Google
-service account, JWT signing in the Worker, and a secret to rotate.
+**Coinbox — the Sheets mirror** (§7.6). Weaker than it was: the monthly totals
+that were the main reason to open the Sheet are now the Home dashboard. What a
+mirror would still buy is a copy readable on a phone without going through
+Access, and arbitrary slicing the dashboard deliberately does not offer. Costs
+a Google service account, JWT signing in the Worker, and a secret to rotate —
+so weigh it against that narrower benefit before starting.
 
 **Backup alerting.** A failed nightly run writes to the log and tells nobody.
 `observability` is on so the evidence persists, but real alerting needs an

@@ -84,7 +84,33 @@ const RULES = [
   },
 ];
 
-const SKIP_DIRS = new Set(["node_modules", "dist", ".git", ".wrangler", ".vite"]);
+/**
+ * `.claude` is skipped because it holds git worktrees, and a worktree is a
+ * FULL SECOND COPY of this tree living inside it.
+ *
+ * Without it the walker also scans
+ * `.claude/worktrees/<name>/packages/core/src/worker/auth.ts` and its
+ * neighbours. The allow lists above are ANCHORED REGEXES, not path prefixes,
+ * so none of them match a path with that prefix -- and every legitimate
+ * exception in the copy is reported as a violation. Measured 2026-08-31: 124
+ * findings, all noise, failing `npm run deploy` at its very first step before
+ * anything was built or uploaded.
+ *
+ * This is the same anchored-regex trap the root CLAUDE.md records, arriving
+ * from the opposite direction. There it silently enforced NOTHING; here it
+ * loudly enforced against the wrong root. Both failure modes come from the
+ * regexes being anchored, which is deliberate -- a prefix match would let
+ * `apps/coinbox/src/worker/routes/` inherit `apps/coinbox/src/worker/data/`'s
+ * exemption -- so the fix is to keep the walker off foreign trees instead.
+ */
+const SKIP_DIRS = new Set([
+  "node_modules",
+  "dist",
+  ".git",
+  ".wrangler",
+  ".vite",
+  ".claude",
+]);
 
 function* walk(dir) {
   for (const entry of readdirSync(dir)) {
