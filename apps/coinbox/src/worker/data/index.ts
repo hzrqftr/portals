@@ -3,6 +3,7 @@ import { makeDb } from "./base";
 import { TransactionRepo } from "./transactions";
 import { CategoryRepo, VehicleRepo } from "./categories";
 import { RecurringRepo } from "./recurring";
+import { DashboardRepo } from "./dashboard";
 
 /**
  * Repository factory. Route handlers receive these already scoped and never
@@ -18,6 +19,7 @@ export interface Repos {
   categories: CategoryRepo;
   vehicles: VehicleRepo;
   recurring: RecurringRepo;
+  dashboard: DashboardRepo;
 }
 
 export function makeRepos(env: Env, scope: Scope): Repos {
@@ -27,5 +29,6 @@ export function makeRepos(env: Env, scope: Scope): Repos {
     categories: new CategoryRepo(db, raw, scope),
     vehicles: new VehicleRepo(db, raw, scope),
     recurring: new RecurringRepo(db, raw, scope),
+    dashboard: new DashboardRepo(db, raw, scope),
   };
 }

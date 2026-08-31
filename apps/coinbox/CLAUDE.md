@@ -215,7 +215,7 @@ Three top-level routes, in `src/client/App.tsx`:
 
 | Route | Component | What it is |
 |---|---|---|
-| `/` | `routes/Home.tsx` | **Empty on purpose.** It holds the root so the dashboard can land there without moving the ledger out from under a bookmark |
+| `/` | `routes/Home.tsx` | The dashboard. One `GET /api/dashboard` payload; see below |
 | `/ledger` | `routes/Ledger.tsx` | The log. Inline cell editing, filters, delete |
 | `/recurring` | `routes/Recurring.tsx` | Declared rules |
 
@@ -231,6 +231,50 @@ for whatever `/` is, and `/` is Home now.
 Every page's title row carries `pt-6`. It is the only thing keeping the three
 pages' headings and action buttons on the same line; Ledger was missing it once
 and its button sat 24px high.
+
+## The dashboard
+
+Built 2026-08-31. It replaces the half of the Google Sheet that was not the
+log: the monthly surplus/deficit table and its Total row.
+
+`GET /api/dashboard[?month=YYYY-MM]` returns the whole page in one payload.
+`DashboardRepo` in `data/dashboard.ts` owns every query; the route computes
+`todayIn(scope.timezone)` and passes it down, so nothing underneath decides
+what day it is.
+
+**Nothing here is a view, deliberately.** Every figure is relative to a month
+the caller picked or to their local today, and a view takes no parameters --
+the same reason Odometry's usage rate is a CTE in `status.ts` rather than in
+`0002_views.sql`. `v_txn_monthly` supplies the parameter-free half.
+
+Four things that will look like bugs and are not:
+
+- **A category's "normal" divides by three whatever happened**, not by the
+  number of months it appeared in. A category seen once in three months has a
+  normal of a third of that figure. Averaging over present rows instead makes
+  a typical month look normal and only ever flags the months it did *not*
+  happen. `tests/dashboard.test.ts` pins this.
+- **The breakdown is a union of both windows**, so a bill that did NOT go out
+  this month still appears -- as a positive effect equal to its usual amount.
+  Building the list from the focus month and left-joining history would drop
+  exactly the case worth seeing.
+- **Staleness is measured from the last TYPED entry**, never the last row.
+  Once rules are posting the ledger grows whether or not anyone opens the app,
+  so the newest row of any kind would report the page as current while a
+  fortnight of real spending is missing.
+- **"Committed" leaves SQL**, and it is the same documented exception as the
+  cron: the month-end clamp is unexpressible in SQLite, so the projection uses
+  `@shared/recurrence`. It loops over RULES, which are a handful, not over
+  transactions.
+
+### Cost per kilometre is the only cross-portal READ
+
+The spend is this ledger's, the distance is Odometry's. It carries two
+independent guards -- the `ledger_id` predicate on the money, and a
+`garage_members` join on both the vehicle and its odometer readings -- and
+`tests/isolation.test.ts` breaks each one separately, because
+`transactions.vehicle_id` deliberately has no foreign key and can therefore
+outlive the caller's access to that vehicle.
 
 ## Style
 

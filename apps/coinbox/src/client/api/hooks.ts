@@ -126,6 +126,7 @@ export function useCreateTransaction() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 }
@@ -146,6 +147,7 @@ export function usePatchTransaction() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 }
@@ -158,6 +160,7 @@ export function useUpdateTransaction(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 }
@@ -206,16 +209,20 @@ export function useRecurring() {
 }
 
 /**
- * Rule mutations invalidate ["recurring"] only: editing a schedule posts
- * nothing immediately, so the ledger and the summary are unaffected until the
- * nightly run. Deleting a TRANSACTION is the one that touches both.
+ * Rule mutations leave the ledger and the summary alone -- editing a schedule
+ * posts nothing until the nightly run. They DO move the dashboard, because
+ * "committed in the next 30 days" is projected from the rules themselves
+ * rather than from anything that has been written yet.
  */
 export function useCreateRecurring() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: RecurringDraft) =>
       api<RecurringRule>("/recurring", { method: "POST", json: input }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["recurring"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["recurring"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
   });
 }
 
@@ -224,7 +231,10 @@ export function usePatchRecurring() {
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Partial<RecurringDraft> }) =>
       api<RecurringRule>(`/recurring/${id}`, { method: "PATCH", json: patch }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["recurring"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["recurring"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
   });
 }
 
@@ -232,7 +242,10 @@ export function useDeleteRecurring() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api<void>(`/recurring/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["recurring"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["recurring"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
   });
 }
 
@@ -247,6 +260,96 @@ export function useDeleteTransaction() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
+  });
+}
+
+// -------------------------------------------------------------- dashboard
+
+export interface MonthPoint {
+  month: string;
+  inSen: number;
+  outSen: number;
+  netSen: number;
+  txnCount: number;
+  /** Running total from the first month with data. The Sheet's "Total Loss". */
+  cumulativeSen: number;
+}
+
+export interface CategoryEffect {
+  categoryId: string;
+  categoryCode: string;
+  categoryName: string;
+  netSen: number;
+  normalSen: number;
+  /** Positive helped the month's balance, negative cost it. */
+  effectSen: number;
+}
+
+export interface UpcomingPosting {
+  ruleId: string;
+  item: string;
+  categoryName: string;
+  occurredOn: string;
+  amountSen: number;
+  direction: "in" | "out";
+}
+
+export interface VehicleCost {
+  vehicleId: string;
+  nickname: string;
+  spendSen: number;
+  distanceKm: number;
+  senPerKm: number | null;
+  txnCount: number;
+  /** False when there are too few entries, or no odometer movement, to trust. */
+  confident: boolean;
+}
+
+export interface Dashboard {
+  today: string;
+  month: string;
+  months: MonthPoint[];
+  ytdNetSen: number;
+  focus: {
+    month: string;
+    inSen: number;
+    outSen: number;
+    netSen: number;
+    txnCount: number;
+    previousMonth: string | null;
+    momDeltaSen: number | null;
+    trailingOutAvgSen: number | null;
+    categories: CategoryEffect[];
+  };
+  committed: {
+    days: number;
+    netSen: number;
+    count: number;
+    upcoming: UpcomingPosting[];
+  };
+  lastEntryOn: string | null;
+  lastTypedEntryOn: string | null;
+  daysSinceTypedEntry: number | null;
+  vehicles: VehicleCost[];
+}
+
+/**
+ * The whole landing page in one request.
+ *
+ * `month` is part of the key, so clicking through the year chart caches each
+ * month separately rather than refetching the one you just left.
+ *
+ * `placeholderData` keeps the previous payload on screen while the next one
+ * loads. Without it, selecting a month blanks the very chart you clicked --
+ * the monthly series comes back identical every time, so re-rendering it from
+ * scratch is a flicker with nothing behind it.
+ */
+export function useDashboard(month?: string) {
+  return useQuery({
+    queryKey: ["dashboard", month ?? "current"],
+    queryFn: () => api<Dashboard>(`/dashboard${month ? `?month=${month}` : ""}`),
+    placeholderData: (previous) => previous,
   });
 }

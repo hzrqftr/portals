@@ -494,6 +494,62 @@ every insert carries the tenant predicate. `BaseScopedRepo` was not widened.
 
 ### 9.7 Navigation
 
-Three top-level sections: Home at `/` (empty, holding the root for a dashboard
-later), Ledger at `/ledger`, Recurring at `/recurring`. `AppHeader` gained an
-optional `nav` prop defaulting to `[]`, so Odometry is untouched.
+Three top-level sections: Home at `/` (the dashboard — §10), Ledger at
+`/ledger`, Recurring at `/recurring`. `AppHeader` gained an optional `nav` prop
+defaulting to `[]`, so Odometry is untouched.
+
+---
+
+## 10. The dashboard
+
+Built 2026-08-31. Home held the root empty from the start precisely so this
+could land without moving the ledger out from under a bookmark.
+
+**What it replaces:** the half of the Google Sheet that was never the log — a
+twelve-row Surplus/Deficit table plus a Total. Both are now one chart.
+
+### 10.1 One payload
+
+`GET /api/dashboard[?month=YYYY-MM]`, served by `DashboardRepo`. Composing it
+client-side from five requests is five round trips to paint one screen on
+mobile data, which is the same argument Odometry's spec §7 makes.
+
+`today` is computed once, in the route, from `users.timezone`. Nothing below
+it decides what day it is, and no view underneath may call `date('now')`.
+
+### 10.2 What is on it, and why each earns a place
+
+The test a figure has to pass: **would a 20% change in it alter what you do
+this week?** Everything else is a report, not a dashboard.
+
+| Element | Answers |
+|---|---|
+| Net for the month, with month-over-month | "Am I ahead or behind, and against what?" |
+| Out, against the trailing three-month mean | "Is this month unusual, or does it just feel it?" |
+| Committed in the next 30 days | "How much of what is left is already spoken for?" |
+| Days since the last **typed** entry | "Can I believe the three figures above?" |
+| The year, as diverging columns + a running total | The shape a table of twelve numbers cannot show |
+| What moved, vs each category's own normal | "Why was this month unlike the others?" |
+| Cost per km, per vehicle | The one figure neither portal can produce alone |
+
+### 10.3 Deliberately absent
+
+- **Savings rate.** `Savings` appears in this ledger in BOTH directions (2 in
+  / 8 out in the real export), so money moving into savings is
+  indistinguishable from income. The rate would be confidently wrong. It needs
+  a transfer concept first, which is out of scope.
+- **Budget vs actual.** There is no budget data, and inventing one to fill a
+  gauge produces a number nobody believes by the second month.
+- **Net worth or balances.** §1.2 non-goal; a flat log has no balances.
+- **Year-over-year.** The data starts 2026-01-01.
+- **A pie of category share.** Share barely moves month to month, and a pie
+  cannot be read for change — which is the only question worth asking of it.
+
+### 10.4 Months that have not happened are empty, not zero
+
+The Sheet fills September to December with RM 0.00, which renders as four
+break-even months. The chart gives them no column and dims their labels.
+
+A later addition worth considering, and the only honest thing to put in that
+space: ghost columns showing what the recurring rules already commit for those
+months. That is a projection from declared rules, not a guess.

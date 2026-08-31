@@ -1,5 +1,6 @@
 import type { Hono } from "hono";
 import { z } from "zod";
+import { todayIn } from "@portals/core";
 import type { AppContext } from "../index";
 import {
   transactionCreate,
@@ -100,6 +101,32 @@ export function registerRoutes(app: Hono<AppContext>): void {
       Object.fromEntries(new URL(c.req.url).searchParams.entries()),
     );
     return c.json(await c.get("repos").transactions.monthlySummary(month));
+  });
+
+  /**
+   * The Home dashboard, in one round trip.
+   *
+   * Everything the landing page needs -- the monthly series with its running
+   * total, the focused month against its own recent normal, what the recurring
+   * rules have already committed, how stale the figures are, and cost per km
+   * -- arrives as one payload. Odometry's spec says the same thing about its
+   * own dashboard and for the same reason: five requests to paint one screen
+   * is five round trips on a phone on mobile data.
+   *
+   * TODAY IS COMPUTED HERE, FROM THE CALLER'S TIMEZONE, AND PASSED DOWN.
+   * The Worker runs in UTC and the owner is at UTC+8, so for eight hours of
+   * every evening a bare `new Date()` in the repository would put "this month"
+   * on the wrong side of a month boundary. Invariant 5, and the reason no view
+   * underneath this may call date('now').
+   */
+  app.get("/api/dashboard", async (c) => {
+    const scope = c.get("scope");
+    const { month } = listQuery.pick({ month: true }).parse(
+      Object.fromEntries(new URL(c.req.url).searchParams.entries()),
+    );
+    return c.json(
+      await c.get("repos").dashboard.payload(todayIn(scope.timezone), month),
+    );
   });
 
   app.post("/api/transactions", async (c) => {

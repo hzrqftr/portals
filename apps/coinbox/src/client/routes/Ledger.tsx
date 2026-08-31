@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { AppHeader, Page, SectionTitle } from "../components/Layout";
 import { todayIn } from "@portals/core";
 import { Select } from "@portals/core/client";
@@ -23,8 +24,21 @@ export default function Ledger() {
   const categories = useCategories();
   const vehicles = useVehicles();
 
-  const [month, setMonth] = useState<string>("");
-  const [categoryId, setCategoryId] = useState<string>("");
+  /**
+   * The dashboard's breakdown links here with `?month=&categoryId=`, so a
+   * category row opens the entries behind it.
+   *
+   * They seed the filters ONCE, as the initial state, and are not kept in sync
+   * afterwards. Driving the selects from the URL instead would mean writing a
+   * history entry on every dropdown change, and the back button would then
+   * walk through filter combinations rather than leaving the page.
+   */
+  const [params] = useSearchParams();
+
+  const [month, setMonth] = useState<string>(() => params.get("month") ?? "");
+  const [categoryId, setCategoryId] = useState<string>(
+    () => params.get("categoryId") ?? "",
+  );
   const [direction, setDirection] = useState<"" | "in" | "out">("");
   const [recurring, setRecurring] = useState<"" | "0" | "1">("");
   const [search, setSearch] = useState<string>("");

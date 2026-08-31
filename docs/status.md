@@ -3,7 +3,7 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-08-30 (evening — recurring live with nine real rules)
+**Last updated:** 2026-08-31 (the Coinbox Home dashboard is built)
 
 ---
 
@@ -397,38 +397,55 @@ ignore them or edit production on a guess. **Ask before changing either.**
   If MARA is meant to run to June, its end date needs to be on or after
   2027-06-15.
 
+## The Home dashboard is built — 2026-08-31
+
+`/` was empty and is now the dashboard. Spec §10 has the design; the app's
+`CLAUDE.md` has the four rules that will look like bugs and are not.
+
+**No migration.** Everything is derived from `v_txn_monthly` and existing
+tables, so there is nothing to apply and nothing new to back up.
+
+What landed:
+
+| Piece | Where |
+|---|---|
+| `GET /api/dashboard[?month=]` | `worker/routes/index.ts` |
+| Every query behind it | `worker/data/dashboard.ts` |
+| The year chart | `client/components/YearChart.tsx` |
+| The month drill-down | `client/components/MonthBreakdown.tsx` |
+| Tiles, Coming up, cost per km | `StatTiles.tsx`, `DashboardPanels.tsx` |
+| Arithmetic tests | `tests/dashboard.test.ts` (13) |
+| Isolation | 3 new cases in `tests/isolation.test.ts` |
+
+Verified rather than assumed:
+
+- **Three tenant guards were each broken on purpose and watched to fail**, then
+  restored — the `ledger_id` predicate on the monthly series, the same on the
+  cost-per-km query, and the `garage_members` join on it. Each break failed
+  exactly the test meant to catch it and no other, which is what makes the
+  second guard non-vacuous.
+- **Run against a real D1 with the owner's real monthly figures.** The running
+  total came out at −RM 2,785.53, matching the Sheet's Total row exactly, and
+  the August-vs-July delta at RM 1,141.85.
+- 130 Coinbox tests, 85 Odometry (unchanged), isolation lint over 120 files.
+
+Two decisions worth knowing before changing anything here:
+
+- **The trailing "normal" divides by three, always**, which agrees with the
+  RM 0.00 rows being load-bearing: absent months count as zero rather than
+  being dropped, so the divisor never becomes "months with entries".
+- **Cost per km is the only cross-portal READ in Coinbox.** Two independent
+  guards, both tested separately. `transactions.vehicle_id` has no foreign key
+  by design, so a vehicle id can outlive the caller's access to it.
+
+Still open on this page, and deliberately not built:
+
+- **Ghost columns for Sep–Dec** showing what the rules already commit. The
+  honest way to fill the empty half of the year; needs no new table.
+- **Mobile.** The layout stacks and was reasoned through, but as with the rest
+  of the portal nobody has opened it on a real phone.
+
 ## Next
-
-**Coinbox — the Home dashboard. This is the agreed next piece of work.**
-
-`/` exists and renders an honest empty state (`apps/coinbox/src/client/routes/Home.tsx`).
-What belongs here is the half of the Google Sheet that is not the log: the
-monthly totals and averages the owner still opens the Sheet for. Starting
-points, so nobody re-derives them:
-
-- **`useSummary()` already exists** and returns one row per month with
-  `in_sen`, `out_sen`, `net_sen` and `txn_count`, straight from `v_txn_monthly`.
-  `GET /api/summary?month=YYYY-MM` additionally breaks one month down by
-  category. Both are built, isolation-tested, and currently used only to
-  populate the ledger's month filter — the dashboard needs **no new endpoint**
-  to get started.
-- **The RM 0.00 rows are load-bearing for averages.** Eight water bills are
-  recorded at zero on purpose so a monthly average has a value for every month.
-  A dashboard that filters them out, or that divides by "months with entries",
-  will disagree with the Sheet the owner is comparing against.
-- **Never render a negative number** (spec §8). Magnitude, colour and a prefix.
-- **Four categories appear only before 2026** (Accommodation, Dividend,
-  Fundings, Debt), so any "spend by category" view over all time shows
-  categories that are no longer in use. That is real, not a bug.
-- Aggregate in SQL, not in the browser: 4,425 rows is already too many to sum
-  in JS on every render, and invariant 4 applies to the client's own reasoning
-  as much as the Worker's.
-- Recurring commitments are now a known future cost — RM 4,415.32 a month — and
-  a forecast is a plausible second panel. `recurring_rules` plus
-  `src/shared/recurrence.ts` is everything needed; there is no new table.
-
-**Watch the first recurring run** (above) before starting the dashboard. It is
-the one thing that cannot be verified by running the suite.
 
 **Odometry — renewals (§4.6, §6.3).** The oldest outstanding commitment in this
 repo, and half the reason the fleet portal exists: road tax and insurance.
