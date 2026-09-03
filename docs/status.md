@@ -482,6 +482,7 @@ Verified rather than assumed:
   total came out at −RM 2,785.53, matching the Sheet's Total row exactly, and
   the August-vs-July delta at RM 1,141.85.
 - 130 Coinbox tests, 85 Odometry (unchanged), isolation lint over 120 files.
+  As of the fuel work (2026-09-03) that is **163 Coinbox and 93 Odometry**.
 
 Two decisions worth knowing before changing anything here:
 
@@ -559,7 +560,7 @@ npx wrangler login        # needs a real terminal; opens a browser
 npm run db:apply:local    # shared local D1, safe to re-run
 npm run dev -w odometry   # http://localhost:5173
 npm run dev -w coinbox    # run one at a time; both want port 5173
-npm test                  # lint + 73 Odometry + 7 Coinbox tests
+npm test                  # lint + 93 Odometry + 163 Coinbox tests
 ```
 
 This path is verified, not assumed: it was run end to end from a scratch clone
