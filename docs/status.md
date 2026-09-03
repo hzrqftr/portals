@@ -110,15 +110,52 @@ record for entries either way.
 
 ---
 
+### Fuel capture and consumption (2026-09-03)
+
+A Coinbox entry can now be marked a fill-up, capturing **odometer, litres and
+whether the tank was filled**. The odometer lands in Odometry through the same
+validated path the quick-update flow uses; the litres land in a new garage-scoped
+`fuel_fills` table (migration `0013`). Odometry's vehicle page grows a **Fuel**
+tab showing each fill with the consumption of the segment it closes.
+
+Three decisions worth not re-litigating:
+
+- **All three fields were captured together on purpose.** Odometer plus ringgit
+  gives cost per km, which already existed. Litres per 100 km needs volume, and
+  it needs `is_full_tank` — consumption is only computable full tank to full
+  tank, and a partial fill divided by its own distance produces a number in an
+  entirely plausible range that is simply wrong. Shipping the odometer first and
+  the litres later would have left a permanent hole in the series, because none
+  of this is backfillable.
+- **`fuel_fills` carries no money column.** It is garage-scoped and a garage is
+  shared, so a price there would be readable by every co-member. The ringgit
+  stays on `transactions` behind the ledger predicate.
+- **The trigger is a toggle, not a new category.** There is no `fuel` category
+  and adding one would split five years of history — every fuel row the owner
+  has is Transportation.
+
+Not built yet: the Coinbox-side consumption analytics (month over month). It
+reads only data now being captured, so it can be built whenever.
+
 ## What is deliberately NOT built
 
 Everything in `docs/coinbox-spec.md` §4 IS built as of 2026-08-28 — this
 section used to say the opposite and was the stale part of this file. What
 remains deliberately absent:
 
-- **The reverse Odometry link.** Transactions carry a nullable `vehicle_id`;
-  service records carry no `transaction_id`. Settled as §7.2 — the reverse link
-  couples the two portals' write paths, which is the half that can leak.
+- ~~**The reverse Odometry link.**~~ **PARTIALLY REOPENED 2026-09-03, for fuel
+  only.** Service records still carry no `transaction_id`, and §7.2's reasoning
+  still holds for them. What changed is that a Coinbox fill-up now WRITES into
+  Odometry — an `odometer_readings` row, a `fuel_fills` row and the cached
+  odometer on the vehicle, all in one atomic batch with the transaction.
+
+  The trade was made knowingly: the alternative is keying the odometer twice, in
+  two apps, and an odometer nobody keeps entering is the top-rated product risk
+  in the fleet spec (§11.7). Three guards carry it, and
+  `apps/coinbox/tests/fuel.test.ts` breaks each one on purpose — the garage id
+  is read off the vehicle row the membership join proved, never off the scope;
+  the reading cannot run backwards; and the whole write is one `batch()` so a
+  rejected fill leaves no transaction, no reading and no fill.
 - **`ledger_members`.** Sharing a ledger is unrepresentable on purpose. Adding
   it is a product decision, not a refactor.
 - ~~**Deleting a transaction.**~~ **BUILT 2026-08-30, and this deferral was
@@ -463,6 +500,19 @@ Still open on this page, and deliberately not built:
   of the portal nobody has opened it on a real phone.
 
 ## Next
+
+**Coinbox — fuel consumption analytics.** The capture half shipped 2026-09-03;
+this is the half that reads it. L/100km this month against last, beside the
+cost-per-km panel that already exists. It joins `fuel_fills` to `transactions`
+and so carries the same two independent guards as that panel — the `ledger_id`
+predicate on the money and a `garage_members` join on the vehicle. The segment
+SQL to reuse is `FUEL_SQL` in `apps/odometry/src/worker/data/fuel.ts`.
+
+One thing to settle before building it: **month-over-month consumption is noisy
+at low fill counts.** A month with two fills is one or two segments, and a
+segment that straddles a month boundary belongs to neither cleanly. The honest
+shape is probably a per-segment series with a trailing average rather than a
+single monthly figure — worth deciding with a few months of real fills in view.
 
 **Odometry — renewals (§4.6, §6.3).** The oldest outstanding commitment in this
 repo, and half the reason the fleet portal exists: road tax and insurance.

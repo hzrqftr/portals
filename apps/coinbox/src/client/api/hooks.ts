@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@portals/core/client";
+import type { TransactionCreate, TransactionPatch } from "@shared/zod";
 
 interface Me {
   userId: string;
@@ -24,6 +25,8 @@ export interface Category {
 export interface Vehicle {
   id: string;
   nickname: string;
+  /** Cached current reading, so the entry form can sanity-check a new one. */
+  currentOdometerKm: number;
 }
 
 /** Reference data, so it is worth a staleTime -- 16 rows that rarely change. */
@@ -100,15 +103,15 @@ export function useSummary(month?: string) {
   });
 }
 
-export interface TransactionDraft {
-  occurredOn: string;
-  item: string;
-  description?: string | null;
-  categoryId: string;
-  vehicleId?: string | null;
-  amountSen: number;
-  direction: "in" | "out";
-}
+/**
+ * The POST body, taken FROM THE ZOD SCHEMA rather than restated here.
+ *
+ * It used to be a hand-written mirror, which compiled happily while drifting
+ * from the schema it was supposed to match -- the only thing that would have
+ * caught a divergence was a 422 at runtime. `import type` is erased at build
+ * time, so this costs nothing in the bundle and cannot go stale.
+ */
+export type TransactionDraft = TransactionCreate;
 
 /**
  * Deliberately not optimistic.
@@ -142,7 +145,7 @@ export function useCreateTransaction() {
 export function usePatchTransaction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<TransactionDraft> }) =>
+    mutationFn: ({ id, patch }: { id: string; patch: TransactionPatch }) =>
       api<Transaction>(`/transactions/${id}`, { method: "PATCH", json: patch }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
@@ -155,7 +158,7 @@ export function usePatchTransaction() {
 export function useUpdateTransaction(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (patch: Partial<TransactionDraft>) =>
+    mutationFn: (patch: TransactionPatch) =>
       api<Transaction>(`/transactions/${id}`, { method: "PATCH", json: patch }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });

@@ -52,19 +52,34 @@ export class CategoryRepo extends LedgerScopedRepo {
  * code acknowledging it is crossing a boundary on purpose, in the one place
  * that is allowed to.
  */
+export interface PickableVehicle {
+  id: string;
+  nickname: string;
+  /**
+   * The cached current odometer, so the entry form can show what the last
+   * reading was and flag an implausible new one before it is written. Not
+   * money, and visible to garage co-members in Odometry already.
+   */
+  currentOdometerKm: number;
+}
+
 export class VehicleRepo extends LedgerScopedRepo {
-  async list(): Promise<{ id: string; nickname: string }[]> {
+  async list(): Promise<PickableVehicle[]> {
     const res = await this.raw
       .prepare(
-        `SELECT v.id, v.nickname
+        `SELECT v.id, v.nickname, v.current_odometer_km
            FROM vehicles v
            JOIN garage_members gm ON gm.garage_id = v.garage_id
           WHERE gm.user_id = ? AND v.is_active = 1
           ORDER BY v.nickname`,
       )
       .bind(this.scope.userId)
-      .all<{ id: string; nickname: string }>();
+      .all<{ id: string; nickname: string; current_odometer_km: number }>();
 
-    return res.results;
+    return res.results.map((v) => ({
+      id: v.id,
+      nickname: v.nickname,
+      currentOdometerKm: v.current_odometer_km,
+    }));
   }
 }

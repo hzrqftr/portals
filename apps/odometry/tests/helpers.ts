@@ -78,6 +78,9 @@ interface D1Migration {
  */
 export async function resetDb(): Promise<void> {
   const tables = [
+    // Child of BOTH transactions and odometer_readings, and a fill with a
+    // null transaction_id cascades from neither. It goes first.
+    "fuel_fills",
     "service_items",
     "service_records",
     "odometer_readings",

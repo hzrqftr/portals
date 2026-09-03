@@ -135,6 +135,33 @@ export const odometerReadings = sqliteTable(
   (t) => ({ vehicleDateIdx: index("idx_odo_vehicle_date").on(t.vehicleId, t.recordedOn) }),
 );
 
+/**
+ * A refuelling. Migration 0013 carries the reasoning; the two things that will
+ * look like omissions and are not:
+ *
+ * - NO COST COLUMN. This table is garage-scoped and a garage is shared, so a
+ *   price here would be visible to every co-member. The ringgit lives on
+ *   Coinbox transactions behind the ledger predicate.
+ * - NO ODOMETER COLUMN. It points at the reading instead, so there is exactly
+ *   one copy of the number.
+ */
+export const fuelFills = sqliteTable(
+  "fuel_fills",
+  {
+    id: text("id").primaryKey(),
+    garageId: text("garage_id").notNull(),
+    vehicleId: text("vehicle_id").notNull(),
+    odometerReadingId: text("odometer_reading_id").notNull(),
+    filledOn: text("filled_on").notNull(),
+    /** Integer thousandths of a litre. See packages/core/src/money.ts. */
+    litresMilli: integer("litres_milli").notNull(),
+    isFullTank: integer("is_full_tank").notNull().default(1),
+    transactionId: text("transaction_id"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => ({ vehicleDateIdx: index("idx_fuel_vehicle_date").on(t.vehicleId, t.filledOn) }),
+);
+
 export const maintenanceIntervals = sqliteTable(
   "maintenance_intervals",
   {

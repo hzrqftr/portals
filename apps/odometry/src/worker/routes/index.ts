@@ -76,6 +76,24 @@ export function registerRoutes(app: Hono<AppContext>): void {
     return c.body(null, 204);
   });
 
+  // --- fuel ------------------------------------------------------------
+
+  /**
+   * Fills for a vehicle, newest first, each carrying the consumption of the
+   * segment it closes.
+   *
+   * READ ONLY, and there is no POST beside it. Fills are created from Coinbox,
+   * because the litres and the ringgit are keyed in together at the pump and
+   * splitting them across two apps is how odometer logging stops.
+   *
+   * NO MONEY APPEARS IN THIS RESPONSE. fuel_fills is garage-scoped, so anything
+   * priced here would be readable by every garage co-member -- the exact leak
+   * the two-axis design exists to prevent. See migration 0013.
+   */
+  app.get("/api/vehicles/:id/fuel", async (c) =>
+    c.json(await c.get("repos").fuel.list(c.req.param("id"))),
+  );
+
   // --- maintenance -----------------------------------------------------
   app.get("/api/vehicles/:id/maintenance", async (c) =>
     c.json(await c.get("repos").status.maintenance(c.req.param("id"))),

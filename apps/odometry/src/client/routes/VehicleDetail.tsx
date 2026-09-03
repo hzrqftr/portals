@@ -1,19 +1,21 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { useVehicle, useMaintenance, useDashboard, useServices } from "../api/hooks";
+import { useVehicle, useMaintenance, useDashboard, useServices, useFuel } from "../api/hooks";
 import { Page, AppHeader, SectionTitle } from "../components/Layout";
 import { MaintenanceList } from "../components/MaintenanceList";
 import { ServiceHistory } from "../components/ServiceHistory";
+import { FuelHistory } from "../components/FuelHistory";
 import { ServiceSheet } from "../components/ServiceSheet";
 import { VehicleSheet } from "../components/VehicleSheet";
 import { VehicleSpec } from "../components/VehicleSpec";
 import { formatKm } from "../lib/format";
 
-type Tab = "maintenance" | "history";
+type Tab = "maintenance" | "history" | "fuel";
 
 const TABS: { value: Tab; label: string }[] = [
   { value: "maintenance", label: "Maintenance" },
   { value: "history", label: "Service history" },
+  { value: "fuel", label: "Fuel" },
 ];
 
 /** Spec 8.2: overview, maintenance, and service history. */
@@ -28,6 +30,7 @@ export default function VehicleDetail() {
   const [logging, setLogging] = useState(false);
   const [editing, setEditing] = useState(false);
   const services = useServices(id);
+  const fuel = useFuel(id);
   const [tab, setTab] = useState<Tab>("maintenance");
 
   if (vehicle.isLoading) return <p className="p-6 text-ink-muted">Loading&hellip;</p>;
@@ -96,22 +99,30 @@ export default function VehicleDetail() {
                 <span className="ml-1.5 text-xs text-ink-faint">
                   {t.value === "maintenance"
                     ? (maintenance.data?.length ?? 0)
-                    : (services.data?.length ?? 0)}
+                    : t.value === "history"
+                      ? (services.data?.length ?? 0)
+                      : (fuel.data?.length ?? 0)}
                 </span>
               </button>
             ))}
           </div>
         </div>
 
-        {tab === "maintenance" ? (
+        {tab === "maintenance" && (
           <MaintenanceList
             vehicleId={id}
             vehicleType={vehicle.data?.vehicleType ?? "car"}
             rows={maintenance.data ?? []}
           />
-        ) : (
+        )}
+        {tab === "history" && (
           <section className="mt-4">
             {today && <ServiceHistory vehicleId={id} today={today} />}
+          </section>
+        )}
+        {tab === "fuel" && (
+          <section className="mt-4">
+            <FuelHistory vehicleId={id} />
           </section>
         )}
       </Page>

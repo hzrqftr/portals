@@ -7,6 +7,7 @@ import { PartTypeRepo } from "./partTypes";
 import { SettingsRepo } from "./settings";
 import { ServiceTemplateRepo } from "./serviceTemplates";
 import { DashboardRepo } from "./dashboard";
+import { FuelRepo } from "./fuel";
 import type { Env, Scope } from "../types";
 
 export interface Repos {
@@ -18,6 +19,7 @@ export interface Repos {
   settings: SettingsRepo;
   serviceTemplates: ServiceTemplateRepo;
   dashboard: DashboardRepo;
+  fuel: FuelRepo;
 }
 
 /**
@@ -36,6 +38,7 @@ export function makeRepos(env: Env, scope: Scope): Repos {
     settings: new SettingsRepo(env, scope),
     serviceTemplates: new ServiceTemplateRepo(db, raw, scope),
     dashboard: new DashboardRepo(db, raw, scope),
+    fuel: new FuelRepo(db, raw, scope),
   };
 }
 
@@ -47,4 +50,5 @@ export {
   PartTypeRepo,
   SettingsRepo,
   ServiceTemplateRepo,
+  FuelRepo,
 };

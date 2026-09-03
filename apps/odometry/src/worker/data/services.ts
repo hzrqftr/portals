@@ -1,7 +1,7 @@
 import { eq, desc } from "drizzle-orm";
 import { GarageScopedRepo } from "./base";
 import { serviceRecords, serviceItems } from "../schema";
-import { NotFoundError } from "@portals/core/worker";
+import { NotFoundError, odometerWriteStatements } from "@portals/core/worker";
 import { nowIso } from "@portals/core";
 import type { ServiceInput, ServicePatch, ServiceType } from "@shared/zod";
 
@@ -171,22 +171,18 @@ export class ServiceRepo extends GarageScopedRepo {
       }
     }
 
+    // The visit implies a reading. Shared with Odometry's quick odometer update
+    // and with Coinbox's fuel entry -- see @portals/core/worker/odometer.ts,
+    // which also explains why the cache update is guarded on the DATE.
     statements.push(
-      this.raw
-        .prepare(
-          `INSERT INTO odometer_readings
-             (id, garage_id, vehicle_id, reading_km, recorded_on, source)
-           VALUES (?,?,?,?,?,'service')`,
-        )
-        .bind(crypto.randomUUID(), this.garageId, vehicleId, input.odometerKm, input.servicedOn),
-      this.raw
-        .prepare(
-          `UPDATE vehicles
-              SET current_odometer_km = ?, odometer_updated_on = ?, updated_at = ?
-            WHERE id = ? AND garage_id = ?
-              AND (odometer_updated_on IS NULL OR odometer_updated_on <= ?)`,
-        )
-        .bind(input.odometerKm, input.servicedOn, ts, vehicleId, this.garageId, input.servicedOn),
+      ...odometerWriteStatements(this.raw, {
+        readingId: crypto.randomUUID(),
+        garageId: this.garageId,
+        vehicleId,
+        readingKm: input.odometerKm,
+        recordedOn: input.servicedOn,
+        source: "service",
+      }),
     );
 
     await this.raw.batch(statements);

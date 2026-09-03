@@ -6,5 +6,6 @@
 export * from "./auth";
 export * from "./backup";
 export * from "./errors";
+export * from "./odometer";
 export * from "./repo";
 export * from "./types";

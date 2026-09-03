@@ -67,8 +67,53 @@ vehicle is garage-scoped. `assertUsableVehicle()` in `data/base.ts` therefore
 cannot use the ledger predicate — it asks whether the vehicle is in a garage
 the **caller** is a member of.
 
-This is the only write path where a cross-portal leak could hide. Nothing calls
-it yet; it is written because it is the subtlest rule here.
+This is the only write path where a cross-portal leak could hide, and since
+2026-09-03 it also **returns the garage id**, which is load-bearing rather than
+convenient. See below.
+
+### A fill-up WRITES into Odometry
+
+Marking an entry a fill-up captures an odometer reading and litres, and
+`TransactionRepo.create` writes them into Odometry's `odometer_readings`,
+`fuel_fills` and the cached odometer on `vehicles`.
+
+**`docs/coinbox-spec.md` §7.2 deferred exactly this**, on the grounds that
+coupling the two portals' write paths is the half that can leak. It was reopened
+deliberately, for fuel only: the alternative is keying the odometer twice in two
+apps, and an odometer nobody keeps entering is the top-rated product risk in the
+fleet spec (§11.7). Service records still carry no `transaction_id`.
+
+Three things hold it up, and `tests/fuel.test.ts` breaks each on purpose:
+
+1. **The garage id comes off the vehicle row**, in the same statement as the
+   `garage_members` join that authorised it. Never from the scope — which has
+   no `garageId` and must never grow one. The test that proves this needs a
+   co-member who ALSO has their own garage; without that second garage the two
+   ids are the same string and the test passes either way.
+2. **The reading cannot run backwards.** Shared with Odometry, in
+   `packages/core/src/worker/odometer.ts`.
+3. **It is ONE `batch()`.** A rejected fill leaves no transaction, no reading
+   and no fill. Money without its litres, or an odometer that moved for an entry
+   that does not exist, are both worse than a plain failure. Note that every
+   validation rejects *before* any statement runs, so the API-level tests cannot
+   prove this — the one that does drives the repository directly with litres the
+   database refuses.
+
+**`fuel_fills` has no money column.** It is garage-scoped and a garage is
+shared, so a price there would be readable by every co-member. Coinbox derives
+price per litre by joining its own money; Odometry never shows a price.
+
+**`fuel` is absent from `transactionPatch`.** Odometer readings have no
+correction path in Odometry either, so this is consistent rather than a new gap:
+to fix a mistyped fill, delete the entry and re-enter it. The `ON DELETE
+CASCADE` takes the fill and **leaves the reading** — the car really was at that
+mileage on that day.
+
+**The fill-up trigger is a toggle, not a category.** There is no `fuel`
+category and adding one would split five years of history — every fuel row in
+the export is Transportation. See `src/shared/fuelRules.ts`, whose rules mirror
+`categoryRules.ts`: hiding the block clears its values, because a hidden control
+that keeps its value still submits it.
 
 ## Vocabulary
 

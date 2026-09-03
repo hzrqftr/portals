@@ -179,6 +179,29 @@ export function useMaintenance(id: string) {
   });
 }
 
+export interface FuelFillRow {
+  id: string;
+  filledOn: string;
+  readingKm: number;
+  litresMilli: number;
+  isFullTank: number;
+  distanceKm: number | null;
+  segmentLitresMilli: number | null;
+  lPer100km: number | null;
+  kmPerLitre: number | null;
+}
+
+/**
+ * Fills for a vehicle. Read only from this portal -- they are created in
+ * Coinbox, where the litres and the ringgit are keyed in together at the pump.
+ */
+export function useFuel(id: string) {
+  return useQuery({
+    queryKey: ["fuel", id],
+    queryFn: () => api<FuelFillRow[]>(`/vehicles/${id}/fuel`),
+  });
+}
+
 export function useServices(id: string) {
   return useQuery({
     queryKey: ["services", id],

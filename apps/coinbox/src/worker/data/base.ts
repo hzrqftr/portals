@@ -33,24 +33,6 @@ export abstract class LedgerScopedRepo extends BaseScopedRepo<
   }
 
   /**
-   * THE ONE PLACE THE TWO OWNERSHIP AXES MEET.
-   *
-   * A transaction may reference a vehicle (fuel, servicing, road tax). The
-   * transaction is ledger-scoped; the vehicle is garage-scoped. So this check
-   * cannot use the ledger predicate -- it has to ask Odometry's question:
-   * is this vehicle in a garage the CALLER is a member of?
-   *
-   * Getting it wrong in the lax direction lets someone attach their spending
-   * to a stranger's car, and worse, lets a crafted vehicle_id confirm which
-   * vehicle ids exist. Getting it wrong in the strict direction is merely
-   * annoying. It throws NotFoundError, not Forbidden, for the usual reason: a
-   * 403 would confirm the id exists somewhere.
-   *
-   * Nothing calls this yet -- there are no transactions. It is written now
-   * because it is the subtlest rule in this portal and the isolation suite
-   * asserts it from the start.
-   */
-  /**
    * A category is usable if it is a global seed row or belongs to this ledger.
    * Mirrors Odometry's assertUsablePartType: the same "global or mine" shape
    * that `uq_category_code` indexes.
@@ -80,18 +62,43 @@ export abstract class LedgerScopedRepo extends BaseScopedRepo<
     if (!row) throw new NotFoundError("Category not found");
   }
 
-  protected async assertUsableVehicle(vehicleId: string): Promise<void> {
+  /**
+   * THE ONE PLACE THE TWO OWNERSHIP AXES MEET.
+   *
+   * A transaction may reference a vehicle (fuel, servicing, road tax). The
+   * transaction is ledger-scoped; the vehicle is garage-scoped. So this check
+   * cannot use the ledger predicate -- it has to ask Odometry's question:
+   * is this vehicle in a garage the CALLER is a member of?
+   *
+   * Getting it wrong in the lax direction lets someone attach their spending
+   * to a stranger's car, and worse, lets a crafted vehicle_id confirm which
+   * vehicle ids exist. Getting it wrong in the strict direction is merely
+   * annoying. It throws NotFoundError, not Forbidden, for the usual reason: a
+   * 403 would confirm the id exists somewhere.
+   *
+   * IT RETURNS THE GARAGE ID, and that return value is load-bearing. A fill-up
+   * writes into Odometry's garage-scoped tables, and the garage those rows are
+   * stamped with MUST be the one this query proved the caller into -- read off
+   * the vehicle row, in the same statement as the membership join.
+   *
+   * The alternative, putting a garageId on the Scope object, is the exact leak
+   * both CLAUDE.md files warn about: it starts life "just for the vehicle
+   * picker" and ends up in a WHERE clause. tests/isolation.test.ts asserts
+   * /api/me never mentions one.
+   */
+  protected async assertUsableVehicle(vehicleId: string): Promise<{ garageId: string }> {
     const row = await this.raw
       .prepare(
-        `SELECT 1
+        `SELECT v.garage_id AS garage_id
            FROM vehicles v
            JOIN garage_members gm ON gm.garage_id = v.garage_id
           WHERE v.id = ? AND gm.user_id = ?
           LIMIT 1`,
       )
       .bind(vehicleId, this.scope.userId)
-      .first();
+      .first<{ garage_id: string }>();
     if (!row) throw new NotFoundError("Vehicle not found");
+    return { garageId: row.garage_id };
   }
 }
 

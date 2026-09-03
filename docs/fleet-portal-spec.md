@@ -611,7 +611,27 @@ If replication is enabled later, a write followed immediately by a read may retu
 
 | Question | Impact | Default if unresolved |
 |---|---|---|
-| Fuel logging | Would enable true cost/km including consumables | Out of scope, but leave room for a `fuel_logs` table |
+| ~~Fuel logging~~ **RESOLVED 2026-09-03** | Enables L/100km, not just cost/km | Built as `fuel_fills` (migration 0013), entered from Coinbox. See below |
 | Depreciation in run rate | Materially changes cost/km | Separate, labelled estimate, off by default |
 | Document storage | R2 free tier is ample | Defer to Phase 4 |
 | Email provider for reminders | Needs a free-tier transactional sender | Decide at Phase 4 |
+
+**On fuel logging.** §1.2 put "fuel and economy logging" out of scope for v1 and
+the row above left room for a `fuel_logs` table. What was built is
+`fuel_fills`, and it differs from the sketch in three ways worth recording:
+
+- **Entry happens in Coinbox, not here.** The litres and the ringgit are read
+  off the same receipt, and splitting them across two apps is how odometer
+  logging stops -- which §11.7 rates the likeliest cause of this project
+  failing. This portal reads fills (`GET /api/vehicles/:id/fuel`) and has no
+  POST for them.
+- **`is_full_tank` is not optional.** Consumption is only computable full tank
+  to full tank. A partial fill divided by its own distance gives a number in an
+  entirely plausible range that is simply wrong, so partial fills are carried
+  into the segment that ends at the next full one.
+- **No cost column on the table.** It is garage-scoped and a garage is shared,
+  so a price there would be readable by every co-member. The money stays in
+  Coinbox behind the ledger predicate.
+
+§6.5's run rate (spend over distance) is still unbuilt on this side; Coinbox's
+dashboard already computes cost per km from the money it owns.

@@ -1,7 +1,12 @@
 import { and, eq, desc } from "drizzle-orm";
 import { GarageScopedRepo } from "./base";
 import { vehicles, odometerReadings, maintenanceIntervals } from "../schema";
-import { NotFoundError, ValidationError } from "@portals/core/worker";
+import {
+  NotFoundError,
+  ValidationError,
+  assertReadingNotBackwards,
+  odometerWriteStatements,
+} from "@portals/core/worker";
 import { nowIso, todayIn } from "@portals/core";
 import type { VehicleInput, VehiclePatch, OdometerInput } from "@shared/zod";
 
@@ -154,66 +159,33 @@ export class VehicleRepo extends GarageScopedRepo {
    * petrol pump and must be fast, so validation has to be right rather than
    * chatty.
    *
-   * Spec 8.4 says validate the reading is >= the current odometer. That is
-   * wrong for backdated entries: logging a service from two months ago
-   * legitimately has a lower reading than today's. The comparison is against
-   * the newest reading STRICTLY BEFORE this one's date, so out-of-order entry
-   * works and genuine typos ("112000" for "12000") are still caught.
+   * The validation rule and the two statements live in @portals/core/worker
+   * because Coinbox's fuel entry writes readings too, and three copies of a
+   * rule that is invisible when broken is three chances for one of them to be
+   * relaxed alone. See odometer.ts there for why the comparison is against the
+   * newest reading strictly before this one's date rather than the current
+   * odometer.
    */
   async addReading(vehicleId: string, input: OdometerInput) {
     await this.assertOwnedVehicle(vehicleId);
 
-    const prior = await this.raw
-      .prepare(
-        `SELECT MAX(reading_km) AS max_km
-           FROM odometer_readings
-          WHERE vehicle_id = ? AND garage_id = ? AND recorded_on < ?`,
-      )
-      .bind(vehicleId, this.garageId, input.recordedOn)
-      .first<{ max_km: number | null }>();
+    await assertReadingNotBackwards(this.raw, {
+      vehicleId,
+      garageId: this.garageId,
+      recordedOn: input.recordedOn,
+      readingKm: input.readingKm,
+    });
 
-    if (prior?.max_km !== null && prior?.max_km !== undefined && input.readingKm < prior.max_km) {
-      throw new ValidationError(
-        `Reading ${input.readingKm} km is lower than an earlier reading of ${prior.max_km} km. ` +
-          `Odometers do not run backwards, so this is almost certainly a typo.`,
-      );
-    }
-
-    // The cached vehicles.current_odometer_km must only move forward in TIME,
-    // not in value: entering a forgotten reading from March must not overwrite
-    // today's number. The WHERE clause on the UPDATE is what enforces that,
-    // and it runs in the same atomic batch as the insert.
-    await this.raw.batch([
-      this.raw
-        .prepare(
-          `INSERT INTO odometer_readings
-             (id, garage_id, vehicle_id, reading_km, recorded_on, source)
-           VALUES (?,?,?,?,?,?)`,
-        )
-        .bind(
-          crypto.randomUUID(),
-          this.garageId,
-          vehicleId,
-          input.readingKm,
-          input.recordedOn,
-          input.source ?? "manual",
-        ),
-      this.raw
-        .prepare(
-          `UPDATE vehicles
-              SET current_odometer_km = ?, odometer_updated_on = ?, updated_at = ?
-            WHERE id = ? AND garage_id = ?
-              AND (odometer_updated_on IS NULL OR odometer_updated_on <= ?)`,
-        )
-        .bind(
-          input.readingKm,
-          input.recordedOn,
-          nowIso(),
-          vehicleId,
-          this.garageId,
-          input.recordedOn,
-        ),
-    ]);
+    await this.raw.batch(
+      odometerWriteStatements(this.raw, {
+        readingId: crypto.randomUUID(),
+        garageId: this.garageId,
+        vehicleId,
+        readingKm: input.readingKm,
+        recordedOn: input.recordedOn,
+        source: input.source ?? "manual",
+      }),
+    );
   }
 
   async setInterval(

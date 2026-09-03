@@ -356,6 +356,19 @@ Genuinely undecided. Whoever implements next should ask rather than pick.
    cost-per-km later. The reverse link (`transaction_id` on service records)
    and any shared UI are deferred -- they couple the two portals' write paths,
    which is the expensive half and the one that can leak.
+
+   **AMENDED 2026-09-03: reopened for FUEL ONLY.** A fill-up entry now writes an
+   `odometer_readings` row, a `fuel_fills` row and the vehicle's cached
+   odometer, atomically with the transaction. The reasoning above is still
+   correct -- this is the expensive half -- and it was paid on purpose, because
+   the alternative is keying the odometer twice in two apps and the fleet spec
+   rates abandoned odometer logging (§11.7 there) as the likeliest way the
+   project fails outright.
+
+   The scope of the amendment is narrow and should stay so: **service records
+   still carry no `transaction_id`**, and there is still no shared UI. See
+   `apps/coinbox/CLAUDE.md` for the three guards and the tests that break each
+   of them.
 3. **The `user_settings` split.** That table mixes shared columns (`currency`,
    `date_format`, `distance_unit`) with Odometry-specific ones (`due_soon_*`,
    `fallback_km_per_day`, `stale_odometer_days`). Coinbox reads only the shared
@@ -542,6 +555,13 @@ this week?** Everything else is a report, not a dashboard.
   gauge produces a number nobody believes by the second month.
 - **Net worth or balances.** §1.2 non-goal; a flat log has no balances.
 - **Year-over-year.** The data starts 2026-01-01.
+- **Consumption trend, for now.** The CAPTURE shipped 2026-09-03 (odometer,
+  litres, full-tank flag); the chart did not. Two reasons to think before
+  adding one: the series starts from that date and has no history behind it,
+  and month-over-month consumption is noisy at low fill counts -- a month with
+  two fills is one or two segments, and a segment straddling a month boundary
+  belongs to neither cleanly. A per-segment series with a trailing average is
+  probably the honest shape.
 - **A pie of category share.** Share barely moves month to month, and a pie
   cannot be read for change — which is the only question worth asking of it.
 

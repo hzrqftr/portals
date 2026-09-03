@@ -1,5 +1,9 @@
 import { and, desc, eq, like, or, sql } from "drizzle-orm";
-import { NotFoundError } from "@portals/core/worker";
+import {
+  NotFoundError,
+  assertReadingNotBackwards,
+  odometerWriteStatements,
+} from "@portals/core/worker";
 import { nowIso } from "@portals/core";
 import { LedgerScopedRepo } from "./base";
 import { transactions, categories } from "../schema";
@@ -128,29 +132,127 @@ export class TransactionRepo extends LedgerScopedRepo {
     return res.results;
   }
 
+  /**
+   * Creating an entry, and -- when it is a fill-up -- the vehicle facts that
+   * go with it.
+   *
+   * THIS IS THE ONLY WRITE IN THIS REPO THAT CROSSES INTO THE OTHER PORTAL.
+   * docs/coinbox-spec.md §7 deferred exactly this, on the grounds that
+   * coupling the two portals' write paths is the half that can leak. It was
+   * reopened deliberately: the alternative is keying the odometer twice, in
+   * two apps, and an odometer nobody keeps entering is the top-rated product
+   * risk in the fleet spec (§11.7).
+   *
+   * Three guards make it safe, and each one is broken on purpose in
+   * tests/isolation.test.ts:
+   *
+   *   1. The category is a global seed row or this ledger's.
+   *   2. The vehicle is in a garage the CALLER is a member of, and the garage
+   *      id written to Odometry's tables is READ OFF THAT ROW -- never off the
+   *      scope, which has no garageId and must never grow one.
+   *   3. The reading does not run the odometer backwards.
+   *
+   * All of it goes in one batch(), which D1 runs atomically. That is what makes
+   * a rejected fill leave NO transaction, no reading and no fill behind --
+   * money without its litres, or an odometer that moved for an entry that does
+   * not exist, are both worse than a plain failure.
+   *
+   * STATEMENT ORDER IS FORCED, because D1 enforces foreign keys statement by
+   * statement and ignores PRAGMA foreign_keys = OFF: the reading and the
+   * transaction must both exist before fuel_fills can reference them. Same
+   * trap the recurring materialiser hit.
+   */
   async create(input: TransactionCreate) {
     // Never trust an ID from the client (invariant 2). Both checks run before
     // the insert, and both throw NotFound rather than Forbidden so that a
     // crafted id cannot be used to discover what exists.
     await this.assertUsableCategory(input.categoryId);
-    if (input.vehicleId) await this.assertUsableVehicle(input.vehicleId);
+    const vehicle = input.vehicleId ? await this.assertUsableVehicle(input.vehicleId) : null;
 
     const id = crypto.randomUUID();
     const at = nowIso();
 
-    await this.db.insert(transactions).values({
-      id,
-      ledgerId: this.ledgerId,
-      occurredOn: input.occurredOn,
-      item: input.item,
-      description: input.description ?? null,
-      categoryId: input.categoryId,
-      vehicleId: input.vehicleId ?? null,
-      amountSen: input.amountSen,
-      direction: input.direction,
-      createdAt: at,
-      updatedAt: at,
-    });
+    // Raw SQL rather than Drizzle so the transaction insert can share the fill's
+    // batch. It also names every column explicitly, which sidesteps the
+    // generated-column trap: Drizzle's SQLite insert names EVERY column of the
+    // table, and merely declaring signed_sen made every insert fail.
+    const statements: D1PreparedStatement[] = [
+      this.raw
+        .prepare(
+          `INSERT INTO transactions
+             (id, ledger_id, occurred_on, item, description, category_id,
+              vehicle_id, amount_sen, direction, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        )
+        .bind(
+          id,
+          this.ledgerId,
+          input.occurredOn,
+          input.item,
+          input.description ?? null,
+          input.categoryId,
+          input.vehicleId ?? null,
+          input.amountSen,
+          input.direction,
+          at,
+          at,
+        ),
+    ];
+
+    if (input.fuel) {
+      // Guaranteed by transactionCreateBody's refine, restated here because
+      // this repo is also reachable from the recurring materialiser and a
+      // non-null assertion would be the thing that survives a later change.
+      if (!input.vehicleId || !vehicle) throw new NotFoundError("Vehicle not found");
+
+      await assertReadingNotBackwards(this.raw, {
+        vehicleId: input.vehicleId,
+        garageId: vehicle.garageId,
+        recordedOn: input.occurredOn,
+        readingKm: input.fuel.odometerKm,
+      });
+
+      const readingId = crypto.randomUUID();
+      const [insertReading, updateCache] = odometerWriteStatements(this.raw, {
+        readingId,
+        garageId: vehicle.garageId,
+        vehicleId: input.vehicleId,
+        readingKm: input.fuel.odometerKm,
+        recordedOn: input.occurredOn,
+        // Not a new 'fuel' source value: widening the CHECK constraint on
+        // odometer_readings would cost a full table rebuild, and joining
+        // fuel_fills answers the same question. See migration 0013.
+        source: "manual",
+      });
+
+      // Reading first, then the transaction, THEN the fill that references
+      // both. The cache update goes last; it is the only statement here whose
+      // effect can legitimately be a no-op, when the fill is backdated.
+      statements.unshift(insertReading);
+      statements.push(
+        this.raw
+          .prepare(
+            `INSERT INTO fuel_fills
+               (id, garage_id, vehicle_id, odometer_reading_id, filled_on,
+                litres_milli, is_full_tank, transaction_id, created_at)
+             VALUES (?,?,?,?,?,?,?,?,?)`,
+          )
+          .bind(
+            crypto.randomUUID(),
+            vehicle.garageId,
+            input.vehicleId,
+            readingId,
+            input.occurredOn,
+            input.fuel.litresMilli,
+            input.fuel.isFullTank ? 1 : 0,
+            id,
+            at,
+          ),
+        updateCache,
+      );
+    }
+
+    await this.raw.batch(statements);
 
     return this.get(id);
   }
@@ -161,6 +263,8 @@ export class TransactionRepo extends LedgerScopedRepo {
     await this.get(id);
 
     if (patch.categoryId) await this.assertUsableCategory(patch.categoryId);
+    // The return value is unused here: an edit never writes into Odometry, so
+    // it needs the authorisation but not the garage.
     if (patch.vehicleId) await this.assertUsableVehicle(patch.vehicleId);
 
     // An explicit null clears; an omitted key leaves the column alone. Same

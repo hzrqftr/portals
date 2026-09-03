@@ -9,7 +9,7 @@ import { z } from "zod";
 // The type-level primitives are the same in every portal. Imported as well as
 // re-exported: a bare `export ... from` forwards them without binding them in
 // this module's scope, and the schemas below use them directly.
-import { calendarDate, sen } from "@portals/core";
+import { calendarDate, quantityMilli, sen } from "@portals/core";
 export { calendarDate, sen, quantityMilli } from "@portals/core";
 
 /**
@@ -28,6 +28,30 @@ export { calendarDate, sen, quantityMilli } from "@portals/core";
  */
 export const direction = z.enum(["in", "out"]);
 export type Direction = z.infer<typeof direction>;
+
+/**
+ * The physical half of a fill-up. Optional on a transaction, and absent from
+ * the overwhelming majority of them.
+ *
+ * ODOMETER AND LITRES ARE NOT LEDGER DATA and are not stored on
+ * `transactions`. They travel through this schema on their way to Odometry,
+ * which owns `odometer_readings` and `fuel_fills`. The ledger keeps the
+ * ringgit and the vehicle attribution it already had.
+ *
+ * `isFullTank` has no default here on purpose. Consumption is only computable
+ * full-tank to full-tank, so "we do not know" and "it was full" must not
+ * collapse into one value on the way in; the form supplies the default, and a
+ * client that omits it is a 422 rather than a silent assumption.
+ */
+export const fuelFill = z
+  .object({
+    odometerKm: z.number().int().positive(),
+    litresMilli: quantityMilli,
+    isFullTank: z.boolean(),
+  })
+  .strict();
+
+export type FuelFill = z.infer<typeof fuelFill>;
 
 /**
  * Creating a transaction.
@@ -50,10 +74,33 @@ export const transactionCreate = z
     vehicleId: z.string().min(1).nullish(),
     amountSen: sen,
     direction,
+
+    /**
+     * Present only when this entry is a fill-up. See `fuelFill` above for why
+     * none of it lands on the transactions table.
+     */
+    fuel: fuelFill.nullish(),
   })
   .strict();
 
 export type TransactionCreate = z.infer<typeof transactionCreate>;
+
+/**
+ * What the POST handler actually parses.
+ *
+ * The cross-field rule lives on a separate schema because `.refine()` returns
+ * a ZodEffects, which has no `.omit()` or `.partial()` -- putting it on
+ * `transactionCreate` would break `transactionPatch` below. Keeping the
+ * object plain and refining once at the boundary is the cheaper half of that
+ * trade.
+ *
+ * A fill with no vehicle has nowhere to go: the odometer belongs to a vehicle,
+ * and without one there is no garage to authorise the write against.
+ */
+export const transactionCreateBody = transactionCreate.refine(
+  (v) => !v.fuel || !!v.vehicleId,
+  { message: "A fill-up must say which vehicle was filled", path: ["vehicleId"] },
+);
 
 /**
  * Editing a transaction -- the thing the Google Form could not do at all.
@@ -63,8 +110,15 @@ export type TransactionCreate = z.infer<typeof transactionCreate>;
  * them. They record what the Sheet actually said; letting a later edit rewrite
  * that would destroy the only evidence of what was imported versus what was
  * corrected afterwards.
+ *
+ * `fuel` is absent too, and `.strict()` makes sending it a 422. A fill writes
+ * an odometer reading into Odometry, and `odometer_readings` has no correction
+ * path there either -- so editing one here would need a rule for what happens
+ * to a reading that other figures have already been derived from. To fix a
+ * mistyped fill, delete the entry and re-enter it: the CASCADE takes the fill
+ * with it and leaves the reading, which is the documented behaviour.
  */
-export const transactionPatch = transactionCreate.partial().strict();
+export const transactionPatch = transactionCreate.omit({ fuel: true }).partial().strict();
 
 export type TransactionPatch = z.infer<typeof transactionPatch>;
 

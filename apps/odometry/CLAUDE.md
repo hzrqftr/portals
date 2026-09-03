@@ -39,7 +39,9 @@ Deliberate exceptions to "everything filters on `garage_id`":
 
 ## Domain invariants
 
-These are invisible when broken. Numbering continues the root file's 1–5 and 9.
+These are invisible when broken. The root file owns 1–5 and 9, so this file
+runs 6, 7, 8, then 10 — the gap is the root’s read-replication rule, not a
+missing invariant.
 
 ### 6. Due dates are derived, never stored
 
@@ -98,6 +100,45 @@ items resets nothing, exactly like an untyped one.
 Renewing road tax or insurance **inserts a new row**. Never update `expires_on`
 in place — cost history drives the forecast. The active renewal per
 `(vehicle, type)` is the greatest `expires_on`.
+
+### 10. Consumption is measured full tank to full tank
+
+`fuel_fills` (migration `0013`) records litres and `is_full_tank`. A segment
+runs from one full fill to the next, and the litres attributed to it are ALL the
+litres bought in between — **partial fills included**, because that fuel was
+burned over that distance too.
+
+Dropping a partial fill understates consumption; dividing one by its own
+distance overstates it. Both produce a number in an entirely plausible range
+with nothing on screen able to say so, which is why `is_full_tank` is NOT NULL:
+"we do not know" and "it was full" must never be the same stored value.
+
+**Fills are created from Coinbox, not here.** The litres and the ringgit are
+keyed in together at the pump, and splitting them across two apps is how
+odometer logging stops. This portal has `GET /api/vehicles/:id/fuel` and no
+POST beside it.
+
+**No money appears on the fuel page.** `fuel_fills` is garage-scoped and a
+garage is shared, so a price there would be readable by every co-member. The
+ringgit lives in Coinbox behind the ledger predicate.
+
+**The fill points at its odometer reading rather than copying it.** Unlike
+`service_records`, which carries its own `odometer_km` alongside a
+`source='service'` reading. Two copies of one number are two numbers that can
+disagree. A consequence: fills use `source='manual'`, because "which readings
+came from a fill" is a join, and widening the `CHECK` would have cost a 12-step
+table rebuild for nothing.
+
+## The odometer write lives in `@portals/core`
+
+`packages/core/src/worker/odometer.ts` owns the backwards check and the
+insert-plus-guarded-cache-update pair. It was copy-pasted in `vehicles.ts` and
+`services.ts`; Coinbox's fuel entry would have made a third copy of a rule that
+is invisible when broken.
+
+It RETURNS statements rather than running them, so each caller folds them into
+its own `batch()`. That is not a style choice — Coinbox has to write a
+transaction, a reading and a fill atomically.
 
 ## Domain traps
 

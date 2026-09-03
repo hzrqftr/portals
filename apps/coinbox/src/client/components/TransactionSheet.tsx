@@ -17,6 +17,15 @@ import {
   partitionByDirection,
   type FormState,
 } from "@shared/categoryRules";
+import {
+  applyVehicleChange,
+  initialFuelState,
+  isFuelComplete,
+  parseLitresMilli,
+  parseOdometerKm,
+  type FuelState,
+} from "@shared/fuelRules";
+import { FuelFields } from "./FuelFields";
 
 /**
  * The entry form. The reason this project exists.
@@ -66,6 +75,13 @@ export function TransactionSheet({
   const [description, setDescription] = useState(existing?.description ?? "");
   const [occurredOn, setOccurredOn] = useState(existing?.occurredOn ?? today);
 
+  /**
+   * Always starts empty, even when editing. `fuel` is absent from
+   * transactionPatch, so an edit cannot carry one -- see the note there for
+   * why correcting a fill means deleting the entry and re-entering it.
+   */
+  const [fuel, setFuel] = useState<FuelState>(initialFuelState);
+
   const amountSen = parseSen(amount);
   const valid =
     occurredOn !== "" &&
@@ -77,7 +93,10 @@ export function TransactionSheet({
     // and comes out high. So the guard is on emptiness, not on the value.
     amount.trim() !== "" &&
     amountSen !== null &&
-    amountSen >= 0;
+    amountSen >= 0 &&
+    // A half-filled fill-up block is a slip, not a statement: the API would
+    // reject it, and it is cheaper to say so before the round trip.
+    isFuelComplete(fuel);
 
   function pickCategory(id: string) {
     setCategoryId(id);
@@ -97,6 +116,15 @@ export function TransactionSheet({
       vehicleId: form.vehicleId,
       amountSen,
       direction: form.direction,
+      ...(fuel.isFill && form.vehicleId
+        ? {
+            fuel: {
+              odometerKm: parseOdometerKm(fuel.odometerKm) ?? 0,
+              litresMilli: parseLitresMilli(fuel.litres) ?? 0,
+              isFullTank: fuel.isFullTank,
+            },
+          }
+        : {}),
     };
 
     mutation.mutate(draft, { onSuccess: onClose });
@@ -225,7 +253,12 @@ export function TransactionSheet({
           <Select
             className="mt-1"
             value={form.vehicleId ?? ""}
-            onChange={(e) => setForm((f) => ({ ...f, vehicleId: e.target.value || null }))}
+            onChange={(e) => {
+              const next = e.target.value || null;
+              setForm((f) => ({ ...f, vehicleId: next }));
+              // An odometer belongs to a vehicle. Losing one loses the other.
+              setFuel((f) => applyVehicleChange(f, next));
+            }}
           >
             <option value="">No particular vehicle</option>
             {vehicles.data?.map((v) => (
@@ -235,6 +268,22 @@ export function TransactionSheet({
             ))}
           </Select>
         </Field>
+      )}
+
+      {/*
+        Only offered once a vehicle is chosen: a fill with no vehicle has
+        nowhere to put the odometer, and the API rejects it. Editing never
+        shows it, because transactionPatch carries no fuel block.
+      */}
+      {vehicleVisible && form.vehicleId && !editing && (
+        <FuelFields
+          state={fuel}
+          onChange={setFuel}
+          amountSen={amountSen}
+          lastOdometerKm={
+            vehicles.data?.find((v) => v.id === form.vehicleId)?.currentOdometerKm ?? null
+          }
+        />
       )}
 
       <Field label="Date">

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { todayIn } from "@portals/core";
 import type { AppContext } from "../index";
 import {
-  transactionCreate,
+  transactionCreateBody,
   transactionPatch,
   recurringCreate,
   recurringPatch,
@@ -130,7 +130,7 @@ export function registerRoutes(app: Hono<AppContext>): void {
   });
 
   app.post("/api/transactions", async (c) => {
-    const input = transactionCreate.parse(await c.req.json());
+    const input = transactionCreateBody.parse(await c.req.json());
     return c.json(await c.get("repos").transactions.create(input), 201);
   });
 
