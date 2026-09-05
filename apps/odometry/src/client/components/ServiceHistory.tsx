@@ -1,16 +1,37 @@
 import { useState } from "react";
-import { useServices, SERVICE_TYPES, type ServiceRecord } from "../api/hooks";
+import {
+  useServices,
+  SERVICE_TYPES,
+  type ServiceRecord,
+  type VehicleType,
+} from "../api/hooks";
 import { formatSen, fromQuantityMilli } from "@portals/core";
 import { formatKm } from "../lib/format";
+import { ServiceSheet } from "./ServiceSheet";
 
 /**
  * Service history, reverse chronological, expandable to line items
  * (spec 8.2). Warranty is shown here and nowhere else: it is a fact to look
  * up when a part fails, not a deadline to act on, so it gets a badge rather
  * than a place in the attention list.
+ *
+ * Each record can be corrected from here, which is why this component needs
+ * the vehicle's type and nickname it does not otherwise use: they are what
+ * ServiceSheet needs to offer the right parts and title itself.
  */
-export function ServiceHistory({ vehicleId, today }: { vehicleId: string; today: string }) {
+export function ServiceHistory({
+  vehicleId,
+  vehicleType,
+  nickname,
+  today,
+}: {
+  vehicleId: string;
+  vehicleType: VehicleType;
+  nickname: string;
+  today: string;
+}) {
   const services = useServices(vehicleId);
+  const [editing, setEditing] = useState<ServiceRecord | null>(null);
 
   if (services.isLoading) return <p className="mt-3 text-sm text-ink-faint">Loading&hellip;</p>;
   if (!services.data?.length) {
@@ -23,15 +44,44 @@ export function ServiceHistory({ vehicleId, today }: { vehicleId: string; today:
   }
 
   return (
-    <ul className="mt-3 space-y-2">
-      {services.data.map((record) => (
-        <RecordRow key={record.id} record={record} today={today} />
-      ))}
-    </ul>
+    <>
+      <ul className="mt-3 space-y-2">
+        {services.data.map((record) => (
+          <RecordRow
+            key={record.id}
+            record={record}
+            today={today}
+            onEdit={() => setEditing(record)}
+          />
+        ))}
+      </ul>
+
+      {editing && (
+        <ServiceSheet
+          vehicleId={vehicleId}
+          vehicleType={vehicleType}
+          nickname={nickname}
+          // The record's own odometer, not the vehicle's: editing seeds from
+          // the record, and this is only the fallback for a blank new visit.
+          currentKm={editing.odometerKm}
+          today={today}
+          record={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </>
   );
 }
 
-function RecordRow({ record, today }: { record: ServiceRecord; today: string }) {
+function RecordRow({
+  record,
+  today,
+  onEdit,
+}: {
+  record: ServiceRecord;
+  today: string;
+  onEdit: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const typeLabel = SERVICE_TYPES.find((t) => t.value === record.serviceType)?.label;
 
@@ -91,6 +141,13 @@ function RecordRow({ record, today }: { record: ServiceRecord; today: string }) 
           <CostBreakdown record={record} />
 
           {record.notes && <p className="mt-2 text-sm text-ink-muted">{record.notes}</p>}
+
+          <button
+            onClick={onEdit}
+            className="mt-3 rounded-lg border border-edge px-3 py-1.5 text-sm text-ink-muted transition hover:text-ink"
+          >
+            Edit
+          </button>
         </div>
       )}
     </li>

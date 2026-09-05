@@ -23,6 +23,20 @@ export function parseSen(input: string): Sen | null {
   return Math.round(value * 100);
 }
 
+/**
+ * The declared inverse of parseSen: a stored amount put back into a text input
+ * for editing.
+ *
+ * NOT formatSen. That one is for DISPLAY and produces "RM 245.50" -- currency
+ * symbol, grouping separators and an em dash for null -- none of which belongs
+ * in the value of an <input> the user is about to retype. A form seeded with
+ * formatSen round-trips through parseSen only by accident of its stripping.
+ */
+export function senToInput(sen: Sen | null | undefined): string {
+  if (sen === null || sen === undefined) return "";
+  return (sen / 100).toFixed(2);
+}
+
 export function formatSen(sen: Sen | null | undefined, currency = "MYR"): string {
   if (sen === null || sen === undefined) return "\u2014";
   return new Intl.NumberFormat("en-MY", {

@@ -144,9 +144,24 @@ export const serviceInput = z.object({
   items: z.array(serviceItemInput).default([]),
 });
 
-export const servicePatch = serviceInput
-  .partial()
-  .omit({ items: true, odometerKm: true, servicedOn: true });
+/**
+ * Editing a service is a REPLACEMENT, not a merge, so it is the same shape as
+ * creating one and every omitted optional CLEARS.
+ *
+ * `items` is why. It is a SET, and a partial merge over a set has no honest
+ * meaning: "the parts on this visit are now these three" is unambiguous, while
+ * "merge these three into whatever is already there" cannot express removing
+ * one. Once items are sent whole, sending everything else whole is the
+ * consistent rule rather than a second one to remember.
+ *
+ * This REPLACED a narrow `servicePatch` that omitted `items`, `odometerKm` and
+ * `servicedOn`. Those three were closed rather than wrong: the service
+ * odometer is copied into an odometer_readings row and the vehicle's cached
+ * figure, and nothing linked the service to the reading it wrote, so a
+ * correction could only update one of the three and leave the others lying.
+ * Migration 0014 added that link. See packages/core/src/worker/odometer.ts.
+ */
+export const serviceUpdate = serviceInput;
 
 export const renewalInput = z.object({
   type: renewalType,
@@ -226,7 +241,7 @@ export type VehicleInput = z.infer<typeof vehicleInput>;
 export type VehiclePatch = z.infer<typeof vehiclePatch>;
 export type OdometerInput = z.infer<typeof odometerInput>;
 export type ServiceInput = z.infer<typeof serviceInput>;
-export type ServicePatch = z.infer<typeof servicePatch>;
+export type ServiceUpdate = z.infer<typeof serviceUpdate>;
 export type RenewalInput = z.infer<typeof renewalInput>;
 export type RenewalPatch = z.infer<typeof renewalPatch>;
 export type IntervalPatch = z.infer<typeof intervalPatch>;

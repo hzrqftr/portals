@@ -1,9 +1,15 @@
 import { eq, desc } from "drizzle-orm";
 import { GarageScopedRepo } from "./base";
-import { serviceRecords, serviceItems } from "../schema";
-import { NotFoundError, odometerWriteStatements } from "@portals/core/worker";
+import { serviceItems } from "../schema";
+import {
+  NotFoundError,
+  assertReadingNotBackwards,
+  odometerUpdateStatement,
+  odometerWriteStatements,
+  recacheOdometerStatement,
+} from "@portals/core/worker";
 import { nowIso } from "@portals/core";
-import type { ServiceInput, ServicePatch, ServiceType } from "@shared/zod";
+import type { ServiceInput, ServiceUpdate, ServiceType } from "@shared/zod";
 
 export class ServiceRepo extends GarageScopedRepo {
   async list(vehicleId: string) {
@@ -100,10 +106,229 @@ export class ServiceRepo extends GarageScopedRepo {
         ),
     ];
 
-    // A service visit with no line items resets no maintenance clock
-    // (invariant 7). That is a legitimate record -- an inspection, a wash --
-    // and it is stored as one. The absence of items is the meaning.
+    statements.push(...this.itemStatements(recordId, vehicleId, input.items));
+
+    // The visit implies a reading. Shared with Odometry's quick odometer update
+    // and with Coinbox's fuel entry -- see @portals/core/worker/odometer.ts,
+    // which also explains why the cache update is guarded on the DATE.
+    const readingId = crypto.randomUUID();
+    statements.push(
+      ...odometerWriteStatements(this.raw, {
+        readingId,
+        garageId: this.garageId,
+        vehicleId,
+        readingKm: input.odometerKm,
+        recordedOn: input.servicedOn,
+        source: "service",
+      }),
+      // The link that makes update() below possible (migration 0014). Written
+      // in the same batch as the reading, so a service can never exist
+      // pointing at a reading that was not created.
+      this.raw
+        .prepare(
+          `UPDATE service_records SET odometer_reading_id = ?
+            WHERE id = ? AND garage_id = ?`,
+        )
+        .bind(readingId, recordId, this.garageId),
+    );
+
+    await this.raw.batch(statements);
+    return recordId;
+  }
+
+  /**
+   * Corrects a service visit. Spec 8.4.
+   *
+   * A REPLACEMENT, not a merge -- see `serviceUpdate` in @shared/zod for why
+   * the line items force that. The three things worth understanding:
+   *
+   * 1. THE ODOMETER MOVES THREE THINGS. The record's own copy, the
+   *    odometer_readings row the visit wrote, and the vehicle's cached figure.
+   *    All three are corrected in one batch, and the cache is REBUILT rather
+   *    than nudged, because a correction can move the odometer DOWN and the
+   *    normal write path deliberately only moves it up.
+   *
+   * 2. THE DUE DATES MOVE WITH IT, and that is the point rather than a side
+   *    effect. v_maintenance_due computes from the service odometer
+   *    (invariant 6): correcting the baseline must move every due point
+   *    derived from it, or it was a stored due date all along.
+   *
+   * 3. REMOVING A LINE ITEM DOES NOT REVERT THE VEHICLE'S INTERVAL. Invariant
+   *    6 says the last service sets the schedule, and there is no stored
+   *    previous value to revert to -- an item that set 10,000 km leaves the
+   *    part on 10,000 km after it is deleted. That is deliberate, not an
+   *    oversight to fix: the interval is edited on the maintenance tab, which
+   *    is the one place it lives.
+   */
+  async update(id: string, input: ServiceUpdate) {
+    // Loading the record IS the tenant check -- the garage predicate here
+    // proves the caller owns it, so there is no assertOwnedVehicle below.
+    const existing = await this.raw
+      .prepare(
+        `SELECT vehicle_id, odometer_reading_id
+           FROM service_records
+          WHERE id = ? AND garage_id = ?`,
+      )
+      .bind(id, this.garageId)
+      .first<{ vehicle_id: string; odometer_reading_id: string | null }>();
+    if (!existing) throw new NotFoundError("Service record not found");
+
+    const vehicleId = existing.vehicle_id;
+
+    // Spec 5.3, exactly as on create: a part type id from the client is a
+    // claim, not a fact, and an edit is no less of a write than an insert.
     for (const item of input.items) {
+      await this.assertUsablePartType(item.partTypeId);
+    }
+
+    // Excluding this service's OWN reading, or moving its date later would
+    // compare the reading against itself and reject every forward re-dating.
+    await assertReadingNotBackwards(this.raw, {
+      vehicleId,
+      garageId: this.garageId,
+      recordedOn: input.servicedOn,
+      readingKm: input.odometerKm,
+      excludeReadingId: existing.odometer_reading_id,
+    });
+
+    const statements: D1PreparedStatement[] = [
+      this.raw
+        .prepare(
+          `UPDATE service_records
+              SET serviced_on = ?, odometer_km = ?, service_type = ?,
+                  workshop_name = ?, labour_cost = ?, notes = ?
+            WHERE id = ? AND garage_id = ?`,
+        )
+        .bind(
+          input.servicedOn,
+          input.odometerKm,
+          // Every column written, NULLs included. On a replacement an omitted
+          // field means "cleared"; merging would make clearing the workshop
+          // name impossible to express.
+          input.serviceType ?? null,
+          input.workshopName ?? null,
+          input.labourCost ?? null,
+          input.notes ?? null,
+          id,
+          this.garageId,
+        ),
+      // Replace the set wholesale. Diffing incoming against stored items would
+      // need a stable client-side id per line, which the form does not have --
+      // and the line items carry no history anything reads, so re-creating
+      // them loses nothing.
+      this.raw
+        .prepare(
+          `DELETE FROM service_items
+            WHERE service_record_id = ? AND garage_id = ?`,
+        )
+        .bind(id, this.garageId),
+      ...this.itemStatements(id, vehicleId, input.items),
+    ];
+
+    if (existing.odometer_reading_id) {
+      statements.push(
+        odometerUpdateStatement(this.raw, {
+          readingId: existing.odometer_reading_id,
+          garageId: this.garageId,
+          readingKm: input.odometerKm,
+          recordedOn: input.servicedOn,
+        }),
+      );
+    } else {
+      // A service logged before migration 0014 whose reading the backfill
+      // could not match. Adopt a fresh one rather than failing: the orphan
+      // stays in the history, which is the pre-existing state, and from here
+      // on this record is correctable like any other.
+      const readingId = crypto.randomUUID();
+      statements.push(
+        ...odometerWriteStatements(this.raw, {
+          readingId,
+          garageId: this.garageId,
+          vehicleId,
+          readingKm: input.odometerKm,
+          recordedOn: input.servicedOn,
+          source: "service",
+        }),
+        this.raw
+          .prepare(
+            `UPDATE service_records SET odometer_reading_id = ?
+              WHERE id = ? AND garage_id = ?`,
+          )
+          .bind(readingId, id, this.garageId),
+      );
+    }
+
+    // LAST, so it sees the corrected reading.
+    statements.push(recacheOdometerStatement(this.raw, { garageId: this.garageId, vehicleId }));
+
+    await this.raw.batch(statements);
+
+    // Re-read rather than RETURNING: the client wants the record in the shape
+    // list() produces, totals and derived warranty dates included.
+    const [record] = (await this.list(vehicleId)).filter((r) => r.id === id);
+    return record;
+  }
+
+  async remove(id: string) {
+    // Read the link before the delete, or there is nothing left to follow.
+    const existing = await this.raw
+      .prepare(
+        `SELECT vehicle_id, odometer_reading_id
+           FROM service_records
+          WHERE id = ? AND garage_id = ?`,
+      )
+      .bind(id, this.garageId)
+      .first<{ vehicle_id: string; odometer_reading_id: string | null }>();
+    if (!existing) throw new NotFoundError("Service record not found");
+
+    // Deleting the visit deletes the reading it wrote. Until migration 0014
+    // linked the two this was impossible, so a deleted service left its
+    // reading behind -- and with it a vehicle whose cached odometer was held
+    // up by a service that no longer existed. service_items cascade
+    // (migrations/0001), so they need no statement here.
+    const statements: D1PreparedStatement[] = [
+      this.raw
+        .prepare(`DELETE FROM service_records WHERE id = ? AND garage_id = ?`)
+        .bind(id, this.garageId),
+    ];
+
+    if (existing.odometer_reading_id) {
+      statements.push(
+        this.raw
+          .prepare(`DELETE FROM odometer_readings WHERE id = ? AND garage_id = ?`)
+          .bind(existing.odometer_reading_id, this.garageId),
+      );
+    }
+
+    statements.push(
+      recacheOdometerStatement(this.raw, {
+        garageId: this.garageId,
+        vehicleId: existing.vehicle_id,
+      }),
+    );
+
+    await this.raw.batch(statements);
+  }
+
+  /**
+   * The line items of a visit, plus the interval each one sets.
+   *
+   * Shared by create() and update() because it carries invariant 6 and a
+   * second copy of it is invisible when the two drift apart.
+   *
+   * A service visit with no line items resets no maintenance clock
+   * (invariant 7). That is a legitimate record -- an inspection, a wash --
+   * and it is stored as one. The absence of items is the meaning, which is
+   * why an empty list produces no statements rather than an error.
+   */
+  private itemStatements(
+    recordId: string,
+    vehicleId: string,
+    items: ServiceInput["items"],
+  ): D1PreparedStatement[] {
+    const statements: D1PreparedStatement[] = [];
+
+    for (const item of items) {
       statements.push(
         this.raw
           .prepare(
@@ -171,40 +396,7 @@ export class ServiceRepo extends GarageScopedRepo {
       }
     }
 
-    // The visit implies a reading. Shared with Odometry's quick odometer update
-    // and with Coinbox's fuel entry -- see @portals/core/worker/odometer.ts,
-    // which also explains why the cache update is guarded on the DATE.
-    statements.push(
-      ...odometerWriteStatements(this.raw, {
-        readingId: crypto.randomUUID(),
-        garageId: this.garageId,
-        vehicleId,
-        readingKm: input.odometerKm,
-        recordedOn: input.servicedOn,
-        source: "service",
-      }),
-    );
-
-    await this.raw.batch(statements);
-    return recordId;
-  }
-
-  async update(id: string, patch: ServicePatch) {
-    const [row] = await this.db
-      .update(serviceRecords)
-      .set(patch)
-      .where(this.where(serviceRecords, eq(serviceRecords.id, id)))
-      .returning();
-    if (!row) throw new NotFoundError("Service record not found");
-    return row;
-  }
-
-  async remove(id: string) {
-    const [row] = await this.db
-      .delete(serviceRecords)
-      .where(this.where(serviceRecords, eq(serviceRecords.id, id)))
-      .returning({ id: serviceRecords.id });
-    if (!row) throw new NotFoundError("Service record not found");
+    return statements;
   }
 
   /** Brand suggestions come from this garage's own history only. */

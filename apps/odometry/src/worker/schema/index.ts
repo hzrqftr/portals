@@ -197,6 +197,14 @@ export const serviceRecords = sqliteTable(
     labourCost: integer("labour_cost"),
     invoiceKey: text("invoice_key"),
     notes: text("notes"),
+    // The reading this visit wrote (migration 0014). NOT a second copy of the
+    // odometer -- odometer_km above is that -- but the link that lets the two
+    // be corrected together. Without it, editing a service updated one and
+    // left the other asserting the original figure.
+    //
+    // Nullable: services logged before 0014 whose reading the backfill could
+    // not match keep NULL, and the update path adopts a fresh reading instead.
+    odometerReadingId: text("odometer_reading_id"),
     createdAt: text("created_at").notNull(),
   },
   (t) => ({ vehicleDateIdx: index("idx_service_vehicle_date").on(t.vehicleId, t.servicedOn) }),

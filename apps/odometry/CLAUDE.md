@@ -61,6 +61,19 @@ odometer before sending, so the API never receives a due point at all. The test
 for whether something is a due date: correct the service odometer, and see
 whether the number moves. It must.
 
+**That test is now executable, and runs.** A service can be corrected after the
+fact (migration `0014`), and `tests/serviceEdit.test.ts` asserts exactly this:
+edit the odometer of a logged visit and the due point moves with it. Correcting
+the odometer also corrects the `odometer_readings` row the visit wrote and
+rebuilds the vehicle's cached figure -- three copies of one number, kept in step
+by `service_records.odometer_reading_id` and the helpers in
+`packages/core/src/worker/odometer.ts`.
+
+One consequence looks like a bug and is not: **removing a line item does not
+revert the vehicle's interval.** The last service sets the schedule and nothing
+stores what it was before, so there is no previous value to restore. The
+maintenance tab's inline editor is where an interval is changed.
+
 **`service_items.interval_km_override` is history, not a schedule.** It records
 what the interval was at that service. Nothing computes from it — the view does
 not join it. Do not reintroduce it into the due-point calculation.

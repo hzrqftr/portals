@@ -340,6 +340,33 @@ export function useLogService(vehicleId: string) {
   });
 }
 
+/**
+ * Correcting a service after the fact (spec 8.4).
+ *
+ * Sends the WHOLE record, not a patch -- the parts list is a set, and there is
+ * no way to express "remove this line" in a merge. See `serviceUpdate` in
+ * @shared/zod.
+ *
+ * The same four invalidations as logging one, and all four earn their place:
+ * correcting the odometer moves the vehicle's cached figure, the dashboard
+ * card that reads it, and every maintenance due point derived from that
+ * service (invariant 6). Refreshing only the history list would leave three
+ * screens showing numbers the correction just falsified.
+ */
+export function useUpdateService(vehicleId: string, serviceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ServiceDraft) =>
+      api<ServiceRecord>(`/services/${serviceId}`, { method: "PATCH", json: input }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      qc.invalidateQueries({ queryKey: ["vehicle", vehicleId] });
+      qc.invalidateQueries({ queryKey: ["maintenance", vehicleId] });
+      qc.invalidateQueries({ queryKey: ["services", vehicleId] });
+    },
+  });
+}
+
 /** Per-vehicle interval editing. The Waja belt vs City chain case (spec 8.2). */
 export function useSetInterval(vehicleId: string) {
   const qc = useQueryClient();

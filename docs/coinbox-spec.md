@@ -374,11 +374,21 @@ Genuinely undecided. Whoever implements next should ask rather than pick.
    `fallback_km_per_day`, `stale_odometer_days`). Coinbox reads only the shared
    ones. Splitting it is deliberately deferred, and recorded here so it is not
    "discovered" later and refactored by accident.
-4. **Cross-portal navigation.** Deferred. The clean mechanism is Access groups,
-   but `ctx.access` is not populated in production (which is why the JWT
-   assertion fallback exists) and the assertion payload carries no groups
-   claim. `AppHeader` takes a `portals` prop that nothing passes, so switching
-   it on later is passing an array rather than reworking chrome in two apps.
+4. ~~**Cross-portal navigation.**~~ **BUILT 2026-09-05.** Each portal's header
+   links to the other, by passing the `portals` array `AppHeader` always
+   accepted -- the design bet that deferring it would cost an array rather than
+   a rework paid off exactly as written.
+
+   What was deferred was never the link; it was **filtering** it. The clean
+   mechanism is still Access groups, and `ctx.access` still is not populated in
+   production while the assertion payload still carries no groups claim. So the
+   links are shown unconditionally, and a household member who holds Odometry
+   access but not Coinbox reaches a Cloudflare denial page. That was weighed
+   and accepted: the owner is the only person with both, and a hypothetical
+   co-member's dead link costs less than no navigation for the person who
+   actually uses both portals. Revisit it when that co-member is real, and see
+   the `Portal` type in `@portals/core/client` for why an email allowlist in
+   `wrangler.jsonc` is the wrong shortcut.
 5. ~~**The wordmark.**~~ **CLOSED 2026-08-28: body type, indefinitely.**
    Odometry's Bukhari Script woff2 is subset to the eight letters of
    "Odometry" and licensed for personal use only, so it cannot be reused.

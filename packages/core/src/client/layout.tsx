@@ -22,19 +22,24 @@ export function SectionTitle({ children }: { children: ReactNode }) {
 /**
  * A sibling portal this one can link to.
  *
- * NOTHING PASSES THIS YET, and that is deliberate. The portals sit on two
- * hostnames behind two Access applications, so a user may hold access to one
- * or both, and a link shown to someone without access leads to a Cloudflare
- * denial page rather than anywhere useful.
+ * SHOWN UNCONDITIONALLY, which is a decision rather than an oversight. The two
+ * portals sit on two hostnames behind two Access applications with different
+ * policies -- Odometry admits the household, Coinbox admits the owner alone --
+ * so a co-member who follows Odometry's link lands on a Cloudflare denial page
+ * instead of anywhere useful.
  *
- * Driving it correctly would mean reading Access group membership -- but
- * ctx.access is not populated in production (which is why the JWT assertion
- * fallback exists in @portals/core/worker auth.ts), and the assertion payload
- * we parse carries no groups claim. So there is no group information reaching
- * the Worker today.
+ * That was the reason this prop went unused for as long as it did. It was
+ * weighed and accepted on 2026-09-05: the owner is the only person who uses
+ * both portals, and a hypothetical co-member's dead link is a smaller cost
+ * than no navigation at all for the person who actually has both.
  *
- * The prop exists so that when there IS, turning on cross-portal navigation
- * is passing an array here rather than reworking the chrome in two apps.
+ * If that co-member ever becomes real, the fix is filtering this list by
+ * Access group membership -- which needs a groups claim that does not reach
+ * the Worker today. ctx.access is not populated in production (which is why
+ * the JWT assertion fallback exists in @portals/core/worker auth.ts), and the
+ * assertion payload we parse carries no groups. Do not reach for an email
+ * allowlist in wrangler.jsonc instead: it would duplicate the Access policy in
+ * a second place, and the copy that drifts is the one nobody is looking at.
  */
 export type Portal = { name: string; href: string };
 

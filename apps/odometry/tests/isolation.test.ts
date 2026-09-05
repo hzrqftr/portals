@@ -329,11 +329,21 @@ describe("cross-tenant isolation", () => {
 
     it("rejects edits to another garage's records by ID", async () => {
       const call = as(A);
+
+      // A COMPLETE body on purpose. Editing a service is a replacement, so a
+      // partial one now fails validation -- and a 422 would satisfy nothing
+      // this test is for. The 404 has to be proven to come from the tenant
+      // check, not from Zod rejecting the payload before the check runs.
       expect(
         (
           await call(`/api/services/${bob.serviceId}`, {
             method: "PATCH",
-            json: { workshopName: "hijacked" },
+            json: {
+              servicedOn: "2026-08-19",
+              odometerKm: 60_000,
+              workshopName: "hijacked",
+              items: [],
+            },
           })
         ).status,
       ).toBe(404);
@@ -341,6 +351,20 @@ describe("cross-tenant isolation", () => {
       expect(
         (await call(`/api/services/${bob.serviceId}`, { method: "DELETE" })).status,
       ).toBe(404);
+
+      // Asserted HERE rather than in the "leaves B's data untouched" test
+      // below, because resetDb runs beforeEach and that test cannot see a
+      // write attempted in this one.
+      //
+      // Load-bearing: the 404 alone does not prove the edit was refused.
+      // update() re-reads through list() to build its response, which
+      // re-scopes and would 404 even if the UPDATE had already landed. Only
+      // reading B's record back catches a write that succeeded before the
+      // response failed.
+      const bobsService = await as(B)(`/api/vehicles/${bob.vehicleId}/services`);
+      expect(bobsService.body[0].workshopName).toBe("BOB_WORKSHOP");
+      expect(bobsService.body[0].odometerKm).toBe(45_000);
+      expect(bobsService.body[0].items).toHaveLength(1);
 
       expect(
         (

@@ -1,24 +1,34 @@
 import { useState } from "react";
 import {
   useLogService,
+  useUpdateService,
   useMaintenance,
   usePartTypes,
   useServiceTemplates,
   SERVICE_TYPES,
   type ServiceItemDraft,
+  type ServiceRecord,
   type ServiceTypeName,
   type VehicleType,
 } from "../api/hooks";
-import { parseSen, toQuantityMilli, formatSen } from "@portals/core";
+import { parseSen, toQuantityMilli } from "@portals/core";
 import { Field, INPUT, Select, digitsOnly } from "@portals/core/client";
 import { formatKm } from "../lib/format";
 import { Sheet } from "@portals/core/client";
 import { PartPicker } from "./PartPicker";
-import { ServiceItemRow, type ItemDraft } from "./ServiceItemRow";
+import { ServiceItemRow } from "./ServiceItemRow";
+import { useServiceDraft } from "./serviceDraft";
+import { SavedConfirmation, Total } from "./ServiceSaved";
 
 /**
- * Log a service. Spec 8.4 -- "the highest-friction flow, needing the most
- * care", and the one flow without which nothing else in the app has data.
+ * Log a service, or correct one already logged. Spec 8.4 -- "the
+ * highest-friction flow, needing the most care", and the one flow without
+ * which nothing else in the app has data.
+ *
+ * ONE component for both, as VehicleSheet is for vehicles, and for the same
+ * reason: two forms drift apart, and every field the second one forgets
+ * becomes write-once. That was literally the state of this flow until now -- a
+ * service logged with the wrong odometer could never be corrected.
  *
  * Two things here are not obvious from the layout:
  *
@@ -26,9 +36,8 @@ import { ServiceItemRow, type ItemDraft } from "./ServiceItemRow";
  *    what the workshop sticker says, but it is SENT as an interval -- the gap
  *    from this service's odometer. The API never receives a due point, which
  *    is what keeps invariant 6 true structurally rather than by convention.
- * 2. Total cost is a separate field, not the sum of the lines. Labour and
- *    sundries are real money and are not parts, so the total legitimately
- *    exceeds the subtotal. Neither number is ever computed from the other.
+ * 2. Total cost is shown, never typed. It is parts + labour by definition, so
+ *    there is no third figure that can disagree with the other two.
  */
 export function ServiceSheet({
   vehicleId,
@@ -36,6 +45,7 @@ export function ServiceSheet({
   nickname,
   currentKm,
   today,
+  record,
   onClose,
 }: {
   vehicleId: string;
@@ -43,20 +53,25 @@ export function ServiceSheet({
   nickname: string;
   currentKm: number;
   today: string;
+  /** Pass a record to EDIT it. Omit to log a new visit. */
+  record?: ServiceRecord;
   onClose: () => void;
 }) {
+  const editing = record !== undefined;
+
   const partTypes = usePartTypes(vehicleType);
   const maintenance = useMaintenance(vehicleId);
   const templates = useServiceTemplates();
-  const log = useLogService(vehicleId);
 
-  const [servicedOn, setServicedOn] = useState(today);
-  const [odometer, setOdometer] = useState(String(currentKm || ""));
-  const [serviceType, setServiceType] = useState<ServiceTypeName | "">("");
-  const [workshop, setWorkshop] = useState("");
-  const [labourCost, setLabourCost] = useState("");
-  const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<ItemDraft[]>([]);
+  const log = useLogService(vehicleId);
+  const update = useUpdateService(vehicleId, record?.id ?? "");
+  const save_ = editing ? update : log;
+
+  const [draft, set, setDraft] = useServiceDraft(record, today, currentKm);
+  const { servicedOn, odometer, serviceType, workshop, labourCost, notes, items } = draft;
+
+  // The sheet's phase rather than the form's content, so it stays out of the
+  // draft: null while editing, the part names once the save has come back.
   const [saved, setSaved] = useState<string[] | null>(null);
 
   const odo = odometer === "" ? null : Number(odometer);
@@ -73,23 +88,26 @@ export function ServiceSheet({
   }
 
   function addPart(partTypeId: string) {
-    setItems((prev) =>
-      prev.some((i) => i.partTypeId === partTypeId)
+    setDraft((prev) =>
+      prev.items.some((i) => i.partTypeId === partTypeId)
         ? prev
-        : [
+        : {
             ...prev,
-            {
-              key: crypto.randomUUID(),
-              partTypeId,
-              partName: nameOf(partTypeId),
-              brand: "",
-              spec: "",
-              quantity: "",
-              unitCost: "",
-              warrantyMonths: "",
-              nextDueKm: "",
-            },
-          ],
+            items: [
+              ...prev.items,
+              {
+                key: crypto.randomUUID(),
+                partTypeId,
+                partName: nameOf(partTypeId),
+                brand: "",
+                spec: "",
+                quantity: "",
+                unitCost: "",
+                warrantyMonths: "",
+                nextDueKm: "",
+              },
+            ],
+          },
     );
   }
 
@@ -98,9 +116,12 @@ export function ServiceSheet({
    * three lines must not throw that work away, and a part the user removed on
    * purpose must not silently reappear -- so the type change only ever adds
    * what is missing.
+   *
+   * This matters more when editing than when logging: picking a type on a
+   * saved record must not quietly discard the parts that record already holds.
    */
   function chooseType(next: ServiceTypeName | "") {
-    setServiceType(next);
+    set("serviceType", next);
     if (!next) return;
     for (const t of templates.data?.filter((t) => t.serviceType === next) ?? []) {
       addPart(t.partTypeId);
@@ -159,8 +180,7 @@ export function ServiceSheet({
       return draft;
     });
 
-
-    log.mutate(
+    save_.mutate(
       {
         servicedOn,
         odometerKm: Math.round(odo),
@@ -174,20 +194,22 @@ export function ServiceSheet({
     );
   }
 
+  const heading = `${editing ? "Edit" : "Log"} service — ${nickname}`;
+
   return (
-    <Sheet title={`Log service — ${nickname}`} onClose={onClose} wide>
+    <Sheet title={heading} onClose={onClose} wide>
       {saved ? (
-        <SavedConfirmation parts={saved} onClose={onClose} />
+        <SavedConfirmation parts={saved} editing={editing} onClose={onClose} />
       ) : (
         <>
-          <h2 className="text-lg font-semibold">Log service &mdash; {nickname}</h2>
+          <h2 className="text-lg font-semibold">{heading}</h2>
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="Date">
               <input
                 type="date"
                 value={servicedOn}
-                onChange={(e) => setServicedOn(e.target.value)}
+                onChange={(e) => set("servicedOn", e.target.value)}
                 className={INPUT}
               />
             </Field>
@@ -196,11 +218,22 @@ export function ServiceSheet({
                 type="text"
                 inputMode="numeric"
                 value={odometer}
-                onChange={(e) => setOdometer(digitsOnly(e.target.value))}
+                onChange={(e) => set("odometer", digitsOnly(e.target.value))}
                 className={INPUT + " tabular-nums"}
               />
             </Field>
           </div>
+
+          {editing && (
+            // Said here rather than discovered afterwards. Correcting the date
+            // or odometer also moves every maintenance due point derived from
+            // this visit -- invariant 6 working correctly, and alarming if it
+            // arrives unannounced.
+            <p className="mt-1 text-xs text-ink-faint">
+              Correcting the date or odometer also corrects the reading this visit
+              recorded, and moves anything due from it.
+            </p>
+          )}
 
           <Field label="Type of service">
             <Select
@@ -220,7 +253,7 @@ export function ServiceSheet({
           <Field label="Workshop">
             <input
               value={workshop}
-              onChange={(e) => setWorkshop(e.target.value)}
+              onChange={(e) => set("workshop", e.target.value)}
               className={INPUT}
             />
           </Field>
@@ -249,10 +282,16 @@ export function ServiceSheet({
                     odometerKm={odo}
                     defaultNextDueKm={defaultNextDueKm(item.partTypeId)}
                     onChange={(next) =>
-                      setItems((prev) => prev.map((p) => (p.key === next.key ? next : p)))
+                      setDraft((prev) => ({
+                        ...prev,
+                        items: prev.items.map((p) => (p.key === next.key ? next : p)),
+                      }))
                     }
                     onRemove={() =>
-                      setItems((prev) => prev.filter((p) => p.key !== item.key))
+                      setDraft((prev) => ({
+                        ...prev,
+                        items: prev.items.filter((p) => p.key !== item.key),
+                      }))
                     }
                   />
                 ))}
@@ -272,7 +311,7 @@ export function ServiceSheet({
               type="text"
               inputMode="decimal"
               value={labourCost}
-              onChange={(e) => setLabourCost(e.target.value.replace(/[^0-9.]/g, ""))}
+              onChange={(e) => set("labourCost", e.target.value.replace(/[^0-9.]/g, ""))}
               placeholder="0.00"
               className={INPUT + " tabular-nums"}
             />
@@ -295,14 +334,16 @@ export function ServiceSheet({
           <Field label="Notes">
             <textarea
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => set("notes", e.target.value)}
               rows={2}
               className={INPUT}
             />
           </Field>
 
-          {log.isError && (
-            <p className="mt-2 text-sm text-status-overdue-fg">{(log.error as Error).message}</p>
+          {save_.isError && (
+            <p className="mt-2 text-sm text-status-overdue-fg">
+              {(save_.error as Error).message}
+            </p>
           )}
 
           <div className="mt-5 flex gap-3">
@@ -314,59 +355,14 @@ export function ServiceSheet({
             </button>
             <button
               onClick={save}
-              disabled={!canSave || log.isPending}
+              disabled={!canSave || save_.isPending}
               className="flex-1 rounded-xl bg-ink py-3 font-medium text-page disabled:opacity-40"
             >
-              {log.isPending ? "Saving…" : "Save"}
+              {save_.isPending ? "Saving…" : "Save"}
             </button>
           </div>
         </>
       )}
     </Sheet>
-  );
-}
-
-/**
- * Spec 8.4 asks the save to confirm which clocks were reset. Saying "none"
- * plainly matters more than saying "two": a visit logged without line items
- * resets nothing by design, and the owner needs to see that now rather than
- * discover it as a stale due date months later.
- */
-/** One line of the running cost breakdown. Read-only by design. */
-function Total({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
-  return (
-    <div className={"flex justify-between gap-4" + (strong ? " font-medium text-ink" : "")}>
-      <dt className={strong ? "" : "text-ink-faint"}>{label}</dt>
-      <dd className="tabular-nums">{formatSen(value)}</dd>
-    </div>
-  );
-}
-
-function SavedConfirmation({ parts, onClose }: { parts: string[]; onClose: () => void }) {
-  return (
-    <div>
-      <h2 className="text-lg font-semibold">Service saved</h2>
-      {parts.length === 0 ? (
-        <p className="mt-2 text-sm text-ink-muted">
-          No parts were listed, so no maintenance clock was reset. Add the visit again with
-          line items if it included replacements.
-        </p>
-      ) : (
-        <>
-          <p className="mt-2 text-sm text-ink-muted">Clocks reset:</p>
-          <ul className="mt-1 list-inside list-disc text-sm text-ink-muted">
-            {parts.map((p) => (
-              <li key={p}>{p}</li>
-            ))}
-          </ul>
-        </>
-      )}
-      <button
-        onClick={onClose}
-        className="mt-5 w-full rounded-xl bg-ink py-3 font-medium text-page"
-      >
-        Done
-      </button>
-    </div>
   );
 }

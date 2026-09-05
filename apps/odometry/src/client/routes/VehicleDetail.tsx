@@ -117,7 +117,14 @@ export default function VehicleDetail() {
         )}
         {tab === "history" && (
           <section className="mt-4">
-            {today && <ServiceHistory vehicleId={id} today={today} />}
+            {today && (
+              <ServiceHistory
+                vehicleId={id}
+                vehicleType={vehicle.data?.vehicleType ?? "car"}
+                nickname={vehicle.data?.nickname ?? ""}
+                today={today}
+              />
+            )}
           </section>
         )}
         {tab === "fuel" && (

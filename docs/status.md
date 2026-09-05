@@ -3,7 +3,7 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-08-31 (Coinbox Home dashboard built, merged and deployed)
+**Last updated:** 2026-09-05 (service editing and cross-portal navigation built)
 
 ---
 
@@ -137,6 +137,106 @@ Three decisions worth not re-litigating:
 Not built yet: the Coinbox-side consumption analytics (month over month). It
 reads only data now being captured, so it can be built whenever.
 
+## Both portals deployed — 2026-09-05
+
+| Worker | Version | Notes |
+|---|---|---|
+| `fleet-portal` | `986df042-fb5f-47f3-8695-c5492a76e0f5` | carries migration `0014` |
+| `coinbox` | `0f219eef-5e03-4139-93fb-56b2c2703d1a` | header link only, no migration |
+
+Migration `0014` applied remotely, and checked rather than assumed. Row counts
+identical before and after (3 services, 1 item, 7 readings, 3 vehicles, 4,451
+transactions, 25 tables); **all 3 production services linked to their reading,
+none orphaned**; `PRAGMA foreign_key_check` clean. The backfill match was
+previewed as a read-only SELECT first and showed exactly one candidate reading
+per service — no ambiguity to resolve.
+
+Both crons survived (`0 18 * * *` on fleet-portal, `0 17 * * *` on coinbox) and
+both portals still 302 to Access, `/api/*` included.
+
+## A service can be corrected — 2026-09-05
+
+`PATCH /api/services/:id` existed but `servicePatch` omitted `items`,
+`odometerKm` and `servicedOn`, so a visit logged with the wrong odometer could
+never be fixed — only deleted and re-logged. The owner hit exactly that.
+
+Those three were closed rather than wrong. **The service odometer lives in
+three places** — `service_records.odometer_km`, the `odometer_readings` row the
+visit writes, and the cached `vehicles.current_odometer_km` — and nothing
+linked the service to the reading it created, so a correction could only ever
+update one of the three and leave the others asserting the original figure.
+
+Migration `0014` adds `service_records.odometer_reading_id`, shaped after
+`fuel_fills.odometer_reading_id`, and backfills it by matching on what the
+create path wrote. Production holds no service records, so remotely it is a
+column add and nothing else.
+
+| Piece | Where |
+|---|---|
+| The link | `migrations/0014_service_odometer_reading.sql` |
+| Correct a reading, rebuild the cache | `packages/core/src/worker/odometer.ts` |
+| Replacement semantics | `serviceUpdate` in `apps/odometry/src/shared/zod/` |
+| `update()` and a fixed `remove()` | `apps/odometry/src/worker/data/services.ts` |
+| Log-or-edit form | `client/components/ServiceSheet.tsx`, `serviceDraft.ts` |
+| Tests | `tests/serviceEdit.test.ts` (10) |
+
+Four decisions worth not re-litigating:
+
+- **An edit is a REPLACEMENT, not a merge.** `items` is a set, and a partial
+  merge over a set cannot express removing a line. Once items go whole,
+  everything going whole is one rule rather than two. Consequence: an omitted
+  optional CLEARS, and a partial body is now a 422.
+- **The cached odometer is REBUILT, not nudged.** `odometerWriteStatements`
+  only ever moves that figure forward in time, which is right for an append and
+  wrong for a correction — 112,000 keyed for 12,000 would otherwise leave the
+  dashboard on 112,000 permanently. `recacheOdometerStatement` recomputes from
+  the readings. Its `COALESCE(..., 0)` is load-bearing:
+  `current_odometer_km` is `NOT NULL DEFAULT 0`, and without it deleting the
+  last service is a 500.
+- **Removing a line item does NOT revert the vehicle's interval.** Invariant 6:
+  the last service sets the schedule and nothing stores what it was before, so
+  there is no previous value to restore. Pinned by a test so nobody "fixes" it
+  by inventing one. The save confirmation says so on screen.
+- **`remove()` had the same latent bug and is fixed too.** Deleting a service
+  used to leave its reading behind, propping the vehicle's odometer up with a
+  visit that no longer existed.
+
+Verified rather than assumed:
+
+- **The tenant guard was broken on purpose and watched to fail.** Removing the
+  garage predicate from `update()`'s load alone changes nothing observable —
+  the per-statement predicates catch it, and `list()` re-scopes when building
+  the response. Removing **both** lets A rewrite B's service, and the isolation
+  suite fails with `expected 'hijacked' to be 'BOB_WORKSHOP'`. That assertion
+  is new: the 404 alone never proved the edit was refused, because the tail
+  re-read would 404 even after a successful write.
+- **Run against the real local database, not just tests.** The City's service
+  was PATCHed with its own values and came back byte-identical, same reading
+  id, still one reading. The RS150R was corrected 91,250 → 91,500: the record,
+  its reading and the cache all moved, spark plugs went 101,250 → 101,500, and
+  correcting it back restored every figure. Three edits, still one reading —
+  never duplicated. `PRAGMA foreign_key_check` clean.
+
+## The two portals link to each other — 2026-09-05
+
+`AppHeader` has always accepted a `portals` prop and rendered it; nothing
+passed it. Each header now does. **The bet that deferring this would cost an
+array rather than a rework paid off exactly as written** — no chrome was
+reworked in either app.
+
+What was deferred was never the link but the **filtering**. Odometry admits the
+household, Coinbox admits the owner alone, so a co-member following Odometry's
+link reaches a Cloudflare denial page. Shown anyway, deliberately: the owner is
+the only person with both, and a hypothetical co-member's dead link costs less
+than no navigation for the person who actually uses both. The clean fix remains
+Access groups, still blocked on a groups claim that does not reach the Worker.
+**Do not substitute an email allowlist in `wrangler.jsonc`** — it duplicates the
+Access policy somewhere nobody looks, and the copy that drifts is that one.
+
+The URLs are hardcoded per app with a dev branch, which is why the dev ports are
+now pinned with `strictPort` (Coinbox 5173, Odometry 5174). Both dev servers can
+run at once, and a port collision now fails loudly instead of moving silently.
+
 ## What is deliberately NOT built
 
 Everything in `docs/coinbox-spec.md` §4 IS built as of 2026-08-28 — this
@@ -216,7 +316,13 @@ fine. `docs/coinbox-spec.md` §7.5 closes this — do not reopen it as a task.
 - **Both apps share `.wrangler/state` at the repo root**, because they share
   one D1 in production. If either app starts creating its own, a transaction
   will not be able to see the vehicle it references.
-- **Both dev servers want port 5173.** Run one at a time.
+- ~~**Both dev servers want port 5173.**~~ **FIXED 2026-09-05.** The ports are
+  pinned with `strictPort`: **Coinbox 5173, Odometry 5174**, and both can run
+  at once. They had to become deterministic because the cross-portal header
+  link hardcodes the sibling's dev address -- a port that drifts would make
+  that link wrong rather than merely inconvenient. `strictPort` means a port
+  already in use is now a loud startup failure instead of a silent move to the
+  next one.
 - **`npm test` at the root runs everything**; `npm test -w odometry` runs one
   app. The root `test` is what `npm run deploy -w <app>` calls, deliberately —
   both portals share a database and `packages/core`.
@@ -262,12 +368,16 @@ Production schema: 15 tables, 4 views, 61 seeded part types across 11
 categories, 83 part-type defaults, foreign keys enforced. Local adds
 `ledgers` (16 tables).
 
-Data currently in production: one user, one garage, three vehicles (Waja and
-City, both `vehicle_type = 'car'`, and an RS150R, `'motorcycle'`), 96
-maintenance intervals, and **no odometer readings, no service history and no
-renewals**. Every maintenance row is therefore `unknown`, which is correct
-rather than broken — see the "no baseline" trap in CLAUDE.md. Services can be
-logged from the UI, so this is a starting state rather than a permanent one.
+Data currently in production, **measured 2026-09-05, not assumed**: one user,
+one garage, three vehicles (Waja and City, both `vehicle_type = 'car'`, and an
+RS150R, `'motorcycle'`), 96 maintenance intervals, **3 service records, 1
+service item, 7 odometer readings** and 4,451 transactions. 25 tables.
+
+This paragraph previously said production had no readings, no service history
+and no renewals. **That was true when written on 2026-08-28 and quietly stopped
+being true as the portal got used** — it was caught only because the `0014`
+pre-flight counted rows rather than trusting this file. Count before believing
+any figure here; it is the kind of line that ages without anyone editing it.
 
 Note that the developer's LOCAL database is a different and much fuller thing:
 `.wrangler/` is gitignored, so whatever a previous machine had — test vehicles,
@@ -370,12 +480,12 @@ the endpoints exist and are covered by the isolation suite.
 | Renewals | §4.6, §6.3 | Road tax and insurance are half the reason the app exists |
 | Vehicle delete | §10 | Editing is built (Details → Edit details); deleting is not. `DELETE /api/vehicles/:id` archives and is isolation-tested, but nothing calls it |
 | Add-vehicle baseline prompt | §8.3 | Spec says prompt for baselines after saving; it currently saves and dismisses, which is how all three vehicles ended up with no odometer |
-| Inline odometer edit, usage rate | §8.2 | The Details panel now shows the spec, but the odometer can only be changed from the dashboard, and the usage rate with its confidence indicator is not surfaced anywhere |
-| Editing a service after saving | §8.4 | `servicePatch` omits `items`, `odometerKm` and `servicedOn`, so fixing a line item means deleting and re-logging the visit |
+| Inline odometer edit, usage rate | §8.2 | The Details panel now shows the spec, but the odometer can only be changed from the dashboard (or now by correcting the service that recorded it), and the usage rate with its confidence indicator is not surfaced anywhere |
+| ~~Editing a service after saving~~ | §8.4 | **BUILT 2026-09-05**, migration `0014`. See below |
 | Custom part types in the UI | — | `POST /api/part-types` exists and is isolation-tested, but nothing calls it yet; the 61 seeded types cover the common cases |
 | Per-vehicle service templates | §8.4 | `service_templates.vehicle_id` exists and is always NULL; templates are garage-wide for now, which also means one "Minor service" template is shared between a car and a bike |
 | Changing a vehicle's type | — | Read-only once created, deliberately: switching it would not re-seed or un-seed anything, so a control that appeared to turn a car into a bike while leaving forty car parts behind would be lying. Delete-and-recreate for now |
-| `Sheet`'s close button (both portals) | — | `packages/core/src/client/Sheet.tsx` floats its X in a zero-height row, so every caller must remember `pr-9` to stay clear of it, and must render its own `<h2>` because `title` is only an aria-label. Three of five callers remember; **`OdometerSheet` and `ServiceSheet` are correct only because their headings are short** — a longer vehicle nickname reproduces the collision Coinbox hit on 2026-08-28. Reviewed and deliberately deferred: the real fix is `Sheet` rendering the title itself, which touches five files and needs judgement in `ServiceSheet` (its saved-state screen) and `PartDetailSheet` (its pill header) |
+| `Sheet`'s close button (both portals) | — | `packages/core/src/client/Sheet.tsx` floats its X in a zero-height row, so every caller must remember `pr-9` to stay clear of it, and must render its own `<h2>` because `title` is only an aria-label. Three of five callers remember; **`OdometerSheet` and `ServiceSheet` are correct only because their headings are short** — a longer vehicle nickname reproduces the collision Coinbox hit on 2026-08-28, and `ServiceSheet`'s heading grew by two characters on 2026-09-05 ("Edit service — " vs "Log service — "), which narrows that margin without closing it. Reviewed and deliberately deferred: the real fix is `Sheet` rendering the title itself, which touches five files and needs judgement in `ServiceSheet` (its saved-state screen) and `PartDetailSheet` (its pill header) |
 
 Deferred by design: Budgets (§8.6) is Phase 2, multi-user is Phase 3, backups
 and reminders are Phase 4.
@@ -398,7 +508,7 @@ something that looks wrong, trust the code.
 | Backup failure alerting | — | A failed nightly run writes to the log and tells nobody. Needs an email provider |
 | Off-Cloudflare backup copies | — | Every backup is in the account it protects. One downloaded file a month closes it |
 | ~~Home dashboard~~ | §10 | **BUILT AND DEPLOYED 2026-08-31.** The surplus/deficit table as a chart, a month drill-down, and cost per km. See below |
-| Cross-portal navigation | §7.4 | `AppHeader` takes a `portals` prop nothing passes. Blocked on Access groups reaching the Worker |
+| ~~Cross-portal navigation~~ | §7.4 | **BUILT 2026-09-05.** Each header links to the other portal. Shown unconditionally -- see below |
 
 ---
 
@@ -482,7 +592,8 @@ Verified rather than assumed:
   total came out at −RM 2,785.53, matching the Sheet's Total row exactly, and
   the August-vs-July delta at RM 1,141.85.
 - 130 Coinbox tests, 85 Odometry (unchanged), isolation lint over 120 files.
-  As of the fuel work (2026-09-03) that is **163 Coinbox and 93 Odometry**.
+  As of the fuel work (2026-09-03) that is 163 Coinbox and 93 Odometry, and as
+  of service editing (2026-09-05) **163 Coinbox and 103 Odometry**.
 
 Two decisions worth knowing before changing anything here:
 
@@ -558,9 +669,9 @@ cd portals
 npm ci                    # not `npm install` -- the lockfile is committed
 npx wrangler login        # needs a real terminal; opens a browser
 npm run db:apply:local    # shared local D1, safe to re-run
-npm run dev -w odometry   # http://localhost:5173
-npm run dev -w coinbox    # run one at a time; both want port 5173
-npm test                  # lint + 93 Odometry + 163 Coinbox tests
+npm run dev -w odometry   # http://localhost:5174
+npm run dev -w coinbox    # http://localhost:5173 -- both can run at once
+npm test                  # lint + 103 Odometry + 163 Coinbox tests
 ```
 
 This path is verified, not assumed: it was run end to end from a scratch clone

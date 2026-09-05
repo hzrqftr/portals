@@ -5,7 +5,7 @@ import {
   vehiclePatch,
   odometerInput,
   serviceInput,
-  servicePatch,
+  serviceUpdate,
   renewalInput,
   renewalPatch,
   intervalPatch,
@@ -121,8 +121,8 @@ export function registerRoutes(app: Hono<AppContext>): void {
 
   app.patch("/api/services/:id", async (c) => {
     assertCanWrite(c.get("scope"));
-    const patch = servicePatch.parse(await c.req.json());
-    return c.json(await c.get("repos").services.update(c.req.param("id"), patch));
+    const input = serviceUpdate.parse(await c.req.json());
+    return c.json(await c.get("repos").services.update(c.req.param("id"), input));
   });
 
   app.delete("/api/services/:id", async (c) => {
