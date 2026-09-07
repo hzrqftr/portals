@@ -293,17 +293,24 @@ the caller picked or to their local today, and a view takes no parameters --
 the same reason Odometry's usage rate is a CTE in `status.ts` rather than in
 `0002_views.sql`. `v_txn_monthly` supplies the parameter-free half.
 
-Four things that will look like bugs and are not:
+Five things that will look like bugs and are not:
 
-- **A category's "normal" divides by three whatever happened**, not by the
-  number of months it appeared in. A category seen once in three months has a
-  normal of a third of that figure. Averaging over present rows instead makes
-  a typical month look normal and only ever flags the months it did *not*
-  happen. `tests/dashboard.test.ts` pins this.
-- **The breakdown is a union of both windows**, so a bill that did NOT go out
-  this month still appears -- as a positive effect equal to its usual amount.
-  Building the list from the focus month and left-joining history would drop
-  exactly the case worth seeing.
+- **The category breakdown ranks by AMOUNT, not by departure from normal.**
+  Until 2026-09-07 it did the opposite: each category against its own
+  three-month average, biggest effect first. That answered "was this month
+  odd?", and the owner's question is "where did it go?" — the question his
+  Google Sheet pivot answered. Do not reintroduce the vs-normal ranking as the
+  primary panel; it is in git history at `9be2459~1` if the reasoning is ever
+  wanted, and `docs/coinbox-spec.md` §10.3 records why it went.
+- **`categorySpend` keeps `in` and `out` apart and never nets them.** The old
+  query read `net_sen` only, so a category taking money both ways in one month
+  cancelled itself out — and four of the owner's categories genuinely do that.
+  The reader picks a direction; the query decides nothing.
+- **Its "drop empty categories" filter is outside the aggregate, in a
+  subquery, and must stay there.** `in_sen` and `out_sen` are both aggregate
+  aliases *and* real columns of `v_txn_monthly`, so `HAVING in_sen > 0`
+  resolves to the SOURCE column and lets a category whose only money was last
+  month through. Measured on 2026-09-07, not feared.
 - **Staleness is measured from the last TYPED entry**, never the last row.
   Once rules are posting the ledger grows whether or not anyone opens the app,
   so the newest row of any kind would report the page as current while a

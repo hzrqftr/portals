@@ -280,14 +280,17 @@ export interface MonthPoint {
   cumulativeSen: number;
 }
 
-export interface CategoryEffect {
+export interface CategorySpend {
   categoryId: string;
   categoryCode: string;
   categoryName: string;
-  netSen: number;
-  normalSen: number;
-  /** Positive helped the month's balance, negative cost it. */
-  effectSen: number;
+  /** Magnitudes, always >= 0. In and out are kept apart, never netted. */
+  inSen: number;
+  outSen: number;
+  txnCount: number;
+  /** The same category one month earlier. Zero when it did not appear. */
+  prevInSen: number;
+  prevOutSen: number;
 }
 
 export interface UpcomingPosting {
@@ -324,7 +327,7 @@ export interface Dashboard {
     previousMonth: string | null;
     momDeltaSen: number | null;
     trailingOutAvgSen: number | null;
-    categories: CategoryEffect[];
+    categorySpend: CategorySpend[];
   };
   committed: {
     days: number;

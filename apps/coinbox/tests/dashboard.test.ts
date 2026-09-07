@@ -130,73 +130,116 @@ describe("the monthly series and its running total", () => {
   });
 });
 
-describe("a category's normal", () => {
+/**
+ * Where the month's money went, category by category.
+ *
+ * This replaced a breakdown that scored each category against its own
+ * three-month normal. That panel answered "was this month odd?"; the owner's
+ * question is "where did it go?", so the ranking is by amount now. The old
+ * query, its four tests and the reasoning behind them are in git history at
+ * `9be2459~1` and summarised in docs/coinbox-spec.md §10.3.
+ */
+describe("what the month went on", () => {
+  type Row = {
+    categoryCode: string;
+    inSen: number;
+    outSen: number;
+    txnCount: number;
+    prevInSen: number;
+    prevOutSen: number;
+  };
+  const spendOf = (body: { focus: { categorySpend: Row[] } }) => body.focus.categorySpend;
+  const find = (body: { focus: { categorySpend: Row[] } }, code: string) =>
+    spendOf(body).find((c) => c.categoryCode === code);
+
+  it("ranks every category with money out, biggest first", async () => {
+    const ledger = await giveLedger(OWNER);
+    await seed(ledger, { on: "2026-08-03", sen: 25_000, category: "cat_utility" });
+    await seed(ledger, { on: "2026-08-04", sen: 90_000, category: "cat_loans" });
+    await seed(ledger, { on: "2026-08-05", sen: 1_600, category: "cat_vices" });
+    // Two entries in one category roll up into one row with a count of two.
+    await seed(ledger, { on: "2026-08-06", sen: 3_000, category: "cat_food_drinks" });
+    await seed(ledger, { on: "2026-08-07", sen: 4_000, category: "cat_food_drinks" });
+
+    const res = await as(OWNER)("/api/dashboard?month=2026-08");
+
+    expect(spendOf(res.body).map((c) => c.categoryCode)).toEqual([
+      "loans",
+      "utility",
+      "food_drinks",
+      "vices",
+    ]);
+    expect(find(res.body, "food_drinks")).toMatchObject({
+      outSen: 7_000,
+      inSen: 0,
+      txnCount: 2,
+    });
+    // Magnitudes, never signed: the direction is the reader's choice here.
+    expect(find(res.body, "loans")!.outSen).toBe(90_000);
+  });
+
   /**
-   * THE DIVISOR IS ALWAYS THREE, not the number of months the category
-   * appeared in.
+   * THE CASE THE OLD PANEL COULD NOT EXPRESS.
    *
-   * A category seen once in three months is a category you spend on about a
-   * third as often, and its normal per month is a third of that one figure.
-   * Averaging over present rows instead would return the whole amount, call a
-   * typical month "normal", and only ever flag the months it did NOT happen.
+   * It read `net_sen` only, so a category taking money both ways in one month
+   * cancelled itself out. Categories are deliberately not bound to a
+   * direction, and four of the owner's real ones appear as both -- Household
+   * is 2 in / 68 out. Netting those to 66 would describe no real month.
    */
-  it("divides by three months whether or not the category appeared in all of them", async () => {
+  it("keeps in and out apart for a category that had both", async () => {
     const ledger = await giveLedger(OWNER);
-    // Once in the three months before August: 300 out, in May only.
-    await seed(ledger, { on: "2026-05-11", sen: 30_000, category: "cat_vices" });
-    // And 250 out in August itself.
-    await seed(ledger, { on: "2026-08-11", sen: 25_000, category: "cat_vices" });
+    await seed(ledger, { on: "2026-08-10", sen: 68_000, category: "cat_household" });
+    await seed(ledger, {
+      on: "2026-08-20",
+      sen: 250_000,
+      category: "cat_household",
+      direction: "in",
+    });
 
     const res = await as(OWNER)("/api/dashboard?month=2026-08");
-    const vices = res.body.focus.categories.find(
-      (c: { categoryCode: string }) => c.categoryCode === "vices",
-    );
+    const household = find(res.body, "household");
 
-    expect(vices.netSen).toBe(-25_000);
-    // -30,000 spread over THREE months, not over the one it appeared in.
-    // Averaging over present rows instead would give -30,000 here, and an
-    // effect of +5,000 -- the opposite sign, reading as a month that went
-    // well.
-    expect(vices.normalSen).toBe(-10_000);
-    expect(vices.effectSen).toBe(-15_000);
+    expect(household).toMatchObject({ outSen: 68_000, inSen: 250_000, txnCount: 2 });
+  });
+
+  it("carries the previous month, and zero for a category that is new", async () => {
+    const ledger = await giveLedger(OWNER);
+    await seed(ledger, { on: "2026-07-11", sen: 48_000, category: "cat_food_drinks" });
+    await seed(ledger, { on: "2026-08-11", sen: 52_000, category: "cat_food_drinks" });
+    await seed(ledger, { on: "2026-08-12", sen: 30_000, category: "cat_electronics" });
+
+    const res = await as(OWNER)("/api/dashboard?month=2026-08");
+
+    expect(find(res.body, "food_drinks")).toMatchObject({
+      outSen: 52_000,
+      prevOutSen: 48_000,
+    });
+    // Never appeared before, so there is nothing to compare against -- and the
+    // tooltip says "Nothing last month" rather than inventing a percentage.
+    expect(find(res.body, "electronics")).toMatchObject({
+      outSen: 30_000,
+      prevOutSen: 0,
+      prevInSen: 0,
+    });
   });
 
   /**
-   * A bill that did NOT go out is an effect, and the commonest way to miss it
-   * is to build this list from the focus month and left-join the history.
+   * The deliberate difference from the panel this replaced, which listed a
+   * vanished category as a positive effect. Here the question is where THIS
+   * month's money went, and a category with none of it is not an answer.
    */
-  it("surfaces a category that vanished this month", async () => {
+  it("leaves out a category that had money last month but none this month", async () => {
     const ledger = await giveLedger(OWNER);
-    // 240 out in each of the three preceding months, nothing in August.
-    for (const on of ["2026-05-15", "2026-06-15", "2026-07-15"]) {
-      await seed(ledger, { on, sen: 24_000, category: "cat_insurance" });
-    }
+    await seed(ledger, { on: "2026-07-15", sen: 24_000, category: "cat_insurance" });
+    await seed(ledger, { on: "2026-08-15", sen: 30_000, category: "cat_utility" });
 
     const res = await as(OWNER)("/api/dashboard?month=2026-08");
-    const insurance = res.body.focus.categories.find(
-      (c: { categoryCode: string }) => c.categoryCode === "insurance",
-    );
 
-    expect(insurance).toBeDefined();
-    expect(insurance.netSen).toBe(0);
-    expect(insurance.normalSen).toBe(-24_000);
-    // Not spending it HELPED the month by its usual amount.
-    expect(insurance.effectSen).toBe(24_000);
+    expect(spendOf(res.body).map((c) => c.categoryCode)).toEqual(["utility"]);
   });
+});
 
-  it("leaves out categories that landed exactly on their normal", async () => {
-    const ledger = await giveLedger(OWNER);
-    for (const on of ["2026-05-15", "2026-06-15", "2026-07-15", "2026-08-15"]) {
-      await seed(ledger, { on, sen: 30_000, category: "cat_utility" });
-    }
-
-    const res = await as(OWNER)("/api/dashboard?month=2026-08");
-    const codes = res.body.focus.categories.map(
-      (c: { categoryCode: string }) => c.categoryCode,
-    );
-    expect(codes).not.toContain("utility");
-  });
-
+describe("a category's normal", () => {
   it("averages out only over the three months before the focus", async () => {
     const ledger = await giveLedger(OWNER);
     // January is outside the window and must not drag the average down.
@@ -333,7 +376,7 @@ describe("an empty ledger", () => {
     expect(res.body.focus.netSen).toBe(0);
     expect(res.body.focus.momDeltaSen).toBeNull();
     expect(res.body.focus.trailingOutAvgSen).toBeNull();
-    expect(res.body.focus.categories).toEqual([]);
+    expect(res.body.focus.categorySpend).toEqual([]);
     expect(res.body.vehicles).toEqual([]);
     expect(res.body.lastEntryOn).toBeNull();
   });

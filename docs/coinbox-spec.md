@@ -574,6 +574,24 @@ this week?** Everything else is a report, not a dashboard.
   probably the honest shape.
 - **A pie of category share.** Share barely moves month to month, and a pie
   cannot be read for change — which is the only question worth asking of it.
+- **A category ranked against its own recent normal.** This one was *built*,
+  shipped 2026-08-31 as "What moved in August", and **removed on 2026-09-07**
+  because the owner did not use it. It scored each category against its own
+  three-month average and sorted by the departure, which answers "was this
+  month unusual?" — a good question, and not the one being asked. What replaced
+  it ranks by amount, which is what his Google Sheet pivot did and what he
+  actually reads.
+
+  It is recorded here rather than deleted quietly because the reasoning was
+  sound and someone will propose it again. Three things it got right, all in
+  git history at `9be2459~1`: the normal divided by three whatever happened
+  rather than by the months a category appeared in; the category list was a
+  union of both windows so a bill that did *not* go out still showed as a
+  positive effect; and it excluded categories sitting exactly on their normal.
+  Its real defect was structural — it read `net_sen` only, so a category with
+  money moving both ways in one month cancelled itself out.
+
+  If it returns, it belongs beside the amount ranking, not instead of it.
 
 ### 10.4 Months that have not happened are empty, not zero
 

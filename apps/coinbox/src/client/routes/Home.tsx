@@ -3,7 +3,7 @@ import { todayIn } from "@portals/core";
 import { AppHeader, Page, SectionTitle } from "../components/Layout";
 import { StatTiles, monthLabel, monthName, STALE_DAYS } from "../components/StatTiles";
 import { YearChart } from "../components/YearChart";
-import { MonthBreakdown } from "../components/MonthBreakdown";
+import { MonthSpend } from "../components/MonthSpend";
 import { ComingUp, VehicleCosts } from "../components/DashboardPanels";
 import { TransactionSheet } from "../components/TransactionSheet";
 import { useDashboard, useMe } from "../api/hooks";
@@ -119,10 +119,10 @@ export default function Home() {
 
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
               <div className="xl:col-span-2">
-                <MonthBreakdown
+                <MonthSpend
                   month={data.focus.month}
                   monthLabel={monthName(data.focus.month)}
-                  categories={data.focus.categories}
+                  categories={data.focus.categorySpend}
                 />
               </div>
               <ComingUp committed={data.committed} />

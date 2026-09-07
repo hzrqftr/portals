@@ -38,8 +38,12 @@ const VEHICLE_MONTHS = 12;
  */
 const CONFIDENT_TXNS = 5;
 
-/** How many category rows the drill-down shows. */
-const CATEGORY_LIMIT = 8;
+/*
+ * There is deliberately no category row limit. The old vs-normal panel capped
+ * at eight because a ranking by *departure from normal* has a long tail nobody
+ * reads. A ranking by amount does not: the reader is looking for where the
+ * month went, and twenty seeded categories is the hard ceiling anyway.
+ */
 
 /** How many upcoming occurrences to name individually. */
 const UPCOMING_LIMIT = 6;
@@ -54,15 +58,23 @@ export interface MonthPoint {
   cumulativeSen: number;
 }
 
-export interface CategoryEffect {
+export interface CategorySpend {
   categoryId: string;
   categoryCode: string;
   categoryName: string;
-  netSen: number;
-  /** Mean net per month across the preceding three months, absent months as zero. */
-  normalSen: number;
-  /** netSen - normalSen. Positive helped the month's balance, negative cost it. */
-  effectSen: number;
+  /**
+   * MAGNITUDES, always >= 0, kept apart rather than netted.
+   *
+   * The panel this replaced read only `net_sen`, so a category with money
+   * moving both ways in one month cancelled itself out. Four categories in the
+   * owner's real history do exactly that.
+   */
+  inSen: number;
+  outSen: number;
+  txnCount: number;
+  /** The same category one month earlier. Zero when it did not appear. */
+  prevInSen: number;
+  prevOutSen: number;
 }
 
 export interface UpcomingPosting {
@@ -101,7 +113,8 @@ export interface DashboardPayload {
     momDeltaSen: number | null;
     /** Mean out per month across the preceding three months. Null if no history. */
     trailingOutAvgSen: number | null;
-    categories: CategoryEffect[];
+    /** Every category with money in the focus month, biggest out first. */
+    categorySpend: CategorySpend[];
   };
   committed: {
     days: number;
@@ -134,7 +147,7 @@ export class DashboardRepo extends LedgerScopedRepo {
     const [months, categoryRows, trailingOut, entryDates, vehicles, committed] =
       await Promise.all([
         this.monthSeries(),
-        this.categoryEffects(focusMonth, windowStart),
+        this.categorySpend(focusMonth, shiftMonth(focusMonth, -1)),
         this.trailingOutAverage(focusMonth, windowStart),
         this.entryDates(),
         this.vehicleCosts(today),
@@ -162,7 +175,7 @@ export class DashboardRepo extends LedgerScopedRepo {
         previousMonth: previous?.month ?? null,
         momDeltaSen: focus && previous ? focus.netSen - previous.netSen : null,
         trailingOutAvgSen: trailingOut,
-        categories: categoryRows,
+        categorySpend: categoryRows,
       },
       committed,
       lastEntryOn: entryDates.lastAny,
@@ -219,77 +232,80 @@ export class DashboardRepo extends LedgerScopedRepo {
   }
 
   /**
-   * Each category's effect on the focused month, against its own recent normal.
+   * What the focused month actually went on, category by category.
    *
-   * Two things this must get right, and both were wrong in the first sketch:
+   * IN AND OUT STAY APART. `v_txn_monthly` offers `net_sen` and it is the
+   * wrong column here: netting hides a category that took money both ways in
+   * one month, and four of the owner's categories genuinely do. The panel lets
+   * the reader pick a direction, so the query carries both magnitudes and
+   * decides nothing.
    *
-   * 1. A category that appears in the PRIOR months but not in the focus month
-   *    is a real effect -- an insurance premium that did not go out this month
-   *    helped the balance by its usual amount. So the category list is a UNION
-   *    of both windows (`cats`), left-joined to each side, not an inner join
-   *    on the focus month.
-   * 2. The normal divides by three whatever happened, not by the number of
-   *    months the category actually appeared in. A category seen once in three
-   *    months has a normal of a third of that, not all of it.
+   * BOTH MONTHS COME BACK IN ONE ROW, so switching direction -- or reading the
+   * previous month in a tooltip -- costs no second request. Two months is the
+   * whole window: this answers "where did it go", not "was this month odd",
+   * and the three-month comparison this replaced is gone.
    *
    * BIND ORDER IS THE STATEMENT'S ORDER, NOT THE CLAUSE'S. Five placeholders
-   * across four CTEs: ledger, window end, window start, focus, focus. Adding a
-   * `?` anywhere above shifts every one after it -- including the tenant id --
-   * and the failure is an empty response rather than an error.
+   * sit AHEAD of `ledger_id = ?` here, which is the worst case for that trap:
+   * a `?` added anywhere above shifts the tenant id out of position and the
+   * symptom is an empty panel rather than an error. The order is
+   * focus, focus, focus, prev, prev, ledger, focus, prev -- kept adjacent to
+   * the SQL below so the two cannot drift apart.
+   *
+   * THE SUBQUERY IS NOT DECORATION. Dropping categories with nothing in the
+   * focus month cannot be a `HAVING in_sen > 0`: `in_sen` is also a real
+   * column of `v_txn_monthly`, so SQLite resolves the name to the SOURCE
+   * column rather than to the aggregate alias, and a category whose only money
+   * was last month survives the filter. Measured, not feared -- it shipped
+   * that way for one test run. Filtering outside the aggregate makes the name
+   * unambiguous, and costs no extra placeholder.
    */
-  private async categoryEffects(
+  private async categorySpend(
     focusMonth: string,
-    windowStart: string,
-  ): Promise<CategoryEffect[]> {
+    previousMonth: string,
+  ): Promise<CategorySpend[]> {
     const res = await this.raw
       .prepare(
-        `WITH win AS (
-           SELECT category_id, category_code, category_name, month, net_sen
-             FROM v_txn_monthly
-            WHERE ledger_id = ? AND month <= ? AND month >= ?
-         ),
-         cats AS (
+        `SELECT * FROM (
            SELECT category_id,
                   MAX(category_code) AS category_code,
-                  MAX(category_name) AS category_name
-             FROM win GROUP BY category_id
-         ),
-         focus AS (
-           SELECT category_id, net_sen FROM win WHERE month = ?
-         ),
-         prior AS (
-           SELECT category_id, CAST(ROUND(SUM(net_sen) / 3.0) AS INTEGER) AS normal_sen
-             FROM win WHERE month < ? GROUP BY category_id
+                  MAX(category_name) AS category_name,
+                  SUM(CASE WHEN month = ? THEN in_sen    ELSE 0 END) AS in_sen,
+                  SUM(CASE WHEN month = ? THEN out_sen   ELSE 0 END) AS out_sen,
+                  SUM(CASE WHEN month = ? THEN txn_count ELSE 0 END) AS txn_count,
+                  SUM(CASE WHEN month = ? THEN in_sen    ELSE 0 END) AS prev_in_sen,
+                  SUM(CASE WHEN month = ? THEN out_sen   ELSE 0 END) AS prev_out_sen
+             FROM v_txn_monthly
+            WHERE ledger_id = ? AND month IN (?, ?)
+            GROUP BY category_id
          )
-         SELECT c.category_id, c.category_code, c.category_name,
-                COALESCE(f.net_sen, 0)                                 AS net_sen,
-                COALESCE(p.normal_sen, 0)                              AS normal_sen,
-                COALESCE(f.net_sen, 0) - COALESCE(p.normal_sen, 0)     AS effect_sen
-           FROM cats c
-           LEFT JOIN focus f ON f.category_id = c.category_id
-           LEFT JOIN prior p ON p.category_id = c.category_id
-          WHERE COALESCE(f.net_sen, 0) <> COALESCE(p.normal_sen, 0)
-          ORDER BY ABS(COALESCE(f.net_sen, 0) - COALESCE(p.normal_sen, 0)) DESC,
-                   c.category_name ASC
-          LIMIT ${CATEGORY_LIMIT}`,
+          WHERE in_sen > 0 OR out_sen > 0
+          ORDER BY out_sen DESC, in_sen DESC, category_name ASC`,
       )
-      .bind(this.ledgerId, focusMonth, windowStart, focusMonth, focusMonth)
+      .bind(
+        focusMonth, focusMonth, focusMonth, previousMonth, previousMonth,
+        this.ledgerId, focusMonth, previousMonth,
+      )
       .all<{
         category_id: string;
         category_code: string;
         category_name: string;
-        net_sen: number;
-        normal_sen: number;
-        effect_sen: number;
+        in_sen: number;
+        out_sen: number;
+        txn_count: number;
+        prev_in_sen: number;
+        prev_out_sen: number;
       }>();
 
     return res.results.map((r) => ({
       categoryId: r.category_id,
       categoryCode: r.category_code,
       categoryName: r.category_name,
-      netSen: r.net_sen,
-      normalSen: r.normal_sen,
-      effectSen: r.effect_sen,
+      inSen: r.in_sen,
+      outSen: r.out_sen,
+      txnCount: r.txn_count,
+      prevInSen: r.prev_in_sen,
+      prevOutSen: r.prev_out_sen,
     }));
   }
 

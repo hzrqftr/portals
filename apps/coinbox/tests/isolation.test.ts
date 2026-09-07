@@ -226,7 +226,42 @@ describe("cross-tenant isolation: separate people", () => {
     expect(bob.body.months).toEqual([]);
     expect(bob.body.ytdNetSen).toBe(0);
     expect(bob.body.focus.netSen).toBe(0);
-    expect(bob.body.focus.categories).toEqual([]);
+    expect(bob.body.committed.netSen).toBe(0);
+    expect(bob.body.committed.upcoming).toEqual([]);
+    expect(bob.body.vehicles).toEqual([]);
+    expect(bob.body.lastEntryOn).toBeNull();
+  });
+
+  /**
+   * The category breakdown, asked for THE MONTH ALICE'S MONEY IS IN.
+   *
+   * This is a separate test because the default call cannot prove it. The
+   * breakdown only reports the focused month, `/api/dashboard` with no month
+   * focuses on today, and the seed is dated 2026-08-28 -- so as the real clock
+   * moves past August the row is filtered out before any predicate is
+   * consulted, and the assertion passes whether or not the tenant guard works.
+   *
+   * Verified by removing the `ledger_id` predicate: the suite still passed
+   * without this test, and fails with it. That is the whole point -- the query
+   * puts five placeholders ahead of `ledger_id = ?`, and a shifted bind
+   * returns an empty result rather than an error, so a broken guard here would
+   * otherwise look exactly like a working empty panel.
+   */
+  it("keeps the category breakdown to the caller's own ledger", async () => {
+    await seedTransaction(ALICE, ALICE_ITEM, ALICE_NOTE);
+
+    const bob = await as(BOB)("/api/dashboard?month=2026-08");
+    expect(bob.status).toBe(200);
+    expect(bob.body.focus.categorySpend).toEqual([]);
+
+    // And Alice can still see her own, so the guard is filtering by tenant
+    // rather than returning nothing at all.
+    const alice = await as(ALICE)("/api/dashboard?month=2026-08");
+    expect(alice.body.focus.categorySpend).toHaveLength(1);
+    expect(alice.body.focus.categorySpend[0]).toMatchObject({
+      categoryCode: "food_drinks",
+      outSen: 12_345,
+    });
     expect(bob.body.committed.netSen).toBe(0);
     expect(bob.body.committed.upcoming).toEqual([]);
     expect(bob.body.vehicles).toEqual([]);
