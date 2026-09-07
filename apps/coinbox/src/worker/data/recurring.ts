@@ -125,11 +125,20 @@ export class RecurringRepo extends LedgerScopedRepo {
   async update(id: string, patch: RecurringPatch) {
     // Proves ownership before touching anything: get() carries the ledger
     // predicate, so editing someone else's rule 404s here rather than later.
-    await this.get(id);
+    const before = await this.get(id);
 
     if (patch.categoryId) await this.assertUsableCategory(patch.categoryId);
     if (patch.vehicleId) await this.assertUsableVehicle(patch.vehicleId);
-    if (patch.startsOn) this.assertForwardOnly(patch.startsOn);
+    // Forward-only guards BACKDATING, not editing. Checking any `startsOn`
+    // present in the patch made every rule uneditable the day after it
+    // started: a running rule's start is in the past by definition, and
+    // RecurringSheet resends the whole draft, so an untouched start date
+    // tripped the guard. The error even named the start date while the owner
+    // was changing the day of the month. Only a start that actually MOVES is
+    // a backdate, so only that is checked.
+    if (patch.startsOn !== undefined && patch.startsOn !== before.startsOn) {
+      this.assertForwardOnly(patch.startsOn);
+    }
 
     const values: Record<string, unknown> = { updatedAt: nowIso() };
     for (const key of [

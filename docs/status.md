@@ -565,6 +565,29 @@ Two things the browser found that reading the code did not:
   stretched-overlay pattern as Odometry's vehicle tiles, with Pause and delete
   raised on `z-10` so they keep their own hit areas.
 
+### Editing a running rule was impossible — found and fixed 2026-09-07
+
+The owner tried to move Astro from the 30th to the 8th and got **"A recurring
+entry cannot start in the past"**, an error naming a field he had not touched.
+
+`update()` ran the forward-only check on any `startsOn` present in the patch,
+and `RecurringSheet` resends the whole draft on save. A rule that has been
+running has a start date in the past **by definition**, so the guard rejected
+its own unchanged value. **Every rule became uneditable the day after it
+started** — all nine in production. It had been that way since recurring
+shipped on 2026-08-30, and nothing caught it because forward-only had no test
+at all.
+
+The guard now fires only when `startsOn` actually moves, which is the only case
+that is a backdate. `tests/recurring-rules.test.ts` covers both halves —
+the edit that must pass, and the backdate that must still fail — and the
+regression test was seen to fail before the fix.
+
+**The lesson worth keeping:** a validation written for *create* was reused on
+*update*, where the same rule means something different. Anything that
+validates "not in the past" needs to know whether it is judging a new value or
+re-reading an old one.
+
 ## The Home dashboard is built and live — 2026-08-31
 
 `/` was empty and is now the dashboard. Spec §10 has the design; the app's
