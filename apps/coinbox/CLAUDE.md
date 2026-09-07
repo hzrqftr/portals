@@ -263,7 +263,7 @@ Three top-level routes, in `src/client/App.tsx`:
 |---|---|---|
 | `/` | `routes/Home.tsx` | The dashboard. One `GET /api/dashboard` payload; see below |
 | `/ledger` | `routes/Ledger.tsx` | The log. Inline cell editing, filters, delete |
-| `/recurring` | `routes/Recurring.tsx` | Declared rules |
+| `/recurring` | `routes/Recurring.tsx` | Declared rules. Edit, pause/resume, delete |
 
 The header comes from `@portals/core/client`. Coinbox passes `nav` (the three
 sections) and `crumbPlacement="below"`, which puts the breadcrumb on its own
