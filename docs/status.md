@@ -3,7 +3,7 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-09-05 (service editing and cross-portal navigation built)
+**Last updated:** 2026-09-07 (recurring rules can be deleted from the page)
 
 ---
 
@@ -503,7 +503,7 @@ something that looks wrong, trust the code.
 | ~~Entry form~~ | §1.1 | **BUILT 2026-08-28.** Conditional vehicle field, direction-reordered category picker, inline cell editing |
 | ~~Sheet import~~ | §6 | **DONE 2026-08-28.** 4,421 rows reconciled exactly. The triage screen was not needed — the real count was 14, not ~80 |
 | ~~Backup + restore~~ | §7.6 | **BUILT 2026-08-28.** Nightly whole-database export to R2, 90-day retention, restore round trip in CI |
-| ~~Recurring entries~~ | §9 | **BUILT 2026-08-30.** Declared rules, nightly cron, delete. See below |
+| ~~Recurring entries~~ | §9 | **BUILT 2026-08-30**, delete wired into the page **2026-09-07**. Declared rules, nightly cron, edit, pause, delete. See below |
 | The Sheets mirror | §7.6 | Still open. A readable copy on a phone without the app; needs a Google service account and JWT signing in the Worker |
 | Backup failure alerting | — | A failed nightly run writes to the log and tells nobody. Needs an email provider |
 | Off-Cloudflare backup copies | — | Every backup is in the account it protects. One downloaded file a month closes it |
@@ -538,21 +538,32 @@ RM 440 should appear dated `2026-08-31`, marked with the recurring glyph. If
 they do not, check how long ago the Worker deployed before anything else — a
 newly registered trigger takes ~15 minutes to start firing.
 
-### Two rules the owner should confirm, and a new agent must NOT silently "fix"
+### Deleting a rule reached the page on 2026-09-07
 
-Both are data, not bugs; the system is doing exactly what the rows say. They are
-recorded here because they look like slips and someone will otherwise either
-ignore them or edit production on a guess. **Ask before changing either.**
+**Deployed 2026-09-07**, Worker version `145bd442-89f3-4ef4-82fa-a348ed346de5`,
+`main` fast-forwarded to `9be2459`. No migration, and
+`wrangler d1 migrations list --remote` reported nothing to apply both before and
+during the deploy.
 
-- **Astro** — `day_of_month = 30` but `starts_on = 2026-09-05`. The first post
-  is therefore **30 September, not the 5th**. If the 5th was intended, the day
-  is wrong; if the 30th was intended, this is fine and the start date is just
-  the day it was entered.
-- **MARA** — `ends_on = 2027-06-05` with `day_of_month = 15`, so the last post
-  is **15 May 2027**, not June. Compare Balance transfer, whose `ends_on`
-  (2027-06-09) matches its day and therefore does include a final June payment.
-  If MARA is meant to run to June, its end date needs to be on or after
-  2027-06-15.
+The server half had been built and tested since 2026-08-30 — the endpoint, the
+ledger-scoped `remove()`, the cross-tenant refusal, and the test proving posted
+entries survive their rule. `useDeleteRecurring()` existed too. **Nothing
+called it**, so until now the only way to remove a rule was a raw HTTP request.
+This was a client-only change.
+
+Two things the browser found that reading the code did not:
+
+- **The trash button broke the card at 375px.** It squeezed the rule title from
+  112px to 76px, cutting a long name to one word and wrapping its schedule over
+  three lines. The row is `flex-wrap`, but the title carried `min-w-0`, so it
+  collapsed rather than forcing the buttons onto a second line. A
+  `min-w-[8rem]` floor makes it wrap; the title now gets 190px, better than
+  before the change. It looked correct on desktop and broke only where entry
+  actually happens.
+- **Only the title opened the editor.** The amount, the next-due date, the
+  posted-count line and any dead space did nothing. The card now uses the same
+  stretched-overlay pattern as Odometry's vehicle tiles, with Pause and delete
+  raised on `z-10` so they keep their own hit areas.
 
 ## The Home dashboard is built and live — 2026-08-31
 
