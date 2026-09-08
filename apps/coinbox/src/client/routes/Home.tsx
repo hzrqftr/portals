@@ -6,7 +6,8 @@ import { YearChart } from "../components/YearChart";
 import { MonthSpend } from "../components/MonthSpend";
 import { ComingUp, VehicleCosts } from "../components/DashboardPanels";
 import { TransactionSheet } from "../components/TransactionSheet";
-import { useDashboard, useMe } from "../api/hooks";
+import { VehicleFuelSheet } from "../components/VehicleFuelSheet";
+import { useDashboard, useMe, type VehicleCost } from "../api/hooks";
 
 /**
  * The landing page.
@@ -25,6 +26,10 @@ export default function Home() {
   const me = useMe();
   const [month, setMonth] = useState<string | undefined>(undefined);
   const [adding, setAdding] = useState(false);
+  // The clicked ROW, not just its id: the sheet shows the card's own cost-per-km
+  // figure beside its fuel-only one, and passing the row is what makes it
+  // impossible for the two to disagree.
+  const [fuelFor, setFuelFor] = useState<VehicleCost | null>(null);
 
   const dashboard = useDashboard(month);
 
@@ -128,7 +133,7 @@ export default function Home() {
               <ComingUp committed={data.committed} />
             </div>
 
-            <VehicleCosts vehicles={data.vehicles} />
+            <VehicleCosts vehicles={data.vehicles} onSelect={setFuelFor} />
           </div>
         ) : null}
       </Page>
@@ -140,6 +145,10 @@ export default function Home() {
       */}
       {adding && today && (
         <TransactionSheet today={today} onClose={() => setAdding(false)} />
+      )}
+
+      {fuelFor && (
+        <VehicleFuelSheet vehicle={fuelFor} onClose={() => setFuelFor(null)} />
       )}
     </>
   );

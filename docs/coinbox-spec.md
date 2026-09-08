@@ -565,13 +565,11 @@ this week?** Everything else is a report, not a dashboard.
   gauge produces a number nobody believes by the second month.
 - **Net worth or balances.** §1.2 non-goal; a flat log has no balances.
 - **Year-over-year.** The data starts 2026-01-01.
-- **Consumption trend, for now.** The CAPTURE shipped 2026-09-03 (odometer,
-  litres, full-tank flag); the chart did not. Two reasons to think before
-  adding one: the series starts from that date and has no history behind it,
-  and month-over-month consumption is noisy at low fill counts -- a month with
-  two fills is one or two segments, and a segment straddling a month boundary
-  belongs to neither cleanly. A per-segment series with a trailing average is
-  probably the honest shape.
+- ~~**Consumption trend, for now.**~~ **BUILT 2026-09-08, as a drill-down
+  rather than a panel.** See 10.5. The deferral's two reasons both survived
+  and shaped it: the series is young, so the chart shows ALL fills rather than
+  a 12-month window; and month-over-month was rejected in favour of the
+  per-segment series with a trailing average this entry guessed at.
 - **A pie of category share.** Share barely moves month to month, and a pie
   cannot be read for change — which is the only question worth asking of it.
 - **A category ranked against its own recent normal.** This one was *built*,
@@ -601,3 +599,47 @@ break-even months. The chart gives them no column and dims their labels.
 A later addition worth considering, and the only honest thing to put in that
 space: ghost columns showing what the recurring rules already commit for those
 months. That is a projection from declared rules, not a guess.
+
+### 10.5 The fuel drill-down
+
+Built 2026-09-08. Each row of the cost-per-km card opens a sheet, rather than
+navigating: the card answers "which car costs most per km", and the question
+that follows is always "why", which is a second screen and not a second page.
+
+**Lazy, not part of the dashboard payload.** 10.1's one-round-trip argument is
+about painting one screen; a drill-down nobody may open is not that screen, and
+three vehicles' whole fill histories on every dashboard load would be the
+opposite of the point.
+
+**A per-segment series, not month over month.** A month with two fills is one
+or two segments, and a segment straddling a month boundary belongs to neither
+cleanly -- so the x-axis is fills in odometer order, and the trend is carried
+by a trailing mean of the last three tanks rather than by monthly buckets.
+
+**All fills, not the card's 12 months.** Capture began 2026-09-03. Truncating a
+series that young to a window loses data for no gain, and the window can be
+added when there is more than a year of it.
+
+**Two cost-per-km figures appear, and they are different numbers on purpose.**
+The card's is twelve months of fuel *and servicing* over the distance in that
+window. The sheet's own is *fuel only*, over the distance of closed segments,
+across every fill. Each is labelled with its window and its scope, and the
+card's is not recomputed -- it arrives as the very row the reader clicked, so
+the two cannot disagree even in principle. The 12-month spend breakdown DOES
+reconcile with it, by construction and by test.
+
+**The fuel slice comes from the fill, not from a category.** There is no `fuel`
+category and adding one would split five years of history; the fill is the only
+thing that knows which Transportation rows were fuel.
+
+**Price per litre is drawn on its own plot, not overlaid.** L/100km and RM/L are
+different units, and one pair of axes carrying both could be scaled to make them
+appear to agree or diverge at will. They share the x bands so the points line up
+and one hover lights both. This is the same rule that keeps YearChart's columns
+and running total on ONE axis -- there both series are money, so a second scale
+would have been the lie.
+
+Deliberately absent from it: any colouring of points as good or bad. Higher
+consumption is worse, but at three segments a point above the mean is noise, not
+a verdict, and the status palette is reserved for states that ship with a word
+beside them.

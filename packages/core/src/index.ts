@@ -7,5 +7,6 @@
  * a client component and a route handler import the same money helper.
  */
 export * from "./money";
+export * from "./fuel";
 export * from "./dates";
 export * from "./zod";

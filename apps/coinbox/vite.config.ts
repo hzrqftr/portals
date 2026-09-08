@@ -9,7 +9,15 @@ export default defineConfig({
     // Shared local state with Odometry, mirroring the shared production D1.
     // Two portals on one database must be one database locally too, or a
     // transaction written here cannot see the vehicle it references.
-    cloudflare({ persistState: { path: "../../.wrangler/state" } }),
+    // The INSPECTOR port needs pinning for the same reason the HTTP port above
+    // does, and it is a separate port. Both portals defaulted to 9229, so the
+    // second one to start died with EADDRINUSE on 127.0.0.1:9229 -- an error
+    // naming a port neither config mentions, while the HTTP ports were already
+    // correct. Coinbox 9229, Odometry 9230.
+    cloudflare({
+      persistState: { path: "../../.wrangler/state" },
+      inspectorPort: 9229,
+    }),
   ],
   // PINNED, and strictly. Both portals used to default to 5173 and race for
   // it, so whichever started second silently moved to 5174 -- which is why

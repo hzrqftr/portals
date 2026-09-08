@@ -1,4 +1,4 @@
-import { fromQuantityMilli } from "@portals/core";
+import { fromQuantityMilli, weightedLPer100km } from "@portals/core";
 import { useFuel } from "../api/hooks";
 import { formatKm } from "../lib/format";
 
@@ -32,10 +32,15 @@ export function FuelHistory({ vehicleId }: { vehicleId: string }) {
   // Averaged over the segments that HAVE a figure, not over all fills: a
   // partial fill contributes its litres to a segment but is not one itself.
   const measured = rows.filter((r) => r.lPer100km !== null);
-  const average =
-    measured.length > 0
-      ? measured.reduce((sum, r) => sum + (r.lPer100km ?? 0), 0) / measured.length
-      : null;
+
+  // DISTANCE-WEIGHTED, and shared with Coinbox rather than computed here.
+  //
+  // This used to be the plain mean of the per-segment rates, which counts a
+  // 40 km top-up as heavily as a 600 km run. Coinbox's fuel drill-down shows
+  // the same average for the same car, so an unweighted figure here would have
+  // put two different plausible numbers on two screens with nothing to say
+  // which was right. One function, one answer.
+  const average = weightedLPer100km(measured);
 
   return (
     <div>

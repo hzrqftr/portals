@@ -10,7 +10,15 @@ export default defineConfig({
     // one D1 database in production, so they must share one local database too --
     // otherwise `npm run dev` in each app gets its own private copy and local
     // behaviour stops resembling deployed behaviour. See CLAUDE.md.
-    cloudflare({ persistState: { path: "../../.wrangler/state" } }),
+    // The INSPECTOR port needs pinning for the same reason the HTTP port above
+    // does, and it is a separate port. Both portals defaulted to 9229, so the
+    // second one to start died with EADDRINUSE on 127.0.0.1:9229 -- an error
+    // naming a port neither config mentions, while the HTTP ports were already
+    // correct. Coinbox 9229, Odometry 9230.
+    cloudflare({
+      persistState: { path: "../../.wrangler/state" },
+      inspectorPort: 9230,
+    }),
   ],
   // PINNED, and strictly. Both portals used to default to 5173 and race for
   // it, so whichever started second silently moved to 5174 -- which is why

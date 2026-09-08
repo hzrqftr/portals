@@ -45,6 +45,18 @@ const readEndpoints = [
   "/api/dashboard",
 ];
 
+/**
+ * The sweep list plus every read that needs a vehicle id in its path.
+ *
+ * `readEndpoints` is a flat list of paths, which cannot express these. A
+ * per-vehicle endpoint that stayed out of the sweeps would be swept
+ * vacuously -- present in the API, absent from the only thing standing in for
+ * row-level security. Any new `/api/vehicles/:id/...` read goes here.
+ */
+function readEndpointsFor(vehicleId: string): string[] {
+  return [...readEndpoints, `/api/vehicles/${vehicleId}/fuel`];
+}
+
 /** Markers unique to one person. If one ever appears in another's response,
  *  isolation is broken -- whichever endpoint leaked it. */
 const ALICE_ITEM = "ALICE_SECRET_SALARY";
@@ -107,9 +119,12 @@ describe("cross-tenant isolation: separate people", () => {
 
   it("never returns another person's ledger id on any read endpoint", async () => {
     const bobLedger = (await as(BOB)("/api/me")).body.ledgerId as string;
+    await as(ALICE)("/api/me");
+    await giveGarage(ALICE);
+    const vehicleId = await giveVehicle(ALICE, "ALICE_CAR");
     const request = as(ALICE);
 
-    for (const path of readEndpoints) {
+    for (const path of readEndpointsFor(vehicleId)) {
       const res = await request(path);
       expect([200, 404]).toContain(res.status);
       expect(res.text, `Bob's ledger leaked from GET ${path}`).not.toContain(bobLedger);
@@ -119,9 +134,13 @@ describe("cross-tenant isolation: separate people", () => {
   it("never returns another person's transactions on any read endpoint", async () => {
     await seedTransaction(ALICE, ALICE_ITEM, ALICE_NOTE);
     await seedRecurring(ALICE, ALICE_RULE);
+    await giveGarage(ALICE);
+    // ALICE's vehicle id, deliberately: it is exactly what a caller who once
+    // shared a garage would still be holding.
+    const vehicleId = await giveVehicle(ALICE, "ALICE_CAR");
     const request = as(BOB);
 
-    for (const path of readEndpoints) {
+    for (const path of readEndpointsFor(vehicleId)) {
       const res = await request(path);
       expect([200, 404]).toContain(res.status);
       expect(res.text, `Alice's item leaked from GET ${path}`).not.toContain(ALICE_ITEM);
@@ -322,9 +341,10 @@ describe("cross-user isolation: co-members of one garage", () => {
 
   it("never leaks the garage owner's ledger to a co-member", async () => {
     const aliceLedger = (await as(ALICE)("/api/me")).body.ledgerId as string;
+    const vehicleId = await giveVehicle(ALICE, "SHARED_WAJA");
     const request = as(CAROL);
 
-    for (const path of readEndpoints) {
+    for (const path of readEndpointsFor(vehicleId)) {
       const res = await request(path);
       expect([200, 404]).toContain(res.status);
       expect(res.text, `Alice's ledger leaked to a garage co-member from GET ${path}`).not.toContain(
@@ -349,12 +369,12 @@ describe("cross-user isolation: co-members of one garage", () => {
   it("but never the garage owner's transactions", async () => {
     // The whole two-axis design exists for this one assertion: Carol can see
     // Alice's car and must not see Alice's spending.
-    await giveVehicle(ALICE, "SHARED_WAJA");
+    const vehicleId = await giveVehicle(ALICE, "SHARED_WAJA");
     await seedTransaction(ALICE, ALICE_ITEM, ALICE_NOTE);
     await seedRecurring(ALICE, ALICE_RULE);
 
     const request = as(CAROL);
-    for (const path of readEndpoints) {
+    for (const path of readEndpointsFor(vehicleId)) {
       const res = await request(path);
       expect([200, 404]).toContain(res.status);
       expect(res.text, `Alice's spending leaked to a co-member from GET ${path}`).not.toContain(
@@ -450,6 +470,78 @@ describe("cross-user isolation: co-members of one garage", () => {
     expect(after.status).toBe(200);
     expect(after.body.vehicles).toEqual([]);
     expect(after.text).not.toContain("SHARED_WAJA");
+  });
+
+  /**
+   * THE FUEL DRILL-DOWN, AND THE ONE CASE THIS PORTAL EXISTS TO GUARANTEE.
+   *
+   * Carol legitimately shares Alice's garage, so Odometry already shows her
+   * this car's odometer and its fill-ups -- `fuel_fills` is garage-scoped and
+   * carries no money for exactly that reason. What she must never get is the
+   * RINGGIT, which lives on Alice's transactions behind the ledger predicate.
+   *
+   * So this endpoint is the one place in either portal where the two halves of
+   * a single physical event -- the litres and what they cost -- are served
+   * together and have to come apart along the tenant boundary.
+   */
+  it("shows a co-member the litres and never the price", async () => {
+    const vehicleId = await giveVehicle(ALICE, "SHARED_WAJA");
+
+    const created = await as(ALICE)("/api/transactions", {
+      method: "POST",
+      json: {
+        occurredOn: "2026-08-28",
+        item: ALICE_ITEM,
+        categoryId: "cat_transportation",
+        vehicleId,
+        amountSen: 99_999,
+        direction: "out",
+        fuel: { odometerKm: 50_000, litresMilli: 40_000, isFullTank: true },
+      },
+    });
+    expect(created.status).toBe(201);
+
+    // Alice gets her own price back, so the assertions below are about the
+    // predicate rather than about an endpoint that returns nothing to anyone.
+    const hers = await as(ALICE)(`/api/vehicles/${vehicleId}/fuel`);
+    expect(hers.status).toBe(200);
+    expect(hers.body.fills[0].amountSen).toBe(99_999);
+    expect(hers.body.totals.fuelSpendSen).toBe(99_999);
+
+    const carol = await as(CAROL)(`/api/vehicles/${vehicleId}/fuel`);
+    expect(carol.status).toBe(200);
+
+    // The physical half: hers to see, and the point of a shared garage.
+    expect(carol.body.fills).toHaveLength(1);
+    expect(carol.body.fills[0].litresMilli).toBe(40_000);
+    expect(carol.body.fills[0].readingKm).toBe(50_000);
+
+    // The money half: never.
+    expect(carol.body.fills[0].amountSen).toBeNull();
+    expect(carol.body.totals.fuelSpendSen).toBe(0);
+    expect(carol.body.totals.avgSenPerLitre).toBeNull();
+    expect(carol.body.totals.latestSenPerLitre).toBeNull();
+    expect(carol.body.totals.fuelSenPerKm).toBeNull();
+    expect(carol.body.spend.totalSen).toBe(0);
+    expect(carol.body.spend.slices).toEqual([]);
+    expect(carol.text, "Alice's amount leaked to a co-member").not.toContain("99999");
+    expect(carol.text).not.toContain(ALICE_ITEM);
+  });
+
+  /**
+   * The FIRST guard on the same endpoint, which the test above cannot reach:
+   * with the ledger predicate intact, Carol gets no money whether or not the
+   * membership check is there. Bob shares no garage at all, so he is the only
+   * caller who can prove `assertUsableVehicle` is doing anything.
+   *
+   * 404, never 403 -- a 403 would confirm the id exists.
+   */
+  it("404s a vehicle the caller shares no garage with", async () => {
+    const vehicleId = await giveVehicle(ALICE, "SHARED_WAJA");
+
+    const res = await as(BOB)(`/api/vehicles/${vehicleId}/fuel`);
+    expect(res.status).toBe(404);
+    expect(res.text).not.toContain("SHARED_WAJA");
   });
 
   it("lets a co-member attach a shared vehicle to their OWN transaction", async () => {

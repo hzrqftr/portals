@@ -3,7 +3,7 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-09-07 (recurring rules can be deleted from the page)
+**Last updated:** 2026-09-08 (the fuel drill-down; built, not yet deployed)
 
 ---
 
@@ -136,6 +136,93 @@ Three decisions worth not re-litigating:
 
 Not built yet: the Coinbox-side consumption analytics (month over month). It
 reads only data now being captured, so it can be built whenever.
+
+## The fuel drill-down — 2026-09-08, BUILT AND NOT YET DEPLOYED
+
+Each row of Coinbox's cost-per-kilometre card now opens a sheet: consumption
+per tank with a trailing mean, price per litre, the 12-month spend split, the
+distance behind it, and every fill in a table. **No migration** -- it reads only
+data `0013` already captures.
+
+This closes the "fuel consumption analytics" item that stood at the top of
+*Next*, and reopens `docs/coinbox-spec.md` §10.3's "Consumption trend, for now"
+deliberately. Both of that deferral's reasons survived and shaped the result:
+the series is young, so the chart shows **all fills** rather than a 12-month
+window, and month-over-month was rejected for the **per-segment series with a
+trailing average** §10.3 itself guessed at.
+
+| Piece | Where |
+|---|---|
+| The segment SQL, now shared | `packages/core/src/worker/fuel.ts` |
+| The weighted average, isomorphic | `packages/core/src/fuel.ts` |
+| The guarded read | `apps/coinbox/src/worker/data/vehicleFuel.ts` |
+| `GET /api/vehicles/:id/fuel` | `apps/coinbox/src/worker/routes/index.ts` |
+| The sheet and the chart | `client/components/VehicleFuelSheet.tsx`, `ConsumptionChart.tsx` |
+| Arithmetic tests | `apps/coinbox/tests/vehicle-fuel.test.ts` (10) |
+| Isolation | 2 new cases, plus the per-vehicle path in all four sweeps |
+
+Five decisions worth not re-litigating:
+
+- **`FUEL_SQL` moved to `packages/core` rather than being copied.** It cost
+  almost nothing: Coinbox's `assertUsableVehicle()` already returns the garage
+  id off the vehicle row, so both portals bind the same `(vehicleId, garageId)`
+  pair and only the proof of entitlement differs. Two copies of segment
+  arithmetic would have kept returning plausible numbers while drifting, with
+  nothing on either screen able to say which was right.
+- **This is the portal's SECOND cross-portal read, and the sharper one.**
+  `fuel_fills` is garage-scoped, so a co-member is *entitled* to the litres --
+  Odometry already shows them. What they must never get is the ringgit. So it
+  is the one endpoint where the two halves of one physical event are served
+  together and have to come apart along the tenant boundary. The money
+  predicate lives in the JOIN's `ON` clause, not a `WHERE`: in a `WHERE` it
+  becomes an inner join and hides a co-member's fills entirely rather than
+  merely unpricing them.
+- **The average is DISTANCE-WEIGHTED, and Odometry was corrected to match.**
+  `FuelHistory.tsx` took the plain mean of the per-segment rates, which counts
+  a 40 km top-up as heavily as a 600 km run. Both portals now call
+  `weightedLPer100km` in `@portals/core`. On the local data the two figures
+  differ by 0.006 L/100km -- which is exactly why this had to be caught by a
+  test rather than by eye.
+- **Two cost-per-km figures appear in the sheet on purpose.** The card's is
+  12 months of fuel *and servicing*; the sheet's own is fuel only over closed
+  segments, all time. Each is labelled, and the card's is **not recomputed** --
+  it is passed in as the row that was clicked, so they cannot disagree even in
+  principle. The spend breakdown *does* reconcile with it, by construction and
+  by test.
+- **Price per litre is its own plot, not a second y-axis.** Different units on
+  one pair of axes can be scaled to agree or diverge at will. They share the x
+  bands so points align and one hover lights both.
+
+Verified rather than assumed:
+
+- **All three tenant guards were broken on purpose and watched to fail**, then
+  restored -- the membership check (Bob read a stranger's fills), the ledger
+  predicate on the fills join (Carol saw RM 999.99), and the ledger predicate
+  on the spend breakdown. Each failed exactly the test meant to catch it.
+- **The weighted average was broken on purpose too**, and its test failed with
+  9.0 against the expected 8.18 -- the unweighted answer, in the plausible range.
+- **Run against the real local database, not just tests.** Six fills seeded on
+  the City including one part fill: the part fill's 16.6 L correctly carried
+  into the segment that closed at 8.17 L/100km, and the card and the sheet
+  reported identical spend for all three vehicles (RM 3,024.27 / 1,667.75 /
+  694.00). Odometry's Fuel tab and Coinbox now both print 7.89675 for the City.
+- Odometry's 107 tests pass **with `apps/odometry/tests/fuel.test.ts`
+  unedited**, which is what proves the extraction changed no behaviour.
+
+**NOT YET CHECKED IN A BROWSER.** The Chrome extension was not connected in the
+session that built it, so the layout, the 375px behaviour and the hover readout
+have been reasoned about but not seen. That is the first thing to do before
+deploying.
+
+### Both dev servers really can run at once now -- 2026-09-08
+
+This file has claimed that since 2026-09-05 and it was **half true**. The HTTP
+ports were pinned, but the Cloudflare vite plugin's **Node inspector port**
+defaulted to 9229 in both apps, so the second to start died with
+`EADDRINUSE: 127.0.0.1:9229` -- an error naming a port neither config mentioned,
+while the two ports that *were* configured looked perfectly correct.
+`inspectorPort` is now pinned alongside the HTTP port: **Coinbox 9229,
+Odometry 9230**. Started from clean, both now come up together.
 
 ## Both portals deployed — 2026-09-05
 
@@ -509,6 +596,7 @@ something that looks wrong, trust the code.
 | Off-Cloudflare backup copies | — | Every backup is in the account it protects. One downloaded file a month closes it |
 | ~~Home dashboard~~ | §10 | **BUILT AND DEPLOYED 2026-08-31.** The surplus/deficit table as a chart, a month drill-down, and cost per km. See below |
 | ~~Cross-portal navigation~~ | §7.4 | **BUILT 2026-09-05.** Each header links to the other portal. Shown unconditionally -- see below |
+| ~~Fuel consumption analytics~~ | §10.5 | **BUILT 2026-09-08**, a drill-down off the cost-per-km card. No migration. Not yet deployed, not yet seen in a browser |
 
 ---
 
@@ -647,19 +735,6 @@ Still open on this page, and deliberately not built:
 
 ## Next
 
-**Coinbox — fuel consumption analytics.** The capture half shipped 2026-09-03;
-this is the half that reads it. L/100km this month against last, beside the
-cost-per-km panel that already exists. It joins `fuel_fills` to `transactions`
-and so carries the same two independent guards as that panel — the `ledger_id`
-predicate on the money and a `garage_members` join on the vehicle. The segment
-SQL to reuse is `FUEL_SQL` in `apps/odometry/src/worker/data/fuel.ts`.
-
-One thing to settle before building it: **month-over-month consumption is noisy
-at low fill counts.** A month with two fills is one or two segments, and a
-segment that straddles a month boundary belongs to neither cleanly. The honest
-shape is probably a per-segment series with a trailing average rather than a
-single monthly figure — worth deciding with a few months of real fills in view.
-
 **Odometry — renewals (§4.6, §6.3).** The oldest outstanding commitment in this
 repo, and half the reason the fleet portal exists: road tax and insurance.
 Client-only work — all four endpoints are built and isolation-tested
@@ -683,6 +758,15 @@ so weigh it against that narrower benefit before starting.
 **Backup alerting.** A failed nightly run writes to the log and tells nobody.
 `observability` is on so the evidence persists, but real alerting needs an
 email provider (fleet spec §12). The obvious weakness of what is built.
+
+**Coinbox — `vehicleCosts` divides by RAW odometer readings.** Every km figure
+in Odometry reads `v_odometer_clean`, which drops readings that run backwards;
+the cost-per-km card does not, and as of 2026-09-08 the fuel drill-down follows
+it deliberately so the two agree on screen. A single mistyped high reading
+therefore inflates `MAX − MIN` and silently understates RM/km in both places,
+with nothing able to contradict it. Switching to the view would move figures the
+owner already reads, so it needs a before/after count against real data rather
+than a one-line change.
 
 **Off-Cloudflare backup copies.** Every backup sits in R2, in the same account
 as the database. That covers deletion and corruption, not account loss.

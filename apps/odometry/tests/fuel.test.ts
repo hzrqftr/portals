@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { env } from "cloudflare:test";
+import { weightedLPer100km } from "@portals/core";
 import { as, migrate, resetDb } from "./helpers";
 
 /**
@@ -195,5 +196,51 @@ describe("consumption between full fills", () => {
 
     const res = await as(OWNER)(`/api/vehicles/${v}/fuel`);
     expect(res.text).not.toMatch(/sen|cost|amount|price/i);
+  });
+});
+
+/**
+ * The average shown on the Fuel tab.
+ *
+ * It is the shared helper in @portals/core, not a local reduce, because
+ * Coinbox's fuel drill-down prints the same average for the same car. Two
+ * implementations of one figure is two plausible numbers with nothing on
+ * either screen able to say which is right.
+ */
+describe("weightedLPer100km", () => {
+  it("weights by distance, not by segment count", () => {
+    // 500 km on 40 L is 8.0; 50 km on 5 L is 10.0. The unweighted mean is 9.0.
+    const rows = [
+      { distanceKm: 500, segmentLitresMilli: 40_000 },
+      { distanceKm: 50, segmentLitresMilli: 5_000 },
+    ];
+    expect(weightedLPer100km(rows)).toBeCloseTo(8.1818, 3);
+    expect(weightedLPer100km(rows)).not.toBeCloseTo(9.0, 1);
+  });
+
+  it("ignores fills that close no segment", () => {
+    expect(
+      weightedLPer100km([
+        { distanceKm: null, segmentLitresMilli: null },
+        { distanceKm: 500, segmentLitresMilli: 40_000 },
+      ]),
+    ).toBeCloseTo(8.0, 6);
+  });
+
+  it("is null with nothing measured, rather than zero", () => {
+    // Zero would render as a car that uses no fuel.
+    expect(weightedLPer100km([])).toBeNull();
+    expect(weightedLPer100km([{ distanceKm: null, segmentLitresMilli: null }])).toBeNull();
+  });
+
+  it("skips a zero-distance segment rather than dividing by it", () => {
+    // Two fills at one odometer is a real data-entry outcome, not an
+    // impossible one -- and Infinity would propagate into the km/L beside it.
+    expect(
+      weightedLPer100km([
+        { distanceKm: 0, segmentLitresMilli: 5_000 },
+        { distanceKm: 500, segmentLitresMilli: 40_000 },
+      ]),
+    ).toBeCloseTo(8.0, 6);
   });
 });

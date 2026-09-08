@@ -320,14 +320,34 @@ Five things that will look like bugs and are not:
   `@shared/recurrence`. It loops over RULES, which are a handful, not over
   transactions.
 
-### Cost per kilometre is the only cross-portal READ
+### The cross-portal READS -- there are two, and both carry two guards
 
-The spend is this ledger's, the distance is Odometry's. It carries two
-independent guards -- the `ledger_id` predicate on the money, and a
-`garage_members` join on both the vehicle and its odometer readings -- and
-`tests/isolation.test.ts` breaks each one separately, because
-`transactions.vehicle_id` deliberately has no foreign key and can therefore
-outlive the caller's access to that vehicle.
+**Cost per kilometre** (`DashboardRepo.vehicleCosts`) and the **fuel
+drill-down** behind it (`VehicleFuelRepo`, `GET /api/vehicles/:id/fuel`). The
+spend is this ledger's, the distance and the litres are Odometry's.
+
+Each carries two independent guards, and `tests/isolation.test.ts` breaks each
+one separately, because `transactions.vehicle_id` deliberately has no foreign
+key and can therefore outlive the caller's access to that vehicle:
+
+1. **A `garage_members` join for the caller** -- inline on the cost-per-km
+   query, via `assertUsableVehicle()` on the drill-down, which returns the
+   garage id off the vehicle row in the same statement that authorised it.
+2. **The `ledger_id` predicate on every money join.**
+
+The drill-down is the sharper case. `fuel_fills` is garage-scoped, so a
+co-member is **entitled to the litres** -- Odometry already shows them. What
+they must never get is the ringgit. So this is the one endpoint in either
+portal where the two halves of a single physical event, the fuel and what it
+cost, are served together and have to come apart along the tenant boundary.
+A co-member gets `amountSen: null` on every fill and an empty spend
+breakdown, and the money predicate lives in the JOIN's `ON` clause rather than
+a `WHERE` -- in a `WHERE` it becomes an inner join and hides their fills
+entirely instead of merely unpricing them.
+
+**The drill-down's spend breakdown sums to the card's figure**, by using the
+same window and the same predicates. A test asserts it. Two numbers on one
+screen that are meant to be the same number can only stay equal on purpose.
 
 ## Style
 

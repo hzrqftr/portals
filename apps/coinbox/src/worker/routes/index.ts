@@ -78,6 +78,27 @@ export function registerRoutes(app: Hono<AppContext>): void {
    */
   app.get("/api/vehicles", async (c) => c.json(await c.get("repos").vehicles.list()));
 
+  /**
+   * The fuel drill-down behind a row of the cost-per-kilometre card.
+   *
+   * Same path Odometry serves, different Worker and a richer payload: this one
+   * carries the money, which `fuel_fills` deliberately cannot (migration 0013).
+   *
+   * NOT folded into GET /api/dashboard. That endpoint's "one payload" argument
+   * is about painting one screen in one round trip, and a drill-down nobody may
+   * open is not that screen -- three vehicles' whole fill histories on every
+   * dashboard load would be the opposite of the point.
+   *
+   * TODAY IS COMPUTED HERE, FROM THE CALLER'S TIMEZONE, like every other route
+   * that has a window. Invariant 5.
+   */
+  app.get("/api/vehicles/:id/fuel", async (c) => {
+    const scope = c.get("scope");
+    return c.json(
+      await c.get("repos").vehicleFuel.load(c.req.param("id"), todayIn(scope.timezone)),
+    );
+  });
+
   // --- the ledger ---
 
   app.get("/api/transactions", async (c) => {

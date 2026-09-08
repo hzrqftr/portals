@@ -84,7 +84,13 @@ function Row({ posting }: { posting: UpcomingPosting }) {
  *   divide by, gets its figure shown and flagged rather than hidden. Same
  *   stance as Odometry's low-confidence usage rate.
  */
-export function VehicleCosts({ vehicles }: { vehicles: VehicleCost[] }) {
+export function VehicleCosts({
+  vehicles,
+  onSelect,
+}: {
+  vehicles: VehicleCost[];
+  onSelect: (vehicle: VehicleCost) => void;
+}) {
   return (
     <div className="rounded-xl border border-edge bg-surface p-5">
       <h2 className="font-semibold text-ink">Cost per kilometre</h2>
@@ -102,9 +108,25 @@ export function VehicleCosts({ vehicles }: { vehicles: VehicleCost[] }) {
           {vehicles.map((v) => (
             <li
               key={v.vehicleId}
-              className="flex items-center justify-between gap-3 rounded-xl bg-inset p-4"
+              // `relative` anchors the stretched overlay below. The same
+              // pattern as Odometry's vehicle tiles and the recurring cards:
+              // the WHOLE row is the hit area, not just the nickname. When
+              // only the title was clickable on the recurring page, the
+              // amount, the date and the dead space all did nothing, and it
+              // read as broken rather than as unclickable.
+              className="relative flex items-center justify-between gap-3 rounded-xl bg-inset p-4 transition hover:bg-edge/50 focus-within:ring-2 focus-within:ring-ink-muted"
             >
-              <div className="min-w-0">
+              {/* min-w-[8rem] is a floor, not a preference: at 375px a bare
+                  min-w-0 title collapses to one word instead of wrapping. */}
+              <div className="min-w-[8rem] flex-1">
+                <button
+                  type="button"
+                  onClick={() => onSelect(v)}
+                  aria-label={`${v.nickname}: fuel and spending detail`}
+                  // Transparent and stretched. It carries the click for the
+                  // whole row without painting over anything.
+                  className="absolute inset-0 rounded-xl focus:outline-none"
+                />
                 <span
                   className={
                     "block truncate text-sm font-medium " +
@@ -137,6 +159,7 @@ export function VehicleCosts({ vehicles }: { vehicles: VehicleCost[] }) {
       <p className="mt-4 text-xs text-ink-faint">
         Fuel and servicing only — tolls and parking are not attributed to a
         vehicle, so this is not the full cost of driving.
+        {vehicles.length > 0 && " Pick one for its consumption and spend."}
       </p>
     </div>
   );

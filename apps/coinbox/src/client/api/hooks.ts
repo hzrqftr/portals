@@ -130,6 +130,9 @@ export function useCreateTransaction() {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      // A fill-up writes a fuel_fill, so the drill-down behind the cost-per-km
+      // card is stale too -- including on delete, which cascades the fill away.
+      qc.invalidateQueries({ queryKey: ["vehicle-fuel"] });
     },
   });
 }
@@ -151,6 +154,9 @@ export function usePatchTransaction() {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      // A fill-up writes a fuel_fill, so the drill-down behind the cost-per-km
+      // card is stale too -- including on delete, which cascades the fill away.
+      qc.invalidateQueries({ queryKey: ["vehicle-fuel"] });
     },
   });
 }
@@ -164,6 +170,9 @@ export function useUpdateTransaction(id: string) {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      // A fill-up writes a fuel_fill, so the drill-down behind the cost-per-km
+      // card is stale too -- including on delete, which cascades the fill away.
+      qc.invalidateQueries({ queryKey: ["vehicle-fuel"] });
     },
   });
 }
@@ -264,6 +273,9 @@ export function useDeleteTransaction() {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      // A fill-up writes a fuel_fill, so the drill-down behind the cost-per-km
+      // card is stale too -- including on delete, which cascades the fill away.
+      qc.invalidateQueries({ queryKey: ["vehicle-fuel"] });
     },
   });
 }
@@ -357,5 +369,74 @@ export function useDashboard(month?: string) {
     queryKey: ["dashboard", month ?? "current"],
     queryFn: () => api<Dashboard>(`/dashboard${month ? `?month=${month}` : ""}`),
     placeholderData: (previous) => previous,
+  });
+}
+
+// ------------------------------------------------------------- fuel drill-down
+
+/** One fill, with the consumption of the segment it closes and what it cost. */
+export interface FuelFill {
+  id: string;
+  filledOn: string;
+  readingKm: number;
+  litresMilli: number;
+  isFullTank: number;
+  distanceKm: number | null;
+  segmentLitresMilli: number | null;
+  lPer100km: number | null;
+  kmPerLitre: number | null;
+  /** Null when the fill has no ledger entry of the caller's behind it. */
+  amountSen: number | null;
+}
+
+export interface FuelTotals {
+  fillCount: number;
+  measuredCount: number;
+  litresMilli: number;
+  segmentDistanceKm: number;
+  segmentLitresMilli: number;
+  avgLPer100km: number | null;
+  avgKmPerLitre: number | null;
+  fuelSpendSen: number;
+  fuelSenPerKm: number | null;
+  avgSenPerLitre: number | null;
+  latestSenPerLitre: number | null;
+}
+
+export interface SpendSlice {
+  label: string;
+  amountSen: number;
+  txnCount: number;
+  isFuel: boolean;
+}
+
+export interface UsageSummary {
+  readingCount: number;
+  firstReadingOn: string | null;
+  lastReadingOn: string | null;
+  distanceKm: number;
+  kmPerDay: number | null;
+}
+
+export interface VehicleFuel {
+  vehicleId: string;
+  fills: FuelFill[];
+  totals: FuelTotals;
+  spend: { months: number; totalSen: number; slices: SpendSlice[] };
+  usage: UsageSummary;
+}
+
+/**
+ * The drill-down behind a cost-per-km row. Fetched when the sheet opens, not
+ * with the dashboard -- see the route's comment for why it is not one payload.
+ *
+ * `enabled` so the hook can sit in a component that renders before a vehicle
+ * is chosen. No staleTime: a fill logged in the entry sheet must show up here.
+ */
+export function useVehicleFuel(vehicleId: string | null) {
+  return useQuery({
+    queryKey: ["vehicle-fuel", vehicleId],
+    queryFn: () => api<VehicleFuel>(`/vehicles/${vehicleId}/fuel`),
+    enabled: vehicleId !== null,
   });
 }
