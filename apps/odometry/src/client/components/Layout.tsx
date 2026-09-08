@@ -1,6 +1,12 @@
 import { AppHeader as CoreHeader } from "@portals/core/client";
 
-export { Page, SectionTitle, CONTAINER } from "@portals/core/client";
+export {
+  Page,
+  SectionTitle,
+  CONTAINER,
+  STICKY_UNDER_BAR,
+  STICKY_UNDER_BAR_AND_CRUMB,
+} from "@portals/core/client";
 
 /**
  * Odometry's header: the shared chrome from @portals/core/client, wearing
@@ -32,6 +38,12 @@ export function AppHeader({ crumb }: { crumb?: string }) {
       wordmark={<span className="font-wordmark text-2xl leading-none">Odometry</span>}
       homeLabel="Dashboard"
       crumb={crumb}
+      // The crumb gets its own row rather than taking the wordmark's place.
+      // `inline` swapped the two, so stepping into a vehicle cost the app both
+      // its branding and its home link, and a deeper crumb would have had
+      // nowhere to go. Anything sticky on a page WITH a crumb must now pin at
+      // STICKY_UNDER_BAR_AND_CRUMB -- see VehicleDetail's tabs.
+      crumbPlacement="below"
       settingsHref="/settings"
       portals={[{ name: "Coinbox", href: COINBOX_URL }]}
     />

@@ -267,9 +267,13 @@ Three top-level routes, in `src/client/App.tsx`:
 
 The header comes from `@portals/core/client`. Coinbox passes `nav` (the three
 sections) and `crumbPlacement="below"`, which puts the breadcrumb on its own
-row inside the same sticky header. Both are additive props defaulting to the
-old behaviour, so **Odometry renders exactly as it did** -- do not "tidy" them
-into always-on.
+row inside the same sticky header.
+
+**Odometry now passes `crumbPlacement="below"` too** (2026-09-08), for its own
+reason: `inline` put the crumb where the wordmark goes, so one level of depth
+cost that portal its branding and its way home together. `inline` is still the
+default even though nobody passes it -- flipping a default is how the OTHER
+portal changes shape without anyone editing it.
 
 `homeLabel` is `"Home"`, not `"Ledger"`: it is the label the breadcrumb uses
 for whatever `/` is, and `/` is Home now.

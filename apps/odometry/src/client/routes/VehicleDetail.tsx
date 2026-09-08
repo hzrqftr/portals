@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useVehicle, useMaintenance, useDashboard, useServices, useFuel } from "../api/hooks";
-import { Page, AppHeader, SectionTitle } from "../components/Layout";
+import { Page, AppHeader, SectionTitle, STICKY_UNDER_BAR_AND_CRUMB } from "../components/Layout";
 import { MaintenanceList } from "../components/MaintenanceList";
 import { ServiceHistory } from "../components/ServiceHistory";
 import { FuelHistory } from "../components/FuelHistory";
@@ -81,7 +81,18 @@ export default function VehicleDetail() {
           on this page (Renewals and Costs still to come), so the switcher is
           the shape this page was heading for anyway.
         */}
-        <div className="sticky top-14 z-20 -mx-4 mt-10 border-b border-edge bg-page/90 px-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        {/*
+          Pinned under the header, which on this page is TWO rows: the bar plus
+          the breadcrumb. The offset is imported rather than written as a
+          number, because the two have to move together and only one of them is
+          visible from here.
+        */}
+        <div
+          className={
+            `sticky ${STICKY_UNDER_BAR_AND_CRUMB} z-20 -mx-4 mt-10 border-b border-edge ` +
+            "bg-page/90 px-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+          }
+        >
           <div className="flex gap-1">
             {TABS.map((t) => (
               <button

@@ -8,6 +8,25 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 /** One container class, so routes cannot drift apart. */
 export const CONTAINER = "mx-auto w-full max-w-7xl px-4 pb-24 sm:px-6 lg:px-8";
 
+/**
+ * Where a page's own sticky strip has to start, so it pins UNDER the header
+ * instead of sliding beneath it.
+ *
+ * Literal class strings rather than computed values because Tailwind reads
+ * source text, not runtime state -- and they live here, beside the markup they
+ * measure, because the previous arrangement was a comment on AppHeader asking
+ * the reader to redo the arithmetic. It was wrong within a fortnight.
+ *
+ * The arithmetic, and why each is a pixel short of the real height: the bar is
+ * `h-14` (56px) and the crumb row is `h-10` (40px) on a 1px `border-t`, so the
+ * header occupies 57px and 98px respectively once its own `border-b` counts.
+ * The strip is pinned a pixel high on purpose, so its translucent background
+ * laps over that border instead of leaving a hairline of page showing through
+ * as content scrolls under it. That is what `top-14` has always done.
+ */
+export const STICKY_UNDER_BAR = "top-14";
+export const STICKY_UNDER_BAR_AND_CRUMB = "top-[97px]";
+
 export function Page({ children }: { children: ReactNode }) {
   return <div className={CONTAINER}>{children}</div>;
 }
@@ -79,12 +98,17 @@ export function AppHeader({
   /**
    * Where the breadcrumb sits.
    *
-   * `inline` (the default, and what Odometry uses) puts it on the bar in place
-   * of the wordmark. `below` gives it a second row inside the same sticky
-   * header, which is what a portal with a `nav` strip wants: side by side, a
-   * crumb reading "Home / Ledger" next to a nav item reading "Home" is the
-   * same word twice in an inch, and the wordmark disappears to make room for
-   * the duplication.
+   * `inline` puts it on the bar IN PLACE OF THE WORDMARK. `below` gives it a
+   * second row inside the same sticky header, leaving the wordmark where it is.
+   *
+   * BOTH PORTALS NOW PASS `below`, for two different reasons, and `inline`
+   * survives as the default only because changing a default silently is how
+   * the other portal breaks. Coinbox wants it because a crumb reading
+   * "Home / Ledger" beside a nav item reading "Home" is the same word twice in
+   * an inch. Odometry asked for it on 2026-09-08 because `inline` swapped the
+   * wordmark out for the crumb, so going one level deep cost the app its only
+   * piece of branding and its way home at once -- and a crumb that ever grows
+   * a third level would have had nowhere to grow into.
    *
    * Both rows are inside the sticky <header>, so both stay pinned. That is a
    * deliberate cost -- roughly 96px of permanent chrome instead of 56 -- taken
@@ -164,11 +188,13 @@ export function AppHeader({
         The breadcrumb's own row. INSIDE the sticky <header>, so it stays
         pinned with the bar above it rather than scrolling away.
 
-        Anything positioned against the header's height must account for this:
-        a `sticky top-14` strip (Odometry's VehicleDetail tabs) assumes a 56px
-        header and would slide under a 96px one. Nothing does that in a portal
-        using `below` today, which is why this is a comment rather than a
-        shared constant.
+        ANYTHING POSITIONED AGAINST THE HEADER'S HEIGHT MUST ACCOUNT FOR THIS.
+        Odometry's VehicleDetail tabs are a sticky strip that assumed a 56px
+        header; when Odometry moved to `below` on 2026-09-08 they had to move
+        with it, or they would have pinned 41px too high and let the page
+        scroll visibly through the gap. Use STICKY_UNDER_BAR_AND_CRUMB rather
+        than redoing the sum -- this was a comment saying no portal did that
+        yet, and it stopped being true the same fortnight it was written.
       */}
       {showCrumbBelow && (
         // The divider sits on this full-width wrapper, NOT on the container
