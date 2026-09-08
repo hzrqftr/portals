@@ -3,7 +3,7 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-09-08 (the fuel drill-down; built, not yet deployed)
+**Last updated:** 2026-09-08 (the fuel drill-down, deployed)
 
 ---
 
@@ -137,7 +137,7 @@ Three decisions worth not re-litigating:
 Not built yet: the Coinbox-side consumption analytics (month over month). It
 reads only data now being captured, so it can be built whenever.
 
-## The fuel drill-down — 2026-09-08, BUILT AND NOT YET DEPLOYED
+## The fuel drill-down — 2026-09-08, DEPLOYED
 
 Each row of Coinbox's cost-per-kilometre card now opens a sheet: consumption
 per tank with a trailing mean, price per litre, the 12-month spend split, the
@@ -209,10 +209,39 @@ Verified rather than assumed:
 - Odometry's 107 tests pass **with `apps/odometry/tests/fuel.test.ts`
   unedited**, which is what proves the extraction changed no behaviour.
 
-**NOT YET CHECKED IN A BROWSER.** The Chrome extension was not connected in the
-session that built it, so the layout, the 375px behaviour and the hover readout
-have been reasoned about but not seen. That is the first thing to do before
-deploying.
+### Deployed 2026-09-08
+
+| Worker | Version | Notes |
+|---|---|---|
+| `coinbox` | `ec30c0f9-96ea-4c84-b51e-6876673b10b3` | the drill-down |
+| `fleet-portal` | `96ef56e6-0f3c-4528-99a3-544531f5d827` | shared segment SQL, corrected average |
+
+`main` fast-forwarded to `96f576a`, no merge commit. **No migration** --
+`wrangler d1 migrations list --remote` reported nothing to apply both before
+and during each deploy, and production row counts were identical either side:
+3 vehicles, 4,458 transactions, 5 fuel fills, 9 odometer readings, 25 tables.
+Both crons survived (`0 17 * * *` on coinbox, `0 18 * * *` on fleet-portal) and
+both portals still 302 to Access, `/api/*` included.
+
+**Production already holds 5 real fills**, so the drill-down has live data on
+day one rather than an empty state.
+
+Both portals were deployed because `packages/core` changed. That is exactly why
+the deploy script runs the WHOLE workspace's tests rather than one app's.
+
+**STILL NOT SEEN IN A BROWSER.** The Chrome extension was not connected in the
+session that built and shipped this, so the layout, the 375px behaviour and the
+hover readout have been reasoned about but never observed -- on local or on
+production. Deployed anyway at the owner's instruction. **First thing to check:
+open the dashboard and click a vehicle.** The likeliest faults are cosmetic and
+in the sheet: heading collision with the close button, the chart's y-axis
+labels at narrow widths, and the stacked bar when one slice rounds to under a
+pixel.
+
+One transient worth knowing: the first `wrangler d1 migrations list --remote`
+failed with `7403 The given account is not valid or is not authorized`, while
+`d1 list` and `deployments list` both succeeded on the same credentials. A
+plain retry worked. Check twice before believing wrangler has lost its login.
 
 ### Both dev servers really can run at once now -- 2026-09-08
 
@@ -596,7 +625,7 @@ something that looks wrong, trust the code.
 | Off-Cloudflare backup copies | — | Every backup is in the account it protects. One downloaded file a month closes it |
 | ~~Home dashboard~~ | §10 | **BUILT AND DEPLOYED 2026-08-31.** The surplus/deficit table as a chart, a month drill-down, and cost per km. See below |
 | ~~Cross-portal navigation~~ | §7.4 | **BUILT 2026-09-05.** Each header links to the other portal. Shown unconditionally -- see below |
-| ~~Fuel consumption analytics~~ | §10.5 | **BUILT 2026-09-08**, a drill-down off the cost-per-km card. No migration. Not yet deployed, not yet seen in a browser |
+| ~~Fuel consumption analytics~~ | §10.5 | **BUILT AND DEPLOYED 2026-09-08**, a drill-down off the cost-per-km card. No migration. Not yet seen in a browser |
 
 ---
 
