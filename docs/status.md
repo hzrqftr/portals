@@ -3,7 +3,7 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-09-08 (the fuel drill-down, deployed)
+**Last updated:** 2026-09-08 (the fuel drill-down, then the breadcrumb row)
 
 ---
 
@@ -136,6 +136,47 @@ Three decisions worth not re-litigating:
 
 Not built yet: the Coinbox-side consumption analytics (month over month). It
 reads only data now being captured, so it can be built whenever.
+
+## Odometry's breadcrumb moved below the bar — 2026-09-08, DEPLOYED
+
+| Worker | Version |
+|---|---|
+| `fleet-portal` | `8c7397d5-5d36-4008-a335-191a6a6eb736` |
+| `coinbox` | `c48840db-098b-4eb4-8dde-b5be6b694204` |
+
+`main` at `a257da0`. No migration; production row counts unchanged (3 vehicles,
+4,458 transactions, 5 fills, 25 tables), both crons intact, both portals still
+302 to Access. Coinbox shipped only because `packages/core` changed -- its
+behaviour is identical -- so that production does not drift from `main`.
+
+`crumbPlacement="inline"` put the crumb where the WORDMARK goes, so stepping
+into a vehicle cost the portal its only branding and its way home at once, and
+a crumb that grew a third level had nowhere to go. Odometry now passes
+`below`, the mode Coinbox already used.
+
+**The one-prop change was not one prop.** `AppHeader` carried a warning that a
+`sticky top-14` strip assumes a 56px header and would slide under a taller one,
+and noted that no portal using `below` did that yet. **Odometry's VehicleDetail
+tabs are exactly that strip**, so the warning went live the moment this
+changed: against a 98px header they would have pinned 41px too high and let the
+page scroll visibly through the gap. The tabs render only after the vehicle
+loads, so the crumb is always beside them and a fixed offset is safe.
+
+The offset is now a shared constant beside the markup it measures, rather than
+a second magic number in a file that cannot see the header:
+`STICKY_UNDER_BAR` (`top-14`) and `STICKY_UNDER_BAR_AND_CRUMB` (`top-[97px]`).
+Both sit a pixel short of the real height on purpose -- which is what `top-14`
+always did -- so the strip's translucent background laps over the header's
+`border-b` instead of leaving a hairline of page showing through.
+
+`inline` remains the DEFAULT although neither portal passes it. Flipping a
+default is how the other portal changes shape without anyone editing it.
+
+**Not seen in a browser either.** The 97 is reasoned from the markup, not
+measured. If the vehicle tabs show a hairline gap or a 1px overlap while
+scrolling, that constant is the dial. `top-[97px]` was at least confirmed to
+survive Tailwind's purge in a real production build -- arbitrary values are
+easy to lose that way, and the failure is silent.
 
 ## The fuel drill-down — 2026-09-08, DEPLOYED
 
