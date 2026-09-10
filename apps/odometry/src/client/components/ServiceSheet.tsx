@@ -251,7 +251,11 @@ export function ServiceSheet({
                 type="date"
                 value={servicedOn}
                 onChange={(e) => set("servicedOn", e.target.value)}
-                className={DATE_INPUT}
+                // Capped on a phone. Stacking fixed the overlap, but a date is
+                // a short fixed-length value and a full-bleed control for it
+                // reads as a mistake. From `sm` it shares a row with the
+                // odometer again and fills its own column.
+                className={DATE_INPUT + " max-w-[13rem] sm:max-w-none"}
               />
             </Field>
             <Field label="Odometer (km)">

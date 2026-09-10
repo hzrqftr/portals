@@ -35,7 +35,12 @@ export const INPUT =
  * load-bearing precisely here.
  */
 export const DATE_INPUT =
-  INPUT + " min-w-0 [&::-webkit-date-and-time-value]:text-left";
+  INPUT +
+  // `block` is not decoration. INPUT relies on `w-full` to fill its line, and
+  // an input is inline-block by default -- so the moment a max-width makes one
+  // NARROWER than its line, the label's <span> flows up beside it and that one
+  // field grows a side label while every other field keeps its label on top.
+  " block min-w-0 [&::-webkit-date-and-time-value]:text-left";
 
 /**
  * A styled `<select>` with a chevron this codebase controls.
