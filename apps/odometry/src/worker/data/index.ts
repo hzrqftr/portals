@@ -1,6 +1,7 @@
 import { makeDb } from "./base";
 import { VehicleRepo } from "./vehicles";
 import { ServiceRepo } from "./services";
+import { AttachmentRepo } from "./attachments";
 import { RenewalRepo } from "./renewals";
 import { StatusRepo } from "./status";
 import { PartTypeRepo } from "./partTypes";
@@ -13,6 +14,7 @@ import type { Env, Scope } from "../types";
 export interface Repos {
   vehicles: VehicleRepo;
   services: ServiceRepo;
+  attachments: AttachmentRepo;
   renewals: RenewalRepo;
   status: StatusRepo;
   partTypes: PartTypeRepo;
@@ -31,7 +33,8 @@ export function makeRepos(env: Env, scope: Scope): Repos {
   const { db, raw } = makeDb(env);
   return {
     vehicles: new VehicleRepo(db, raw, scope),
-    services: new ServiceRepo(db, raw, scope),
+    services: new ServiceRepo(db, raw, scope, env),
+    attachments: new AttachmentRepo(db, raw, scope, env),
     renewals: new RenewalRepo(db, raw, scope),
     status: new StatusRepo(db, raw, scope),
     partTypes: new PartTypeRepo(db, raw, scope),
@@ -45,6 +48,7 @@ export function makeRepos(env: Env, scope: Scope): Repos {
 export {
   VehicleRepo,
   ServiceRepo,
+  AttachmentRepo,
   RenewalRepo,
   StatusRepo,
   PartTypeRepo,

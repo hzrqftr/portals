@@ -195,6 +195,10 @@ export const serviceRecords = sqliteTable(
     // workshop for the fitting alone. The grand total is SUM(line totals) +
     // this, computed on read; there is no stored total to disagree with it.
     labourCost: integer("labour_cost"),
+    // Superseded by service_attachments (migration 0015) and NULL in every
+    // row. Kept only because dropping a column here means rebuilding the
+    // table, which means dropping and recreating v_maintenance_due and
+    // v_part_baseline. Do not start writing it.
     invoiceKey: text("invoice_key"),
     notes: text("notes"),
     // The reading this visit wrote (migration 0014). NOT a second copy of the
@@ -235,6 +239,39 @@ export const serviceItems = sqliteTable(
     ),
   },
   (t) => ({ recordIdx: index("idx_items_record").on(t.serviceRecordId) }),
+);
+
+/**
+ * Receipts and invoices attached to a service visit (migration 0015).
+ *
+ * The bytes live in R2 under `r2Key`; this row is the metadata and the
+ * pointer. Garage-scoped like everything else here, which means a garage
+ * co-member can read them -- the same call already made for workshop_name and
+ * labour_cost on the parent record, and a deliberate one.
+ *
+ * `contentType` is the type sniffed from the file's own leading bytes at
+ * upload, NOT the type the browser declared. See
+ * packages/core/src/worker/attachments.ts.
+ */
+export const serviceAttachments = sqliteTable(
+  "service_attachments",
+  {
+    id: text("id").primaryKey(),
+    garageId: text("garage_id").notNull(),
+    serviceRecordId: text("service_record_id").notNull(),
+    r2Key: text("r2_key").notNull(),
+    filename: text("filename").notNull(),
+    contentType: text("content_type", {
+      enum: ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic"],
+    }).notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    uploadedAt: text("uploaded_at").notNull(),
+    uploadedBy: text("uploaded_by").notNull(),
+  },
+  (t) => ({
+    recordIdx: index("idx_attach_record").on(t.serviceRecordId),
+    keyUq: uniqueIndex("uq_attach_key").on(t.r2Key),
+  }),
 );
 
 export const serviceTemplates = sqliteTable(

@@ -622,6 +622,36 @@ Verified against the deployed app, not just the test suite.
 
   `observability.enabled` is on for this Worker so a failed nightly run leaves
   a log behind. It is the one job here with nobody watching it.
+- **Receipt upload on service records** (2026-09-10, migration 0015): a service
+  visit can carry up to ten scanned receipts, PDF or image, attached either in
+  the log-service form or afterwards from the history row. Files go to a new R2
+  bucket `portals-docs`; `service_attachments` holds the metadata and the key,
+  with a real foreign key to `service_records` so the rows cascade on delete.
+
+  Three things about it are not obvious and are load-bearing:
+
+  - **The stored content type is sniffed from the file's leading bytes, never
+    taken from the browser.** This Worker serves the SPA and the API from one
+    origin, so a file uploaded as `image/png` whose bytes are markup would run
+    as script on the portal's own origin when served back. The download route
+    pairs that with `nosniff` and an explicit content type.
+  - **R2 objects do not cascade.** The rows do; deleting a service therefore
+    reads its keys before the delete and clears the bucket after. There is a
+    test asserting the bucket is empty afterwards, because the database looks
+    correct either way.
+  - **`service_records.invoice_key` is superseded and deliberately left in
+    place.** Dropping it means a table rebuild, which means dropping and
+    recreating `v_maintenance_due` and `v_part_baseline` to remove one column
+    that is NULL in every row. Nothing reads it.
+
+  The bytes helpers live in `packages/core/src/worker/attachments.ts` and know
+  nothing about garages, so Coinbox can reuse them — but the TABLE is
+  Odometry's. Coinbox scopes on `ledger_id`, and a shared attachments table
+  would need a nullable tenant column, which is the exact leak the two-axis
+  design exists to prevent. Coinbox needs its own table, repo, routes and its
+  first R2 binding when it wants this.
+
+  **Receipts are outside both backup nets** — see `docs/backups.md`.
 - Every Phase 1 API endpoint
 - 73 tests: tenant isolation, derived logic, and the Access JWT fallback
 

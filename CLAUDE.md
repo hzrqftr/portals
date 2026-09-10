@@ -211,6 +211,12 @@ runs, how to restore, and what is deliberately not built. `apps/odometry/tests/b
 round trip on every `npm test`, because a backup nobody has restored from is a
 belief rather than a backup.
 
+**`portals-docs` is a second R2 bucket and is NOT backed up.** It holds the
+receipts attached to service records (migration 0015). The rows describing them
+are in the nightly export; the files are not, and D1 Time Travel does not reach
+them either. That gap is written down in `docs/backups.md` rather than left for
+someone to discover during a restore.
+
 **The manual is also published, because a recovery manual that exists only in
 the repo is unreachable when the thing that was lost is the machine holding the
 repo:** https://claude.ai/code/artifact/cd23be9a-5d58-4ae8-a732-4a927dc870dc —

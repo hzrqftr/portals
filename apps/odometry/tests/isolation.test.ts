@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
-import { as, migrate, resetDb } from "./helpers";
+import { as, migrate, resetDb, pdfBytes, filePart } from "./helpers";
 
 /**
  * THE MOST IMPORTANT TEST IN THIS PROJECT. Spec 5.2, CLAUDE.md.
@@ -29,6 +29,7 @@ const B_MARKERS = [
   "BOB_INSURER",
   "BOB_POLICY_REF",
   "BOB_SPARE_PART",
+  "BOB_RECEIPT_FILENAME",
 ];
 
 interface Seeded {
@@ -36,6 +37,7 @@ interface Seeded {
   serviceId: string;
   renewalId: string;
   partTypeId: string;
+  attachmentId: string;
 }
 
 async function seed(email: string, tag: string): Promise<Seeded> {
@@ -105,11 +107,20 @@ async function seed(email: string, tag: string): Promise<Seeded> {
   });
   expect(template.status).toBe(200);
 
+  // A receipt on the service visit. The filename carries the marker, so a
+  // listing that leaks across garages shows up in the broad sweep below.
+  const attachment = await call(`/api/services/${service.body.id}/attachments`, {
+    method: "POST",
+    form: filePart(pdfBytes(tag), `${tag}_RECEIPT_FILENAME.pdf`),
+  });
+  expect(attachment.status).toBe(201);
+
   return {
     vehicleId,
     serviceId: service.body.id as string,
     renewalId: renewal.body.id as string,
     partTypeId,
+    attachmentId: attachment.body.id as string,
   };
 }
 
@@ -153,6 +164,7 @@ describe("cross-tenant isolation", () => {
       `/api/vehicles/${alice.vehicleId}/maintenance`,
       `/api/vehicles/${alice.vehicleId}/fuel`,
       `/api/vehicles/${alice.vehicleId}/services`,
+      `/api/services/${alice.serviceId}/attachments`,
       `/api/vehicles/${alice.vehicleId}/renewals`,
       `/api/vehicles/${alice.vehicleId}/renewals/status`,
       "/api/part-types",
@@ -165,6 +177,7 @@ describe("cross-tenant isolation", () => {
       `/api/vehicles/${bob.vehicleId}/maintenance`,
       `/api/vehicles/${bob.vehicleId}/fuel`,
       `/api/vehicles/${bob.vehicleId}/services`,
+      `/api/services/${bob.serviceId}/attachments`,
       `/api/vehicles/${bob.vehicleId}/renewals`,
       `/api/vehicles/${bob.vehicleId}/renewals/status`,
     ];
@@ -176,6 +189,45 @@ describe("cross-tenant isolation", () => {
         expect(res.text, `${marker} leaked from GET ${path}`).not.toContain(marker);
       }
     }
+  });
+
+  /**
+   * Receipts get their own test rather than riding on the sweep above.
+   *
+   * The sweep proves a marker string does not appear in a response body. An
+   * attachment download is a PDF, and the marker is in its FILENAME -- so a
+   * leak here could hand A the whole of B invoice while the sweep saw nothing
+   * to complain about. The status code is the assertion that works on bytes.
+   */
+  it("never serves one garage the receipts of another", async () => {
+    const call = as(A);
+
+    // The bytes.
+    expect((await call(`/api/attachments/${bob.attachmentId}/content`)).status).toBe(404);
+
+    // The metadata, via B service record.
+    const listing = await call(`/api/services/${bob.serviceId}/attachments`);
+    expect(listing.status).toBe(404);
+
+    // Attaching to B record.
+    const upload = await call(`/api/services/${bob.serviceId}/attachments`, {
+      method: "POST",
+      form: filePart(pdfBytes("ALICE"), "ALICE_INTRUDER.pdf"),
+    });
+    expect(upload.status).toBe(404);
+
+    // Deleting B receipt.
+    expect((await call(`/api/attachments/${bob.attachmentId}`, { method: "DELETE" })).status).toBe(
+      404,
+    );
+
+    // And B still has exactly the one receipt, unmodified. The 404s above do
+    // not prove the writes were refused -- only reading B side back does.
+    const bobs = await as(B)(`/api/services/${bob.serviceId}/attachments`);
+    expect(bobs.status).toBe(200);
+    expect(bobs.body).toHaveLength(1);
+    expect(bobs.body[0].filename).toBe("BOB_RECEIPT_FILENAME.pdf");
+    expect((await as(B)(`/api/attachments/${bob.attachmentId}/content`)).status).toBe(200);
   });
 
   it("404s rather than 403s on another garage's IDs", async () => {

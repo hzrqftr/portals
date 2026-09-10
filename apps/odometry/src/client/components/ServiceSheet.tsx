@@ -5,6 +5,7 @@ import {
   useMaintenance,
   usePartTypes,
   useServiceTemplates,
+  uploadAttachment,
   SERVICE_TYPES,
   type ServiceItemDraft,
   type ServiceRecord,
@@ -18,6 +19,7 @@ import { Sheet } from "@portals/core/client";
 import { PartPicker } from "./PartPicker";
 import { ServiceItemRow } from "./ServiceItemRow";
 import { useServiceDraft } from "./serviceDraft";
+import { ServiceAttachments } from "./ServiceAttachments";
 import { SavedConfirmation, Total } from "./ServiceSaved";
 
 /**
@@ -73,6 +75,13 @@ export function ServiceSheet({
   // The sheet's phase rather than the form's content, so it stays out of the
   // draft: null while editing, the part names once the save has come back.
   const [saved, setSaved] = useState<string[] | null>(null);
+
+  // Receipts picked before the record exists. On a new visit there is no id to
+  // upload against until the save comes back, so they are held here and sent
+  // in the mutation's onSuccess. When editing, the id already exists and
+  // ServiceAttachments uploads on pick instead -- pending stays empty.
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [attachmentWarning, setAttachmentWarning] = useState<string | null>(null);
 
   const odo = odometer === "" ? null : Number(odometer);
   const nameOf = (id: string) => partTypes.data?.find((p) => p.id === id)?.name ?? "Part";
@@ -190,7 +199,28 @@ export function ServiceSheet({
         ...(notes.trim() ? { notes: notes.trim() } : {}),
         items: drafts,
       },
-      { onSuccess: () => setSaved(items.map((i) => i.partName)) },
+      {
+        onSuccess: async (result: { id: string }) => {
+          // The record is saved by the time this runs. A receipt that fails
+          // now is reported, NOT rolled back -- unwinding a correctly entered
+          // service because a scan failed to upload is the worse of the two
+          // outcomes, and the record is where the receipt can be retried from.
+          const failed: string[] = [];
+          for (const file of pendingFiles) {
+            try {
+              await uploadAttachment(result.id, file);
+            } catch {
+              failed.push(file.name);
+            }
+          }
+          if (failed.length > 0) {
+            setAttachmentWarning(
+              `The service was saved, but ${failed.length === 1 ? "this receipt" : "these receipts"} did not upload: ${failed.join(", ")}. Add ${failed.length === 1 ? "it" : "them"} from the service in the history list.`,
+            );
+          }
+          setSaved(items.map((i) => i.partName));
+        },
+      },
     );
   }
 
@@ -199,7 +229,12 @@ export function ServiceSheet({
   return (
     <Sheet title={heading} onClose={onClose} wide>
       {saved ? (
-        <SavedConfirmation parts={saved} editing={editing} onClose={onClose} />
+        <SavedConfirmation
+          parts={saved}
+          editing={editing}
+          attachmentWarning={attachmentWarning}
+          onClose={onClose}
+        />
       ) : (
         <>
           <h2 className="text-lg font-semibold">{heading}</h2>
@@ -339,6 +374,12 @@ export function ServiceSheet({
               className={INPUT}
             />
           </Field>
+
+          <ServiceAttachments
+            serviceId={record?.id ?? null}
+            pending={pendingFiles}
+            onPendingChange={setPendingFiles}
+          />
 
           {save_.isError && (
             <p className="mt-2 text-sm text-status-overdue-fg">

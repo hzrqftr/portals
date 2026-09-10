@@ -14,15 +14,27 @@ import { formatSen } from "@portals/core";
 export function SavedConfirmation({
   parts,
   editing,
+  attachmentWarning,
   onClose,
 }: {
   parts: string[];
   editing: boolean;
+  /**
+   * Set when the record saved but a receipt did not upload. Shown rather than
+   * swallowed, and shown WITHOUT undoing the save: discarding a correctly
+   * entered service because a photo failed is the worse outcome of the two.
+   */
+  attachmentWarning?: string | null;
   onClose: () => void;
 }) {
   return (
     <div>
       <h2 className="text-lg font-semibold">{editing ? "Service updated" : "Service saved"}</h2>
+      {attachmentWarning && (
+        <p className="mt-2 rounded-lg bg-status-soon-bg px-3 py-2 text-sm text-status-soon-fg">
+          {attachmentWarning}
+        </p>
+      )}
       {parts.length === 0 ? (
         <p className="mt-2 text-sm text-ink-muted">
           No parts are listed on this visit, so it resets no maintenance clock. Add the

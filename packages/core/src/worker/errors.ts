@@ -32,6 +32,21 @@ export class NotFoundError extends HttpError {
   }
 }
 
+/**
+ * The request body was well-formed but too large to accept -- an upload over
+ * MAX_ATTACHMENT_BYTES, in practice.
+ *
+ * Separate from ValidationError because "your file is 14 MB and the limit is
+ * 10" is not the same answer as "this field is malformed", and a 422 sends the
+ * client looking for a field to fix. app.onError in both portals maps any
+ * HttpError to its own status, so nothing else has to change to use this.
+ */
+export class PayloadTooLargeError extends HttpError {
+  constructor(message = "File too large") {
+    super(413, message, "too_large");
+  }
+}
+
 export class ValidationError extends HttpError {
   constructor(
     message: string,

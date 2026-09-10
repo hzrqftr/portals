@@ -163,6 +163,37 @@ export const serviceInput = z.object({
  */
 export const serviceUpdate = serviceInput;
 
+/**
+ * The metadata half of a receipt upload. The bytes are validated separately,
+ * by reading them (see packages/core/src/worker/attachments.ts).
+ *
+ * TWO THINGS ARE DELIBERATELY ABSENT.
+ *
+ * There is no size limit here. Zod failures map to 422 "invalid", which sends
+ * a client looking for a malformed field; an oversized file is a 413 and gets
+ * one from the repository instead.
+ *
+ * There is no content type here either. The browser's declared type is
+ * unverified network input, so it is neither trusted nor stored -- the type
+ * that gets recorded is sniffed from the file's own leading bytes.
+ *
+ * The filename IS sanitised rather than merely bounded, because it is echoed
+ * back in a Content-Disposition header. A quote or a newline in a filename is
+ * header injection, and a slash would let a name masquerade as a path.
+ */
+export const attachmentUpload = z.object({
+  filename: z
+    .string()
+    .transform((name) => {
+      const base = name.split(/[\\/]/).pop() ?? "";
+      // Control characters and double quotes are what make a filename a
+      // header injection once it reaches Content-Disposition.
+      // eslint-disable-next-line no-control-regex
+      return base.replace(/[\u0000-\u001f\u007f"]/g, "").trim();
+    })
+    .pipe(z.string().min(1).max(200)),
+});
+
 export const renewalInput = z.object({
   type: renewalType,
   provider: z.string().max(120).optional(),
@@ -242,6 +273,7 @@ export type VehiclePatch = z.infer<typeof vehiclePatch>;
 export type OdometerInput = z.infer<typeof odometerInput>;
 export type ServiceInput = z.infer<typeof serviceInput>;
 export type ServiceUpdate = z.infer<typeof serviceUpdate>;
+export type AttachmentUpload = z.infer<typeof attachmentUpload>;
 export type RenewalInput = z.infer<typeof renewalInput>;
 export type RenewalPatch = z.infer<typeof renewalPatch>;
 export type IntervalPatch = z.infer<typeof intervalPatch>;

@@ -367,6 +367,66 @@ export function useUpdateService(vehicleId: string, serviceId: string) {
   });
 }
 
+export interface Attachment {
+  id: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+}
+
+/** Where the bytes come from. Used directly as a link and an image source. */
+export function attachmentUrl(id: string): string {
+  return `/api/attachments/${id}/content`;
+}
+
+export function useAttachments(serviceId: string) {
+  return useQuery({
+    queryKey: ["attachments", serviceId],
+    queryFn: () => api<Attachment[]>(`/services/${serviceId}/attachments`),
+    enabled: serviceId !== "",
+  });
+}
+
+/**
+ * One file per call. Multiple selections are a loop at the call site, so a
+ * failure names the file that failed instead of sinking the whole batch.
+ *
+ * NOTE the shape of the api() call. Passing `body` rather than `json` is what
+ * makes this multipart: api() only stringifies and sets a content-type when
+ * `json` is present, and everything else passes through untouched. Do NOT add
+ * a content-type header here -- the browser has to set it, because only it
+ * knows the multipart boundary it generated.
+ */
+export function uploadAttachment(serviceId: string, file: File): Promise<Attachment> {
+  const form = new FormData();
+  form.set("file", file);
+  return api<Attachment>(`/services/${serviceId}/attachments`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+export function useUploadAttachment(serviceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => uploadAttachment(serviceId, file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["attachments", serviceId] });
+    },
+  });
+}
+
+export function useDeleteAttachment(serviceId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/attachments/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["attachments", serviceId] });
+    },
+  });
+}
+
 /** Per-vehicle interval editing. The Waja belt vs City chain case (spec 8.2). */
 export function useSetInterval(vehicleId: string) {
   const qc = useQueryClient();

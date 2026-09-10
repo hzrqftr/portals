@@ -48,6 +48,13 @@
     {
       "binding": "BACKUPS",
       "bucket_name": "portals-backup"
+    },
+    // User-uploaded documents (service receipts). A separate bucket from the
+    // backups on purpose: the backup pruner deletes by prefix on a schedule,
+    // and receipts must never be one edit to that logic away from expiring.
+    {
+      "binding": "DOCS",
+      "bucket_name": "portals-docs"
     }
   ],
   // Access is enabled on the Worker itself from the dashboard, not from here.

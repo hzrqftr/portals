@@ -153,6 +153,32 @@ It RETURNS statements rather than running them, so each caller folds them into
 its own `batch()`. That is not a style choice — Coinbox has to write a
 transaction, a reading and a fill atomically.
 
+## Receipts on a service record
+
+`service_attachments` (migration 0015) holds the metadata; the files are in the
+R2 bucket `portals-docs`, bound as `DOCS`. The portal-agnostic half -- size
+limit, type sniffing, key naming, R2 calls -- is
+`packages/core/src/worker/attachments.ts`, so Coinbox can reuse it. The table is
+not shared: Coinbox scopes on `ledger_id` and a shared table would need a
+nullable tenant column.
+
+Three rules that are invisible when broken:
+
+- **The stored content type comes from the file's leading bytes, never from the
+  request.** This Worker serves the SPA and the API on one origin, so a file
+  uploaded as `image/png` whose bytes are markup executes on the portal's own
+  origin when served back. The download route pairs the sniffed type with
+  `nosniff`. Do not "simplify" by trusting `file.type`.
+- **R2 objects do not cascade; rows do.** `ServiceRepo.remove()` reads the keys
+  BEFORE the delete and clears the bucket after. Any new path that deletes a
+  service record has to do the same, and the database looks correct either way
+  -- `tests/attachments.test.ts` is what notices.
+- **`Env.DOCS` is required, unlike `Env.BACKUPS`.** A backup that skips a
+  missing binding is a no-op; an upload that skips one reports success for a
+  file it never stored.
+
+Receipts are outside both backup nets. See `docs/backups.md`.
+
 ## Domain traps
 
 - **Odometer readings can be entered out of order.** Discard readings that

@@ -14,7 +14,9 @@ import {
   serviceTemplatePut,
   partTypeInput,
   vehicleType,
+  attachmentUpload,
 } from "@shared/zod";
+import { ValidationError } from "@portals/core/worker";
 import { assertCanWrite } from "../scope";
 
 /**
@@ -128,6 +130,68 @@ export function registerRoutes(app: Hono<AppContext>): void {
   app.delete("/api/services/:id", async (c) => {
     assertCanWrite(c.get("scope"));
     await c.get("repos").services.remove(c.req.param("id"));
+    return c.body(null, 204);
+  });
+
+  // --- attachments -----------------------------------------------------
+  // Receipts and invoices hanging off a service visit. Metadata comes back as
+  // JSON; the bytes only ever leave through the content route below, which is
+  // garage-scoped like every other read. There is no public R2 URL and there
+  // must not be one -- an unguessable link is not an access control.
+
+  app.get("/api/services/:id/attachments", async (c) =>
+    c.json(await c.get("repos").attachments.listFor(c.req.param("id"))),
+  );
+
+  // One file per request. Multiple selections are a client-side loop, so a
+  // single failure names the file that failed instead of sinking the batch.
+  app.post("/api/services/:id/attachments", async (c) => {
+    assertCanWrite(c.get("scope"));
+    const form = await c.req.formData();
+    const file = form.get("file");
+    if (!(file instanceof File)) throw new ValidationError("No file was uploaded");
+
+    // The name is sanitised here because it is echoed in a response header;
+    // the TYPE is not taken from the request at all -- the repository reads it
+    // out of the bytes.
+    const { filename } = attachmentUpload.parse({ filename: file.name });
+    const meta = await c.get("repos").attachments.create(c.req.param("id"), {
+      bytes: await file.arrayBuffer(),
+      filename,
+    });
+    return c.json(meta, 201);
+  });
+
+  /**
+   * The bytes. Streamed straight from R2 rather than buffered.
+   *
+   * The three headers are one control, not three conveniences. This Worker
+   * serves the SPA from the same origin as the API, so an uploaded file that
+   * the browser decides to treat as markup executes with the caller's Access
+   * session. `content-type` is the type sniffed at upload and stored, never
+   * anything the client said; `nosniff` stops the browser second-guessing it;
+   * and the filename in `content-disposition` has already had quotes and
+   * control characters removed by attachmentUpload.
+   */
+  app.get("/api/attachments/:id/content", async (c) => {
+    const { body, contentType, filename } = await c
+      .get("repos")
+      .attachments.open(c.req.param("id"));
+    return new Response(body, {
+      headers: {
+        "content-type": contentType,
+        "content-disposition": `inline; filename="${filename}"`,
+        "x-content-type-options": "nosniff",
+        // Private: this is one garage's document, not something a shared cache
+        // may hold on to.
+        "cache-control": "private, max-age=3600",
+      },
+    });
+  });
+
+  app.delete("/api/attachments/:id", async (c) => {
+    assertCanWrite(c.get("scope"));
+    await c.get("repos").attachments.remove(c.req.param("id"));
     return c.body(null, 204);
   });
 

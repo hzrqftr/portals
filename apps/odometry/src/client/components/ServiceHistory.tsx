@@ -8,6 +8,7 @@ import {
 import { formatSen, fromQuantityMilli } from "@portals/core";
 import { formatKm } from "../lib/format";
 import { ServiceSheet } from "./ServiceSheet";
+import { ServiceAttachments } from "./ServiceAttachments";
 
 /**
  * Service history, reverse chronological, expandable to line items
@@ -141,6 +142,13 @@ function RecordRow({
           <CostBreakdown record={record} />
 
           {record.notes && <p className="mt-2 text-sm text-ink-muted">{record.notes}</p>}
+
+          {/* Attaching a receipt after the fact is the common case -- the
+              invoice gets scanned at home, hours after the visit was logged
+              at the workshop. Putting it here means that does not require
+              reopening the whole edit form. Rendered only when the row is
+              expanded, so the list does not fire one request per record. */}
+          <ServiceAttachments serviceId={record.id} />
 
           <button
             onClick={onEdit}

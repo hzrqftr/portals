@@ -63,6 +63,7 @@ the one that knows about the database.
 | Account ID | `d635376dc2be247b10234d81a23a15f5` | appears in every dashboard URL |
 | The database | `fleet` | D1 |
 | The backup bucket | `portals-backup` | R2 |
+| The documents bucket | `portals-docs` | R2 -- receipts, NOT backed up, see below |
 | The Worker that runs the backup | `fleet-portal` | Workers & Pages |
 | The backup files | `fleet/YYYY-MM-DD.json` | inside the bucket |
 
@@ -282,6 +283,40 @@ rather than after.** Being able to read your own ledger without the app is a
 reasonable thing to want from a system that replaced a spreadsheet.
 
 ---
+
+## Receipts are not in the backup
+
+Since 2026-09-10 a service record in Odometry can carry scanned receipts. The
+**rows** describing them are in the nightly export like everything else -- the
+filename, size, type and the key that finds the file. **The files themselves
+are not.** They live in a separate R2 bucket, `portals-docs`, which nothing
+backs up and which D1 Time Travel does not reach.
+
+So the two safety nets above protect the database, and receipts sit outside
+both. What that means in practice:
+
+| If this happens | The receipts |
+|---|---|
+| You delete a service record by accident | Gone. Deleting a record deletes its files deliberately, and Time Travel restoring the row will not bring the file back |
+| You restore the database to an earlier day | Rows may point at files that were since deleted; the app shows those as "Attachment file is missing" rather than breaking |
+| You lose the Cloudflare account | Gone, along with everything else -- this is the gap the whole "off-Cloudflare copies" item below is about |
+
+This is a deliberate limit, not an oversight. Putting the bytes in D1 would
+mean re-uploading every receipt inside a JSON file every night for ninety
+nights, and the export encodes columns with `JSON.stringify`, which turns a
+binary column into `{}` and breaks the restore silently.
+
+**If receipts start mattering as much as the data**, the cheap fix is R2
+object versioning plus a lifecycle rule on `portals-docs`, set from the
+dashboard -- no code. The thorough fix is including the bucket in the nightly
+job, which changes the export from one JSON file into something that needs its
+own format. Neither is built.
+
+Listing what is in there, if you ever need to:
+
+```bash
+npx wrangler r2 object list portals-docs --remote
+```
 
 ## What is not built
 

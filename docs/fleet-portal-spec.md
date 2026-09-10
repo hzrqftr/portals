@@ -262,7 +262,8 @@ CREATE TABLE service_records (
   labour_cost   INTEGER,          -- minor units; the work, not the parts
                                   -- grand total = labour + SUM(line totals),
                                   -- computed on read, never stored
-  invoice_key   TEXT,             -- R2 object key, Phase 4
+  invoice_key   TEXT,             -- SUPERSEDED by service_attachments (0015),
+                                  -- always NULL, kept to avoid a table rebuild
   notes         TEXT,
   created_at    TEXT NOT NULL
 );
@@ -522,7 +523,7 @@ met yet.
 
 **Phase 3 — Multi-user.** Invitations, role enforcement in UI, garage switching. *Not started.*
 
-**Phase 4 — Automation.** Cron reminder emails, R2 document upload, scheduled database export (§11.6). *Not started — but see §11.6, the export is worth pulling forward before bulk-entering historical records.*
+**Phase 4 — Automation.** Cron reminder emails, ~~R2 document upload~~ (**built 2026-09-10** for service records; renewals still unbuilt), scheduled database export (§11.6). *Not started — but see §11.6, the export is worth pulling forward before bulk-entering historical records.*
 
 ---
 
@@ -613,7 +614,7 @@ If replication is enabled later, a write followed immediately by a read may retu
 |---|---|---|
 | ~~Fuel logging~~ **RESOLVED 2026-09-03** | Enables L/100km, not just cost/km | Built as `fuel_fills` (migration 0013), entered from Coinbox. See below |
 | Depreciation in run rate | Materially changes cost/km | Separate, labelled estimate, off by default |
-| Document storage | R2 free tier is ample | Defer to Phase 4 |
+| ~~Document storage~~ **RESOLVED 2026-09-10** | Receipts on service records | Built as `service_attachments` + R2 bucket `portals-docs` (migration 0015). Renewals still unbuilt |
 | Email provider for reminders | Needs a free-tier transactional sender | Decide at Phase 4 |
 
 **On fuel logging.** §1.2 put "fuel and economy logging" out of scope for v1 and

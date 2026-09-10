@@ -17,6 +17,19 @@ export interface Env extends CoreEnv {
    * requires redeploying this one.
    */
   BACKUPS?: R2Bucket;
+
+  /**
+   * User-uploaded documents -- service receipts today, whatever attaches next
+   * after that. Bucket `portals-docs`, deliberately not the backup bucket.
+   *
+   * REQUIRED, unlike BACKUPS above, and the difference is not an oversight. A
+   * nightly backup that skips when its binding is missing is a no-op nobody
+   * notices until they need it. An UPLOAD that skips would return success to
+   * someone who just attached their only copy of a workshop invoice. Making it
+   * non-optional turns a missing binding into a type error here and a hard
+   * failure at runtime, so tests/vitest.config.ts binds it too.
+   */
+  DOCS: R2Bucket;
 }
 
 export type Role = "owner" | "editor" | "viewer";

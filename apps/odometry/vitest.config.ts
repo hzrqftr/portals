@@ -18,6 +18,11 @@ export default defineConfig({
         compatibilityDate: "2026-08-20",
         compatibilityFlags: ["nodejs_compat"],
         d1Databases: ["DB"],
+        // Env.DOCS is NOT optional, unlike BACKUPS -- an upload that silently
+        // skips when its binding is missing would report success for a receipt
+        // it never stored. Binding it here is what lets the tests exercise the
+        // real path instead of a fake.
+        r2Buckets: ["DOCS"],
         bindings: {
           TEST_MIGRATIONS: migrations,
           ENVIRONMENT: "test",

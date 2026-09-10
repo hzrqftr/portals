@@ -4,14 +4,31 @@ import { serviceItems } from "../schema";
 import {
   NotFoundError,
   assertReadingNotBackwards,
+  deleteAttachments,
   odometerUpdateStatement,
   odometerWriteStatements,
   recacheOdometerStatement,
 } from "@portals/core/worker";
 import { nowIso } from "@portals/core";
+import type { Env, Scope } from "../types";
 import type { ServiceInput, ServiceUpdate, ServiceType } from "@shared/zod";
 
 export class ServiceRepo extends GarageScopedRepo {
+  /**
+   * Takes the whole env for one reason: deleting a service has to delete the
+   * receipts attached to it from R2, and only D1 knows how to cascade.
+   */
+  private readonly docs: R2Bucket;
+  constructor(
+    db: ConstructorParameters<typeof GarageScopedRepo>[0],
+    raw: D1Database,
+    scope: Scope,
+    env: Env,
+  ) {
+    super(db, raw, scope);
+    this.docs = env.DOCS;
+  }
+
   async list(vehicleId: string) {
     await this.assertOwnedVehicle(vehicleId);
 
@@ -281,6 +298,18 @@ export class ServiceRepo extends GarageScopedRepo {
       .first<{ vehicle_id: string; odometer_reading_id: string | null }>();
     if (!existing) throw new NotFoundError("Service record not found");
 
+    // Same reason, one row further out: service_attachments rows cascade with
+    // the record (migration 0015), but the R2 OBJECTS they point at do not.
+    // Once the rows are gone there is nothing left holding the keys, so they
+    // have to be read while the rows still exist.
+    const attached = await this.raw
+      .prepare(
+        `SELECT r2_key FROM service_attachments
+          WHERE service_record_id = ? AND garage_id = ?`,
+      )
+      .bind(id, this.garageId)
+      .all<{ r2_key: string }>();
+
     // Deleting the visit deletes the reading it wrote. Until migration 0014
     // linked the two this was impossible, so a deleted service left its
     // reading behind -- and with it a vehicle whose cached odometer was held
@@ -308,6 +337,15 @@ export class ServiceRepo extends GarageScopedRepo {
     );
 
     await this.raw.batch(statements);
+
+    // After the batch commits, never before: a failed delete must not have
+    // already destroyed the files. The reverse order leaves orphan objects,
+    // which cost bytes; this order can only ever leave them too, and only if
+    // R2 itself fails.
+    await deleteAttachments(
+      this.docs,
+      attached.results.map((r) => r.r2_key),
+    );
   }
 
   /**

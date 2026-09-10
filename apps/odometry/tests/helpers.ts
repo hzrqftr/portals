@@ -23,11 +23,16 @@ export function as(email: string) {
 
   return async function request(
     path: string,
-    init?: RequestInit & { json?: unknown },
-  ): Promise<{ status: number; body: any; text: string }> {
-    const { json, ...rest } = init ?? {};
+    init?: RequestInit & { json?: unknown; form?: FormData },
+  ): Promise<{ status: number; body: any; text: string; bytes: ArrayBuffer; headers: Headers }> {
+    const { json, form, ...rest } = init ?? {};
+    // `form` sets no content-type header on purpose: the runtime derives the
+    // multipart boundary, and supplying one by hand produces a body the server
+    // cannot parse. The client has the same trap -- see api() in
+    // packages/core/src/client/api.ts.
     const req = new Request(`https://fleet.test${path}`, {
       ...rest,
+      ...(form !== undefined ? { body: form } : {}),
       ...(json !== undefined
         ? {
             body: JSON.stringify(json),
@@ -36,14 +41,18 @@ export function as(email: string) {
         : {}),
     });
     const res = await app.fetch(req, env as never, ctx);
-    const text = await res.text();
+    const headers = res.headers;
+    // Read once, as bytes, then decode. Attachment downloads are binary and a
+    // .text() on them would corrupt what the assertions compare.
+    const bytes = await res.arrayBuffer();
+    const text = new TextDecoder().decode(bytes);
     let body: unknown = null;
     try {
       body = text ? JSON.parse(text) : null;
     } catch {
       body = text;
     }
-    return { status: res.status, body, text };
+    return { status: res.status, body, text, bytes, headers };
   };
 }
 
@@ -55,6 +64,7 @@ declare global {
   namespace Cloudflare {
     interface Env {
       DB: D1Database;
+      DOCS: R2Bucket;
       TEST_MIGRATIONS: D1Migration[];
     }
   }
@@ -82,6 +92,10 @@ export async function resetDb(): Promise<void> {
     // null transaction_id cascades from neither. It goes first.
     "fuel_fills",
     "service_items",
+    // Child of service_records. Before its parent, like service_items -- and
+    // note the R2 objects these rows point at are NOT cleaned up here; each
+    // test's bucket is its own, so they vanish with it.
+    "service_attachments",
     "service_records",
     "odometer_readings",
     "maintenance_intervals",
@@ -101,4 +115,25 @@ export async function resetDb(): Promise<void> {
     // Garage-scoped custom part types go; the global seed set stays.
     env.DB.prepare(`DELETE FROM part_types WHERE garage_id IS NOT NULL`),
   ]);
+}
+
+/**
+ * The smallest byte sequence that sniffs as a PDF, with a distinguishable
+ * payload so a round trip can be compared exactly.
+ *
+ * A real PDF is not needed: nothing in this system parses one. What IS needed
+ * is a leading "%PDF-", because the upload path derives the stored content
+ * type from the bytes rather than from anything the client claims.
+ */
+export function pdfBytes(marker = "receipt"): Uint8Array {
+  return new TextEncoder().encode(`%PDF-1.4
+${marker}
+%%EOF
+`);
+}
+
+export function filePart(bytes: Uint8Array, filename: string, declaredType = "application/pdf") {
+  const form = new FormData();
+  form.set("file", new File([bytes as BufferSource], filename, { type: declaredType }));
+  return form;
 }
