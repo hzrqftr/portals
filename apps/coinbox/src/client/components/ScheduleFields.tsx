@@ -1,4 +1,4 @@
-import { Field, Select, INPUT } from "@portals/core/client";
+import { DATE_INPUT, Field, Select, INPUT } from "@portals/core/client";
 import { describeSchedule, ordinal } from "@shared/recurrence";
 
 /**
@@ -79,7 +79,7 @@ export function ScheduleFields({
             server too, but the picker should not offer what will be refused. */}
         <input
           type="date"
-          className={INPUT + " mt-1"}
+          className={DATE_INPUT + " mt-1"}
           value={value.startsOn}
           min={today}
           onChange={(e) => set({ startsOn: e.target.value })}
@@ -89,7 +89,7 @@ export function ScheduleFields({
       <Field label="Until (optional)">
         <input
           type="date"
-          className={INPUT + " mt-1"}
+          className={DATE_INPUT + " mt-1"}
           value={value.endsOn ?? ""}
           min={value.startsOn}
           onChange={(e) => set({ endsOn: e.target.value || null })}

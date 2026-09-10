@@ -13,7 +13,7 @@ import {
   type VehicleType,
 } from "../api/hooks";
 import { parseSen, toQuantityMilli } from "@portals/core";
-import { Field, INPUT, Select, digitsOnly } from "@portals/core/client";
+import { DATE_INPUT, Field, INPUT, Select, digitsOnly } from "@portals/core/client";
 import { formatKm } from "../lib/format";
 import { Sheet } from "@portals/core/client";
 import { PartPicker } from "./PartPicker";
@@ -239,13 +239,19 @@ export function ServiceSheet({
         <>
           <h2 className="text-lg font-semibold">{heading}</h2>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Stacked on a phone, paired from `sm` up. min-w-0 on Field stops
+              the date control overlapping the odometer, but two columns at
+              390px still leaves each field about 130px of text room for a
+              control the platform draws to its own taste -- and this form gets
+              filled in standing at a workshop counter, where a full-width tap
+              target is worth more than a tidy pair. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Date">
               <input
                 type="date"
                 value={servicedOn}
                 onChange={(e) => set("servicedOn", e.target.value)}
-                className={INPUT}
+                className={DATE_INPUT}
               />
             </Field>
             <Field label="Odometer (km)">

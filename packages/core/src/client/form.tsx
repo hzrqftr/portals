@@ -14,6 +14,30 @@ export const INPUT =
   "placeholder:text-ink-faint focus:border-ink-muted focus:outline-none";
 
 /**
+ * A date input that behaves like the text inputs beside it.
+ *
+ * Native date controls report a LARGE INTRINSIC MINIMUM WIDTH -- enough for
+ * the formatted date plus the platform's own picker chrome -- and on iOS that
+ * minimum is wider than half a phone screen. `w-full` alone does not save you:
+ * a grid or flex item defaults to `min-width: auto`, so the TRACK grows to fit
+ * that minimum and the neighbouring field is overlapped rather than shrunk.
+ * `Field` carries `min-w-0` for that reason; this constant is the other half.
+ *
+ * `::-webkit-date-and-time-value` is where the text actually lives, and it is
+ * not left-aligned by default -- iOS pushes it toward the trailing edge, so a
+ * date sat visibly off-centre next to a left-aligned odometer.
+ *
+ * WHAT THIS DELIBERATELY DOES NOT DO IS SET `appearance: none`. That is the
+ * usual advice for taming these controls, and it is the same trap documented
+ * on Select below: Chrome stops honouring `color-scheme: dark` the moment
+ * `appearance` is overridden, and the native picker would render white on a
+ * dark form. `:root { color-scheme: dark }` in each app's index.css is
+ * load-bearing precisely here.
+ */
+export const DATE_INPUT =
+  INPUT + " min-w-0 [&::-webkit-date-and-time-value]:text-left";
+
+/**
  * A styled `<select>` with a chevron this codebase controls.
  *
  * WHY NOT JUST USE INPUT ON A NATIVE SELECT, as every call site used to:
@@ -85,7 +109,11 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className={"mt-4 block " + className}>
+    // min-w-0: a Field is often a grid item, and grid items refuse to shrink
+    // below their content's intrinsic minimum unless told otherwise. A native
+    // date control's minimum is wide enough to push its neighbour off the
+    // track, which is exactly what it did to the odometer field.
+    <label className={"mt-4 block min-w-0 " + className}>
       <span className="text-sm text-ink-muted">{label}</span>
       {children}
     </label>

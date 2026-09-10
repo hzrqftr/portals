@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Field, INPUT, Select, Sheet, SheetActions } from "@portals/core/client";
+import { DATE_INPUT, Field, INPUT, Select, Sheet, SheetActions } from "@portals/core/client";
 import { parseSen } from "@portals/core";
 import {
   useCategories,
@@ -288,7 +288,7 @@ export function TransactionSheet({
 
       <Field label="Date">
         <input
-          className={INPUT}
+          className={DATE_INPUT}
           type="date"
           value={occurredOn}
           onChange={(e) => setOccurredOn(e.target.value)}
