@@ -113,6 +113,16 @@ export const serviceItemInput = z.object({
   partTypeId: z.string().min(1),
   brand: z.string().max(60).optional(),
   spec: z.string().max(60).optional(),
+  /**
+   * Whatever the receipt needs saying about THIS part -- "incl. RM28 O-ring",
+   * "supplied by me", "second-hand unit".
+   *
+   * 200 rather than brand and spec's 60, because this is a sentence and not a
+   * label, and rather than serviceInput.notes' 2000, because it renders inside
+   * a list row. serviceInput.notes stays the place for anything about the
+   * visit as a whole; this is the only field that can name a line.
+   */
+  note: z.string().max(200).optional(),
   quantityMilli: quantityMilli.default(1000),
   unitCost: sen.nonnegative().optional(),
   warrantyMonths: z.number().int().nonnegative().max(240).optional(),

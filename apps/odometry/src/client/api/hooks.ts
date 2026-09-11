@@ -115,6 +115,7 @@ export interface ServiceItem {
   partName: string | null;
   brand: string | null;
   spec: string | null;
+  note: string | null;
   quantityMilli: number;
   unitCost: number | null;
   lineTotalCost: number | null;
@@ -298,6 +299,7 @@ export function useCreatePartType() {
 export interface ServiceItemDraft {
   partTypeId: string;
   brand?: string;
+  note?: string;
   spec?: string;
   quantityMilli: number;
   unitCost?: number;

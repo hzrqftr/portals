@@ -16,6 +16,7 @@ import { parseSen, toQuantityMilli } from "@portals/core";
 import { DATE_INPUT, Field, INPUT, Select, digitsOnly } from "@portals/core/client";
 import { formatKm } from "../lib/format";
 import { Sheet } from "@portals/core/client";
+import { CustomPartDialog } from "./CustomPartDialog";
 import { PartPicker } from "./PartPicker";
 import { ServiceItemRow } from "./ServiceItemRow";
 import { useServiceDraft } from "./serviceDraft";
@@ -76,6 +77,10 @@ export function ServiceSheet({
   // draft: null while editing, the part names once the save has come back.
   const [saved, setSaved] = useState<string[] | null>(null);
 
+  // Also the sheet's phase rather than the form's content: opening the panel
+  // changes nothing about the visit being logged, and closing it must not.
+  const [addingCustom, setAddingCustom] = useState(false);
+
   // Receipts picked before the record exists. On a new visit there is no id to
   // upload against until the save comes back, so they are held here and sent
   // in the mutation's onSuccess. When editing, the id already exists and
@@ -96,7 +101,11 @@ export function ServiceSheet({
     return interval === null ? null : odo + interval;
   }
 
-  function addPart(partTypeId: string) {
+  /**
+   * `name` is only passed for a part type created seconds ago, whose fetch has
+   * not landed yet. Everything else looks itself up.
+   */
+  function addPart(partTypeId: string, name?: string) {
     setDraft((prev) =>
       prev.items.some((i) => i.partTypeId === partTypeId)
         ? prev
@@ -107,9 +116,10 @@ export function ServiceSheet({
               {
                 key: crypto.randomUUID(),
                 partTypeId,
-                partName: nameOf(partTypeId),
+                partName: name ?? nameOf(partTypeId),
                 brand: "",
                 spec: "",
+                note: "",
                 quantity: "",
                 unitCost: "",
                 warrantyMonths: "",
@@ -172,6 +182,7 @@ export function ServiceSheet({
       };
       if (i.brand.trim()) draft.brand = i.brand.trim();
       if (i.spec.trim()) draft.spec = i.spec.trim();
+      if (i.note.trim()) draft.note = i.note.trim();
       const unit = parseSen(i.unitCost);
       if (unit !== null) draft.unitCost = unit;
       if (i.warrantyMonths !== "") draft.warrantyMonths = Number(i.warrantyMonths);
@@ -344,12 +355,26 @@ export function ServiceSheet({
             </>
           )}
 
-          <PartPicker
-            partTypes={partTypes.data ?? []}
-            maintenance={maintenance.data ?? []}
-            exclude={items.map((i) => i.partTypeId)}
-            onAdd={addPart}
-          />
+          {addingCustom ? (
+            <CustomPartDialog
+              // usePartTypes is refetching when this fires, so nameOf() cannot
+              // resolve the new id yet and addPart would label the row "Part".
+              // The name is already in hand here, so pass it through.
+              onCreated={(id, name) => {
+                addPart(id, name);
+                setAddingCustom(false);
+              }}
+              onCancel={() => setAddingCustom(false)}
+            />
+          ) : (
+            <PartPicker
+              partTypes={partTypes.data ?? []}
+              maintenance={maintenance.data ?? []}
+              exclude={items.map((i) => i.partTypeId)}
+              onAdd={addPart}
+              onAddCustom={() => setAddingCustom(true)}
+            />
+          )}
 
           <Field label="Labour (RM)">
             <input

@@ -221,6 +221,55 @@ describe("editing a service", () => {
     expect(res.body[0].workshopName).toBeNull();
   });
 
+  it("clears a line item's note the same way, since items are replaced whole", async () => {
+    const vehicleId = await makeVehicle(50_000);
+    const serviceId = await logService(vehicleId, {
+      items: [{ partTypeId: "pt_engine_oil", note: "incl. RM28 O-ring" }],
+    });
+
+    // The note follows the same rule as every other optional: a replacement
+    // that omits it clears it. Worth pinning separately because it lives on the
+    // item rather than the record, and the items are deleted and re-inserted.
+    await call(`/api/services/${serviceId}`, {
+      method: "PATCH",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 45_000,
+        items: [{ partTypeId: "pt_engine_oil" }],
+      },
+    });
+
+    const res = await call(`/api/vehicles/${vehicleId}/services`);
+    expect(res.body[0].items).toHaveLength(1);
+    expect(res.body[0].items[0].note).toBeNull();
+  });
+
+  it("keeps a note attached to its own line when several are edited at once", async () => {
+    const vehicleId = await makeVehicle(50_000);
+    const serviceId = await logService(vehicleId, {
+      items: [{ partTypeId: "pt_engine_oil" }, { partTypeId: "pt_fuel_filter" }],
+    });
+
+    await call(`/api/services/${serviceId}`, {
+      method: "PATCH",
+      json: {
+        servicedOn: "2026-02-10",
+        odometerKm: 45_000,
+        items: [
+          { partTypeId: "pt_engine_oil", note: "owner supplied" },
+          { partTypeId: "pt_fuel_filter", note: "incl. RM28 O-ring" },
+        ],
+      },
+    });
+
+    const items = (await call(`/api/vehicles/${vehicleId}/services`)).body[0].items as {
+      partTypeId: string;
+      note: string | null;
+    }[];
+    expect(items.find((i) => i.partTypeId === "pt_engine_oil")!.note).toBe("owner supplied");
+    expect(items.find((i) => i.partTypeId === "pt_fuel_filter")!.note).toBe("incl. RM28 O-ring");
+  });
+
   it("leaves the vehicle's interval alone when a line item is removed", async () => {
     const vehicleId = await makeVehicle(50_000);
     const serviceId = await logService(vehicleId);

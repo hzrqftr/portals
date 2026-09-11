@@ -69,6 +69,7 @@ function fromRecord(record: ServiceRecord): ServiceDraftState {
       partName: item.partName ?? "Part",
       brand: item.brand ?? "",
       spec: item.spec ?? "",
+      note: item.note ?? "",
       // "" means "1", which is what the sheet's save path assumes. Writing
       // "1" here instead would be equivalent but noisier on screen.
       quantity: item.quantityMilli === 1000 ? "" : String(fromQuantityMilli(item.quantityMilli)),

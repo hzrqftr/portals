@@ -26,6 +26,7 @@ const B_MARKERS = [
   "BOB_PLATE_9999",
   "BOB_WORKSHOP",
   "BOB_BRAND",
+  "BOB_ITEM_NOTE",
   "BOB_INSURER",
   "BOB_POLICY_REF",
   "BOB_SPARE_PART",
@@ -66,6 +67,10 @@ async function seed(email: string, tag: string): Promise<Seeded> {
         {
           partTypeId: "pt_engine_oil",
           brand: `${tag}_BRAND`,
+          // A free-text column returned by /api/vehicles/:id/services
+          // (migration 0017). No endpoint was added for it, so the sweep below
+          // is the only thing that would notice it leaking.
+          note: `${tag}_ITEM_NOTE`,
           quantityMilli: 4_500,
           unitCost: 4_200,
         },

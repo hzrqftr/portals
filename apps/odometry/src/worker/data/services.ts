@@ -55,7 +55,7 @@ export class ServiceRepo extends GarageScopedRepo {
                   WHERE i.service_record_id = sr.id
                     AND i.garage_id = sr.garage_id) AS parts_cost,
                 si.id AS item_id, si.part_type_id, pt.name AS part_name,
-                si.brand, si.spec, si.quantity_milli, si.unit_cost,
+                si.brand, si.spec, si.note, si.quantity_milli, si.unit_cost,
                 si.line_total_cost, si.warranty_months,
                 si.interval_km_override, si.interval_months_override,
                 -- Warranty expiry is derived here rather than stored, for the
@@ -372,9 +372,9 @@ export class ServiceRepo extends GarageScopedRepo {
           .prepare(
             `INSERT INTO service_items
                (id, garage_id, service_record_id, part_type_id, brand, spec,
-                quantity_milli, unit_cost, warranty_months,
+                note, quantity_milli, unit_cost, warranty_months,
                 interval_km_override, interval_months_override)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
           )
           .bind(
             crypto.randomUUID(),
@@ -383,6 +383,7 @@ export class ServiceRepo extends GarageScopedRepo {
             item.partTypeId,
             item.brand ?? null,
             item.spec ?? null,
+            item.note ?? null,
             item.quantityMilli,
             item.unitCost ?? null,
             item.warrantyMonths ?? null,
@@ -478,6 +479,7 @@ interface ServiceJoinRow {
   part_name: string | null;
   brand: string | null;
   spec: string | null;
+  note: string | null;
   quantity_milli: number | null;
   unit_cost: number | null;
   line_total_cost: number | null;
@@ -508,6 +510,7 @@ function groupItems(rows: ServiceJoinRow[]) {
         partName: r.part_name,
         brand: r.brand,
         spec: r.spec,
+        note: r.note,
         quantityMilli: r.quantity_milli!,
         unitCost: r.unit_cost,
         lineTotalCost: r.line_total_cost,
@@ -540,6 +543,7 @@ function shell(r: ServiceJoinRow) {
       partName: string | null;
       brand: string | null;
       spec: string | null;
+      note: string | null;
       quantityMilli: number;
       unitCost: number | null;
       lineTotalCost: number | null;

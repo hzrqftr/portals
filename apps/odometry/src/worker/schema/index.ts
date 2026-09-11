@@ -223,6 +223,10 @@ export const serviceItems = sqliteTable(
     partTypeId: text("part_type_id").notNull(),
     brand: text("brand"),
     spec: text("spec"),
+    // Whatever the receipt needs saying about THIS part. Distinct from
+    // service_records.notes, which belongs to the whole visit and so cannot
+    // name the line it refers to. Added by migration 0017.
+    note: text("note"),
     // Integer thousandths, never a float. See src/shared/money.ts.
     quantityMilli: integer("quantity_milli").notNull().default(1000),
     unitCost: integer("unit_cost"), // sen

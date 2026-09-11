@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vite
 import { env } from "cloudflare:test";
 import { as, migrate, resetDb } from "./helpers";
 import { todayIn } from "@portals/core";
+import { CATEGORY_ORDER } from "../src/client/lib/partCategories";
 
 /**
  * Proves the behaviours where the spec, taken literally, would have produced
@@ -403,6 +404,147 @@ describe("motorcycles get their own catalogue (migration 0008)", () => {
     });
     expect(res.status).toBe(201);
     expect((await trackedIds(res.body.id as string))).toContain("pt_cabin_filter");
+  });
+});
+
+describe("the throttle position sensor (migration 0016)", () => {
+  const catalogue = async (vehicleType: "car" | "motorcycle") =>
+    (await call(`/api/part-types?vehicleType=${vehicleType}`)).body as {
+      id: string;
+      name: string;
+      category: string;
+      default_interval_km: number | null;
+    }[];
+
+  it("is offered to both a car and a bike", async () => {
+    // Every fuel-injected vehicle has one, which is why it is a global seed
+    // row rather than a garage's own. A part type with no part_type_defaults
+    // row for a vehicle type is invisible to it -- PartTypeRepo.list INNER
+    // JOINs that table -- so "both" is the thing worth asserting.
+    for (const type of ["car", "motorcycle"] as const) {
+      const row = (await catalogue(type)).find((p) => p.id === "pt_tps");
+      expect(row, `pt_tps should reach a ${type}`).toBeDefined();
+      expect(row!.name).toBe("Throttle position sensor");
+      // A category the client can group under, or it renders in a nameless
+      // bucket at the end of the picker.
+      expect(CATEGORY_ORDER).toContain(row!.category);
+    }
+  });
+
+  it("carries no interval, because a sensor fails rather than falls due", async () => {
+    expect((await catalogue("car")).find((p) => p.id === "pt_tps")!.default_interval_km).toBeNull();
+  });
+
+  it("is not seeded onto a new vehicle", async () => {
+    const tracked = ((await call(`/api/vehicles/${await makeVehicle()}/maintenance`)).body as {
+      part_type_id: string;
+    }[]).map((r) => r.part_type_id);
+    expect(tracked).not.toContain("pt_tps");
+  });
+
+  it("starts no maintenance clock when one is fitted", async () => {
+    const vehicleId = await makeVehicle();
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-09-10",
+        odometerKm: 51_000,
+        items: [{ partTypeId: "pt_tps", unitCost: 14_500 }],
+      },
+    });
+
+    // seed_by_default 0 with NULL intervals: recording that it was replaced is
+    // the whole point, and it must not invent a schedule to do it.
+    const tracked = ((await call(`/api/vehicles/${vehicleId}/maintenance`)).body as {
+      part_type_id: string;
+    }[]).map((r) => r.part_type_id);
+    expect(tracked).not.toContain("pt_tps");
+  });
+});
+
+describe("a line item carries its own note (migration 0017)", () => {
+  const itemsOf = async (vehicleId: string) =>
+    (await call(`/api/vehicles/${vehicleId}/services`)).body[0].items as {
+      partTypeId: string;
+      note: string | null;
+      lineTotalCost: number | null;
+    }[];
+
+  it("round-trips a note against the part it belongs to", async () => {
+    const vehicleId = await makeVehicle();
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-09-10",
+        odometerKm: 51_000,
+        items: [
+          { partTypeId: "pt_fuel_filter", unitCost: 7_600, note: "incl. RM28 O-ring" },
+          { partTypeId: "pt_engine_oil", unitCost: 12_000 },
+        ],
+      },
+    });
+
+    const items = await itemsOf(vehicleId);
+    // The point of the column: the remark names ONE line. service_records.notes
+    // belongs to the visit and cannot say which part it is about.
+    expect(items.find((i) => i.partTypeId === "pt_fuel_filter")!.note).toBe("incl. RM28 O-ring");
+    expect(items.find((i) => i.partTypeId === "pt_engine_oil")!.note).toBeNull();
+  });
+
+  it("does not disturb the generated line total", async () => {
+    const vehicleId = await makeVehicle();
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-09-10",
+        odometerKm: 51_000,
+        items: [{ partTypeId: "pt_engine_oil", quantityMilli: 4_500, unitCost: 3_000, note: "n" }],
+      },
+    });
+
+    // ADD COLUMN on a table with a VIRTUAL generated column: the arithmetic
+    // must be untouched. 4.5 x RM 30.00 = RM 135.00.
+    expect((await itemsOf(vehicleId))[0]!.lineTotalCost).toBe(13_500);
+  });
+
+  it("rejects a note longer than the column is meant to hold", async () => {
+    const vehicleId = await makeVehicle();
+    const res = await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-09-10",
+        odometerKm: 51_000,
+        items: [{ partTypeId: "pt_engine_oil", note: "x".repeat(201) }],
+      },
+    });
+    expect(res.status).toBe(422);
+  });
+
+  it("totals the receipt this column was built for", async () => {
+    const vehicleId = await makeVehicle({ nickname: "RS150R", vehicleType: "motorcycle" });
+    // RM 424.00 over five lines, one of which folds a consumable into its unit
+    // cost and says so in the note. Five items also re-exercises the guard
+    // against multiplying the parts by the number of joined rows.
+    await call(`/api/vehicles/${vehicleId}/services`, {
+      method: "POST",
+      json: {
+        servicedOn: "2026-09-10",
+        odometerKm: 91_400,
+        serviceType: "repair",
+        items: [
+          { partTypeId: "pt_tps", unitCost: 14_500 },
+          { partTypeId: "pt_valve_clearance", unitCost: 9_500 },
+          { partTypeId: "pt_throttle_body", unitCost: 8_000 },
+          { partTypeId: "pt_brake_pad_rear", unitCost: 2_800, spec: "rear" },
+          { partTypeId: "pt_fuel_filter", unitCost: 7_600, note: "incl. RM28 O-ring" },
+        ],
+      },
+    });
+
+    const rec = (await call(`/api/vehicles/${vehicleId}/services`)).body[0];
+    expect(rec.partsCost).toBe(42_400);
+    expect(rec.labourCost).toBeNull();
+    expect(rec.totalCost).toBe(42_400);
   });
 });
 

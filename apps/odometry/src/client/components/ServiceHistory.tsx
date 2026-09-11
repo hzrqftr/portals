@@ -129,6 +129,12 @@ function RecordRow({
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
+                  {/*
+                    Its own line rather than another entry in the joined list
+                    above: a note runs to 200 chars where brand and spec stop
+                    at 60, and it is a sentence rather than a label.
+                  */}
+                  {item.note && <p className="text-ink-muted">{item.note}</p>}
                   {item.nextDueKm !== null && (
                     <p className="text-ink-faint">
                       Next due at {formatKm(item.nextDueKm)} &mdash; set on this visit

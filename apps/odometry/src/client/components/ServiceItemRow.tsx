@@ -19,6 +19,8 @@ export interface ItemDraft {
   partName: string;
   brand: string;
   spec: string;
+  /** Free text about THIS part, e.g. "incl. RM28 O-ring". Max 200 server-side. */
+  note: string;
   quantity: string;
   unitCost: string;
   warrantyMonths: string;
@@ -42,7 +44,16 @@ export function ServiceItemRow({
   onChange: (next: ItemDraft) => void;
   onRemove: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  // Collapsed for a part just added, open for one that already carries any of
+  // these. Correcting a record must not hide the values it holds behind a
+  // button the owner has no reason to press -- a note or a cost that is only
+  // visible after a click reads as data that was lost.
+  const [open, setOpen] = useState(
+    item.unitCost !== "" ||
+      item.quantity !== "" ||
+      item.warrantyMonths !== "" ||
+      item.note !== "",
+  );
   const brands = useBrandSuggestions(item.partTypeId);
   const set = (patch: Partial<ItemDraft>) => onChange({ ...item, ...patch });
 
@@ -120,7 +131,8 @@ export function ServiceItemRow({
       )}
 
       {open ? (
-        <div className="mt-2 grid grid-cols-3 gap-2">
+        <>
+          <div className="mt-2 grid grid-cols-3 gap-2">
           <label className="block">
             <span className="text-xs text-ink-muted">Qty</span>
             <input
@@ -154,10 +166,28 @@ export function ServiceItemRow({
               className={INPUT + " mt-0 py-2"}
             />
           </label>
-        </div>
+          </div>
+
+          {/*
+            Full width and below the costs, not beside them. It sits in this
+            disclosure rather than next to Brand and Spec because the case that
+            earns it is annotating a PRICE -- a fuel filter billed at RM 76
+            where RM 28 of it was the O-ring. Brand and spec identify the part;
+            this explains the number.
+          */}
+          <label className="mt-2 block">
+            <span className="text-xs text-ink-muted">Note</span>
+            <input
+              value={item.note}
+              onChange={(e) => set({ note: e.target.value.slice(0, 200) })}
+              placeholder="Anything about this part"
+              className={INPUT + " mt-0 py-2"}
+            />
+          </label>
+        </>
       ) : (
         <button onClick={() => setOpen(true)} className="mt-2 text-xs text-ink-faint underline">
-          Cost, quantity and warranty
+          Cost, quantity and notes
         </button>
       )}
     </li>
