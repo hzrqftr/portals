@@ -1,11 +1,16 @@
 import { useState } from "react";
-import type { MaintenanceRow, VehicleType } from "../api/hooks";
+import type { MaintenanceRow } from "../api/hooks";
 import { MaintenanceGroups } from "./MaintenanceGroups";
-import { UntrackedParts } from "./UntrackedParts";
 import { PartDetailSheet } from "./PartDetailSheet";
 import { INPUT } from "@portals/core/client";
 
-/** Spec 8.2: intervals with last done, next due, status, and inline editing. */
+/**
+ * Spec 8.2: every tracked part with last done, next due and status.
+ *
+ * Status only, since 2026-09-20. Which parts are tracked, and how often each
+ * is due, is the Schedule tab's job -- one table, every part, edited together
+ * -- so the untracked list and the per-part editor that lived here moved there.
+ */
 
 type Filter = "all" | "attention" | "unset";
 
@@ -16,13 +21,11 @@ const FILTERS: { value: Filter; label: string }[] = [
 ];
 
 export function MaintenanceList({
-  vehicleId,
-  vehicleType,
   rows,
+  onEditSchedule,
 }: {
-  vehicleId: string;
-  vehicleType: VehicleType;
   rows: MaintenanceRow[];
+  onEditSchedule: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
@@ -91,16 +94,19 @@ export function MaintenanceList({
         <MaintenanceGroups rows={shown} onOpen={setOpen} />
       )}
 
-      <UntrackedParts
-        vehicleId={vehicleId}
-        vehicleType={vehicleType}
-        tracked={rows.map((r) => r.part_type_id)}
-        query={query}
-      />
+      <p className="mt-4 text-sm text-ink-muted">
+        Tracking a part, or changing how often it is due, is done on the schedule.{" "}
+        <button onClick={onEditSchedule} className="underline hover:text-ink">
+          Edit the schedule
+        </button>
+      </p>
 
       {open && (
         <PartDetailSheet
-          vehicleId={vehicleId}
+          onEditSchedule={() => {
+            setOpen(null);
+            onEditSchedule();
+          }}
           // Re-read from rows so the sheet reflects a just-saved edit rather
           // than the snapshot captured when the tile was clicked.
           row={rows.find((r) => r.interval_id === open.interval_id) ?? open}

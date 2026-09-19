@@ -2,25 +2,24 @@ import type { MaintenanceRow } from "../api/hooks";
 import { Sheet } from "@portals/core/client";
 import { StatusPill } from "./StatusPill";
 import { PartIcon } from "./PartIcon";
-import { IntervalEditor } from "./IntervalEditor";
 import { Interval } from "./MaintenanceTile";
 import { relativeDays, formatKm } from "../lib/format";
 
 /**
  * Everything about one part, opened by tapping its tile.
  *
- * A tile is too small to carry the baseline, the due point and an inline
- * editor, so the detail moved here rather than being dropped. The editor
- * itself is unchanged -- IntervalEditor is reused as-is.
+ * A tile is too small to carry the baseline and the due point, so the detail
+ * lives here. The interval is shown, not edited: the Schedule tab is the one
+ * place it changes (2026-09-20), and this sheet links there.
  */
 export function PartDetailSheet({
-  vehicleId,
   row,
   onClose,
+  onEditSchedule,
 }: {
-  vehicleId: string;
   row: MaintenanceRow;
   onClose: () => void;
+  onEditSchedule: () => void;
 }) {
   return (
     <Sheet title={row.part_name} onClose={onClose}>
@@ -64,16 +63,15 @@ export function PartDetailSheet({
           </>
         )}
 
-        {row.baseline_date !== null && (
-          <p className="pt-1 text-xs text-ink-faint">
-            This schedule was set at the last service. Changing it here applies straight
-            away, and the next service can set it again.
-          </p>
-        )}
       </dl>
 
-      <div className="mt-5 border-t border-edge pt-1">
-        <IntervalEditor vehicleId={vehicleId} row={row} onDone={onClose} />
+      <div className="mt-5 border-t border-edge pt-4">
+        <button
+          onClick={onEditSchedule}
+          className="w-full rounded-xl border border-edge py-2.5 text-sm text-ink-muted hover:text-ink"
+        >
+          Change this schedule
+        </button>
       </div>
     </Sheet>
   );

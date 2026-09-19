@@ -27,3 +27,15 @@ export function formatKm(km: number | null): string {
   if (km === null) return "\u2014";
   return `${km.toLocaleString("en-MY")} km`;
 }
+
+/**
+ * "10,000 km or 6 months" -- an interval as the manuals write it, whichever
+ * comes first. Either half may be missing; both missing reads "not set".
+ */
+export function formatInterval(km: number | null, months: number | null): string {
+  const parts = [
+    km !== null ? formatKm(km) : null,
+    months !== null ? `${months} month${months === 1 ? "" : "s"}` : null,
+  ];
+  return parts.filter(Boolean).join(" or ") || "not set";
+}

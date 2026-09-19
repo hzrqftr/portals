@@ -1,26 +1,23 @@
 import { describe, it, expect } from "vitest";
 import {
+  adoptedInterval,
   canSaveService,
   deriveTotals,
-  makeDefaultNextDueKm,
-  partsSettingASchedule,
+  partsChangingTheSchedule,
+  partsResettingAClock,
   toItemDrafts,
 } from "../src/client/components/serviceTotals";
 import type { ItemDraft } from "../src/client/components/ServiceItemRow";
-import type { MaintenanceRow, PartType } from "../src/client/api/hooks";
+import type { MaintenanceRow } from "../src/client/api/hooks";
 
 /**
  * The arithmetic behind the log-service form, tested directly.
  *
- * This code used to live inside ServiceSheet, where the only way to reach it
- * was to render a sheet. Both of the things it computes are silent when wrong:
- * a money total that disagrees with the server by a sen looks like a rounding
- * opinion rather than a bug, and an interval sent as a due point leaves
- * invariant 6 violated with nothing on screen able to say so.
- *
- * tests/serviceEdit.test.ts covers the same invariant from the server end --
- * correct the odometer and watch the due point move. This covers the client
- * end: the conversion that makes the API's side possible at all.
+ * Two things here are silent when wrong: a money total that disagrees with
+ * the server by a sen looks like a rounding opinion rather than a bug, and --
+ * since 2026-09-20 -- a line that sends an interval the owner did not ask for
+ * rewrites the schedule with nothing on screen to say so. That second one is
+ * the behaviour the owner asked to be rid of.
  */
 
 function item(over: Partial<ItemDraft> = {}): ItemDraft {
@@ -34,35 +31,28 @@ function item(over: Partial<ItemDraft> = {}): ItemDraft {
     quantity: "",
     unitCost: "",
     warrantyMonths: "",
-    nextDueKm: "",
+    adopting: false,
+    adoptKm: "",
+    adoptMonths: "",
     ...over,
   };
 }
 
-const NO_DEFAULT = () => null;
+const tracked = (partTypeId: string, interval_km: number | null) =>
+  ({ part_type_id: partTypeId, interval_km }) as MaintenanceRow;
 
 describe("deriveTotals", () => {
   it("rounds each line once, in sen, and sums the rounded lines", () => {
     // 3 x RM 12.35 = RM 37.05. Rounding once per line is what the
     // line_total_cost generated column does, so the running total shown while
     // typing has to match it to the sen rather than merely to the ringgit.
-    const totals = deriveTotals(
-      [item({ unitCost: "12.35", quantity: "3" })],
-      "",
-      50_000,
-      NO_DEFAULT,
-    );
+    const totals = deriveTotals([item({ unitCost: "12.35", quantity: "3" })], "", 50_000, []);
     expect(totals.partsSubtotal).toBe(3705);
   });
 
   it("treats a blank or zero quantity as one, not as nothing", () => {
-    const blank = deriveTotals([item({ unitCost: "45.00" })], "", 50_000, NO_DEFAULT);
-    const zero = deriveTotals(
-      [item({ unitCost: "45.00", quantity: "0" })],
-      "",
-      50_000,
-      NO_DEFAULT,
-    );
+    const blank = deriveTotals([item({ unitCost: "45.00" })], "", 50_000, []);
+    const zero = deriveTotals([item({ unitCost: "45.00", quantity: "0" })], "", 50_000, []);
     expect(blank.partsSubtotal).toBe(4500);
     expect(zero.partsSubtotal).toBe(4500);
   });
@@ -72,52 +62,43 @@ describe("deriveTotals", () => {
       [item({ key: "a", unitCost: "" }), item({ key: "b", unitCost: "20.00" })],
       "",
       50_000,
-      NO_DEFAULT,
+      [],
     );
     expect(totals.partsSubtotal).toBe(2000);
   });
 
   it("adds labour to parts, and reports labour as null when not typed", () => {
-    const withLabour = deriveTotals(
-      [item({ unitCost: "100.00" })],
-      "35.50",
-      50_000,
-      NO_DEFAULT,
-    );
+    const withLabour = deriveTotals([item({ unitCost: "100.00" })], "35.50", 50_000, []);
     expect(withLabour.labourSen).toBe(3550);
     expect(withLabour.grandTotal).toBe(13550);
 
-    const without = deriveTotals([item({ unitCost: "100.00" })], "", 50_000, NO_DEFAULT);
+    const without = deriveTotals([item({ unitCost: "100.00" })], "", 50_000, []);
     expect(without.labourSen).toBeNull();
     expect(without.grandTotal).toBe(10000);
   });
 
-  it("reports the SOONEST due figure across the lines, typed or defaulted", () => {
+  it("reports the SOONEST next due point, using an adopted figure where there is one", () => {
     const totals = deriveTotals(
       [
-        item({ key: "a", partTypeId: "pt_a", nextDueKm: "70000" }),
-        item({ key: "b", partTypeId: "pt_b", nextDueKm: "55000" }),
-        item({ key: "c", partTypeId: "pt_c", nextDueKm: "" }),
+        item({ key: "a", partTypeId: "pt_a" }), // on schedule at 20,000
+        item({ key: "b", partTypeId: "pt_b", adopting: true, adoptKm: "5000" }), // changed to 5,000
+        item({ key: "c", partTypeId: "pt_c" }), // untracked
       ],
       "",
       50_000,
-      (id) => (id === "pt_c" ? 60_000 : null),
+      [tracked("pt_a", 20_000), tracked("pt_b", 10_000)],
     );
     expect(totals.nextService).toBe(55_000);
   });
 
-  it("has no next service when nothing sets one", () => {
-    const totals = deriveTotals([item()], "", 50_000, NO_DEFAULT);
-    expect(totals.nextService).toBeUndefined();
+  it("has no next service when nothing on the visit is on a km schedule", () => {
+    expect(deriveTotals([item()], "", 50_000, []).nextService).toBeUndefined();
   });
 
-  it("flags a line due at or before the odometer being saved", () => {
-    const before = deriveTotals([item({ nextDueKm: "49000" })], "", 50_000, NO_DEFAULT);
-    const equal = deriveTotals([item({ nextDueKm: "50000" })], "", 50_000, NO_DEFAULT);
-    const after = deriveTotals([item({ nextDueKm: "51000" })], "", 50_000, NO_DEFAULT);
-    expect(before.badItem).toBe(true);
-    expect(equal.badItem).toBe(true);
-    expect(after.badItem).toBe(false);
+  it("flags a zero typed as a new interval, which the API would refuse", () => {
+    expect(deriveTotals([item({ adopting: true, adoptKm: "0" })], "", 1, []).badItem).toBe(true);
+    // Not adopting: whatever is in the fields is ignored, so not bad either.
+    expect(deriveTotals([item({ adopting: false, adoptKm: "0" })], "", 1, []).badItem).toBe(false);
   });
 });
 
@@ -132,148 +113,106 @@ describe("canSaveService", () => {
   });
 });
 
-describe("makeDefaultNextDueKm", () => {
-  const partTypes = [
-    { id: "pt_oil", default_interval_km: 10_000 },
-    { id: "pt_plugs", default_interval_km: null },
-  ] as PartType[];
-
-  it("prefers the vehicle's own interval over the part-type default", () => {
-    const maintenance = [{ part_type_id: "pt_oil", interval_km: 7_000 }] as MaintenanceRow[];
-    const resolve = makeDefaultNextDueKm(50_000, maintenance, partTypes);
-    expect(resolve("pt_oil")).toBe(57_000);
+describe("toItemDrafts: the schedule changes only when asked", () => {
+  it("sends NO interval for an ordinary line -- the heart of the 2026-09-20 change", () => {
+    // Before, every line sent its current interval, so every service rewrote
+    // the schedule. The server writes the schedule from these fields and from
+    // nothing else, so their absence is what keeps it the owner's.
+    const [draft] = toItemDrafts([item()]);
+    expect(draft).not.toHaveProperty("intervalKmOverride");
+    expect(draft).not.toHaveProperty("intervalMonthsOverride");
   });
 
-  it("falls back to the part-type default when the vehicle has no row", () => {
-    const resolve = makeDefaultNextDueKm(50_000, [], partTypes);
-    expect(resolve("pt_oil")).toBe(60_000);
+  it("sends the adopted figures, as intervals", () => {
+    const [draft] = toItemDrafts([item({ adopting: true, adoptKm: "6000", adoptMonths: "6" })]);
+    expect(draft?.intervalKmOverride).toBe(6_000);
+    expect(draft?.intervalMonthsOverride).toBe(6);
   });
 
-  it("returns null when neither side has an interval, or the odometer is blank", () => {
-    expect(makeDefaultNextDueKm(50_000, [], partTypes)("pt_plugs")).toBeNull();
-    expect(makeDefaultNextDueKm(null, [], partTypes)("pt_oil")).toBeNull();
+  it("sends only the half that was filled, so the other half is kept", () => {
+    const [draft] = toItemDrafts([item({ adopting: true, adoptKm: "6000" })]);
+    expect(draft?.intervalKmOverride).toBe(6_000);
+    expect(draft).not.toHaveProperty("intervalMonthsOverride");
   });
 
-  it("honours a vehicle interval that has deliberately been cleared", () => {
-    // A maintenance row with a null interval is an answer -- "this vehicle has
-    // no schedule for this part" -- and must not fall through to the
-    // catalogue default, which would silently reinstate a schedule the owner
-    // removed.
-    const maintenance = [{ part_type_id: "pt_oil", interval_km: null }] as MaintenanceRow[];
-    expect(makeDefaultNextDueKm(50_000, maintenance, partTypes)("pt_oil")).toBeNull();
-  });
-});
-
-describe("toItemDrafts", () => {
-  it("sends an INTERVAL, never the absolute figure the user typed (invariant 6)", () => {
-    const [draft] = toItemDrafts([item({ nextDueKm: "60000" })], 50_000, NO_DEFAULT);
-    expect(draft?.intervalKmOverride).toBe(10_000);
-    expect(draft).not.toHaveProperty("nextDueKm");
-  });
-
-  it("sends the interval even when the field was left at its pre-filled default", () => {
-    // Leaving the field alone is an answer ("same as before"), not an absence
-    // of one. If this stopped being sent, the line item and the vehicle's
-    // setting could drift apart without anything reporting it.
-    const [draft] = toItemDrafts([item({ nextDueKm: "" })], 50_000, () => 58_000);
-    expect(draft?.intervalKmOverride).toBe(8_000);
-  });
-
-  it("omits the interval entirely when the due point is not ahead of this service", () => {
-    const [behind] = toItemDrafts([item({ nextDueKm: "40000" })], 50_000, NO_DEFAULT);
-    const [none] = toItemDrafts([item({ nextDueKm: "" })], 50_000, NO_DEFAULT);
-    expect(behind?.intervalKmOverride).toBeUndefined();
-    expect(none?.intervalKmOverride).toBeUndefined();
+  it("ignores figures left in the fields after 'Keep my schedule'", () => {
+    const [draft] = toItemDrafts([item({ adopting: false, adoptKm: "6000" })]);
+    expect(draft).not.toHaveProperty("intervalKmOverride");
   });
 
   it("scales quantity to thousandths, defaulting a blank to exactly one", () => {
-    const [blank] = toItemDrafts([item()], 50_000, NO_DEFAULT);
-    const [half] = toItemDrafts([item({ quantity: "4.5" })], 50_000, NO_DEFAULT);
+    const [blank] = toItemDrafts([item()]);
+    const [half] = toItemDrafts([item({ quantity: "4.5" })]);
     expect(blank?.quantityMilli).toBe(1000);
     expect(half?.quantityMilli).toBe(4500);
   });
 
   it("trims optional text and drops it when it is blank", () => {
-    const [filled] = toItemDrafts(
-      [item({ brand: "  Shell ", spec: " 5W-40 ", note: " incl. O-ring " })],
-      50_000,
-      NO_DEFAULT,
-    );
+    const [filled] = toItemDrafts([item({ brand: "  Shell ", spec: " 5W-40 ", note: " incl. O-ring " })]);
     expect(filled?.brand).toBe("Shell");
     expect(filled?.spec).toBe("5W-40");
     expect(filled?.note).toBe("incl. O-ring");
 
-    const [empty] = toItemDrafts([item({ brand: "   ", spec: "", note: "" })], 50_000, NO_DEFAULT);
+    const [empty] = toItemDrafts([item({ brand: "   ", spec: "", note: "" })]);
     expect(empty).not.toHaveProperty("brand");
     expect(empty).not.toHaveProperty("spec");
     expect(empty).not.toHaveProperty("note");
   });
 
   it("converts unit cost to sen and omits it when blank", () => {
-    const [priced] = toItemDrafts([item({ unitCost: "245.50" })], 50_000, NO_DEFAULT);
-    const [unpriced] = toItemDrafts([item({ unitCost: "" })], 50_000, NO_DEFAULT);
+    const [priced] = toItemDrafts([item({ unitCost: "245.50" })]);
+    const [unpriced] = toItemDrafts([item({ unitCost: "" })]);
     expect(priced?.unitCost).toBe(24550);
     expect(unpriced).not.toHaveProperty("unitCost");
   });
 });
 
-describe("partsSettingASchedule", () => {
-  it("omits a part that sets no schedule, which is the bug this exists for", () => {
-    // pt_tps has no interval: a sensor is replaced when it fails. Before
-    // 2026-09-19 the save confirmation listed every part on the visit under
-    // "Clocks now set by this visit", so this one was announced as resetting
-    // a clock it never touched. Seen on a real production record.
-    const names = partsSettingASchedule(
+describe("partsResettingAClock", () => {
+  it("names tracked parts and omits untracked ones", () => {
+    // pt_tps has no schedule: a sensor is replaced when it fails. Listing it
+    // under "Clocks reset" is the false claim that reached production on
+    // 2026-09-19.
+    const names = partsResettingAClock(
       [
-        item({ key: "a", partTypeId: "pt_oil", partName: "Engine oil", nextDueKm: "60000" }),
+        item({ key: "a", partTypeId: "pt_oil", partName: "Engine oil" }),
         item({ key: "b", partTypeId: "pt_tps", partName: "Throttle position sensor" }),
       ],
-      50_000,
-      (id) => (id === "pt_oil" ? 60_000 : null),
+      [tracked("pt_oil", 10_000)],
     );
     expect(names).toEqual(["Engine oil"]);
   });
 
-  it("includes a part left at its pre-filled default, which DOES set a schedule", () => {
-    // Leaving the field alone is an answer, and the interval is still sent --
-    // so the clock really does move and the confirmation must say so.
-    const names = partsSettingASchedule(
-      [item({ partName: "Engine oil", nextDueKm: "" })],
-      50_000,
-      () => 58_000,
+  it("names an untracked part this visit puts on the schedule", () => {
+    const names = partsResettingAClock(
+      [item({ partTypeId: "pt_tps", partName: "TPS", adopting: true, adoptKm: "80000" })],
+      [],
     );
-    expect(names).toEqual(["Engine oil"]);
+    expect(names).toEqual(["TPS"]);
   });
 
-  it("returns nothing when no part on the visit is tracked", () => {
-    const names = partsSettingASchedule(
-      [
-        item({ key: "a", partTypeId: "pt_tps", partName: "Throttle position sensor" }),
-        item({ key: "b", partTypeId: "pt_wash", partName: "Wash" }),
-      ],
-      50_000,
-      NO_DEFAULT,
-    );
-    expect(names).toEqual([]);
-  });
-
-  it("agrees exactly with what toItemDrafts sends, by construction", () => {
-    // The whole point: the screen cannot claim a clock the API was not asked
-    // to set. If these two ever disagree, one of them is lying to the owner.
+  it("agrees with what toItemDrafts sends, for untracked parts", () => {
+    // For a part NOT on the schedule, the only way its clock starts is the
+    // interval being sent -- so the two lists must agree exactly there.
     const items = [
-      item({ key: "a", partTypeId: "pt_oil", partName: "Engine oil", nextDueKm: "60000" }),
-      item({ key: "b", partTypeId: "pt_tps", partName: "Throttle position sensor" }),
-      item({ key: "c", partTypeId: "pt_plugs", partName: "Spark plugs", nextDueKm: "40000" }),
+      item({ key: "a", partTypeId: "pt_x", partName: "X", adopting: true, adoptMonths: "12" }),
+      item({ key: "b", partTypeId: "pt_y", partName: "Y" }),
     ];
-    const resolve = (id: string) => (id === "pt_oil" ? 60_000 : null);
-
-    const drafts = toItemDrafts(items, 50_000, resolve);
-    const sentNames = items
-      .filter((_, i) => drafts[i]?.intervalKmOverride !== undefined)
+    const drafts = toItemDrafts(items);
+    const sent = items
+      .filter((_, i) => drafts[i]?.intervalKmOverride !== undefined || drafts[i]?.intervalMonthsOverride !== undefined)
       .map((i) => i.partName);
+    expect(partsResettingAClock(items, [])).toEqual(sent);
+  });
+});
 
-    expect(partsSettingASchedule(items, 50_000, resolve)).toEqual(sentNames);
-    // Spark plugs at 40,000 is behind the 50,000 odometer, so nothing is sent.
-    expect(sentNames).toEqual(["Engine oil"]);
+describe("partsChangingTheSchedule / adoptedInterval", () => {
+  it("lists only lines with an adopted figure", () => {
+    const items = [
+      item({ key: "a", partName: "Oil", adopting: true, adoptKm: "6000" }),
+      item({ key: "b", partName: "Filter" }),
+      item({ key: "c", partName: "Plugs", adopting: true }), // pressed, then blanked both
+    ];
+    expect(partsChangingTheSchedule(items)).toEqual(["Oil"]);
+    expect(adoptedInterval(items[2]!)).toBeNull();
   });
 });

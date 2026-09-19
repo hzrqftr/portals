@@ -1,47 +1,44 @@
 import { parseSen, toQuantityMilli } from "@portals/core";
-import type { MaintenanceRow, PartType, ServiceItemDraft } from "../api/hooks";
+import type { MaintenanceRow, ServiceItemDraft } from "../api/hooks";
 import type { ItemDraft } from "./ServiceItemRow";
 
 /**
- * The arithmetic behind ServiceSheet: what this visit costs, what it schedules
- * next, and whether it may be saved at all.
+ * The arithmetic behind ServiceSheet: what this visit costs, which clocks it
+ * resets, and whether it changes the schedule.
  *
  * Split out of the sheet because it is the half that can be WRONG rather than
  * merely ugly. Everything here touches one of two invariants -- money is sen
  * (1) and a line item sends an interval, never a due point (6) -- and a sheet
  * is awkward to test while a pure function is not. serviceTotals.test.ts is
- * the point of this file existing separately; the line count was the prompt,
- * not the reason.
+ * the point of this file existing separately.
+ *
+ * Since 2026-09-20 a service changes the schedule ONLY when the owner asks it
+ * to, on the line concerned ("Change schedule" / "Add to schedule"). Before,
+ * every line sent an interval -- pre-filled from the current one -- so every
+ * service rewrote the schedule whether or not anyone meant it to.
  */
 
-/**
- * Resolves the pre-filled "next due at" for a part, as an ABSOLUTE odometer
- * figure. The vehicle's own interval wins over the part-type default: a
- * schedule the owner has already adjusted for this vehicle is a deliberate
- * answer, and the catalogue default is only a guess at one.
- */
-export function makeDefaultNextDueKm(
-  odo: number | null,
-  maintenance: MaintenanceRow[],
-  partTypes: PartType[],
-): (partTypeId: string) => number | null {
-  return (partTypeId: string) => {
-    if (odo === null) return null;
-    const row = maintenance.find((r) => r.part_type_id === partTypeId);
-    const interval = row
-      ? row.interval_km
-      : (partTypes.find((p) => p.id === partTypeId)?.default_interval_km ?? null);
-    return interval === null ? null : odo + interval;
-  };
+/** A line's explicit schedule change, or null when it leaves the schedule alone. */
+export function adoptedInterval(item: ItemDraft): { km: number | null; months: number | null } | null {
+  if (!item.adopting) return null;
+  const km = item.adoptKm === "" ? null : Number(item.adoptKm);
+  const months = item.adoptMonths === "" ? null : Number(item.adoptMonths);
+  if (km === null && months === null) return null;
+  return { km, months };
+}
+
+/** A zero typed into either figure: no interval is zero long, and the API refuses one. */
+function hasZeroFigure(item: ItemDraft): boolean {
+  return item.adopting && (item.adoptKm === "0" || item.adoptMonths === "0");
 }
 
 export interface ServiceTotals {
   partsSubtotal: number;
   labourSen: number | null;
   grandTotal: number;
-  /** The soonest figure this visit sets, or undefined if it sets none. */
+  /** The soonest km figure a part on this visit falls due at next, or undefined. */
   nextService: number | undefined;
-  /** True when some line is due at or before the odometer being saved. */
+  /** True when a line's schedule change cannot be saved as typed. */
   badItem: boolean;
 }
 
@@ -54,7 +51,7 @@ export function deriveTotals(
   items: ItemDraft[],
   labourCost: string,
   odo: number | null,
-  defaultNextDueKm: (partTypeId: string) => number | null,
+  maintenance: MaintenanceRow[],
 ): ServiceTotals {
   const partsSubtotal = items.reduce((sum, i) => {
     const unit = parseSen(i.unitCost);
@@ -64,25 +61,33 @@ export function deriveTotals(
 
   const labourSen = parseSen(labourCost);
 
-  // The single headline the owner asked for, derived from the lines rather
-  // than stored beside them: the soonest of whatever this visit set.
-  const nextService = items
-    .map((i) => (i.nextDueKm !== "" ? Number(i.nextDueKm) : defaultNextDueKm(i.partTypeId)))
-    .filter((v): v is number => v !== null)
-    .sort((a, b) => a - b)[0];
-
-  const badItem = items.some((i) => {
-    const typed = i.nextDueKm === "" ? null : Number(i.nextDueKm);
-    return typed !== null && odo !== null && typed <= odo;
-  });
+  // The headline the owner asked for, derived rather than stored: the soonest
+  // any part on this visit falls due again, on the schedule it will have
+  // after the save -- the adopted figure where there is one.
+  const nextService =
+    odo === null
+      ? undefined
+      : items
+          .map((i) => {
+            const adopted = adoptedInterval(i);
+            if (adopted) return adopted.km === null ? null : odo + adopted.km;
+            const km = intervalKmOf(maintenance, i.partTypeId);
+            return km === null ? null : odo + km;
+          })
+          .filter((v): v is number => v !== null)
+          .sort((a, b) => a - b)[0];
 
   return {
     partsSubtotal,
     labourSen,
     grandTotal: partsSubtotal + (labourSen ?? 0),
     nextService,
-    badItem,
+    badItem: items.some(hasZeroFigure),
   };
+}
+
+function intervalKmOf(maintenance: MaintenanceRow[], partTypeId: string): number | null {
+  return maintenance.find((r) => r.part_type_id === partTypeId)?.interval_km ?? null;
 }
 
 /** A service may only be saved against a real, non-negative odometer figure. */
@@ -91,48 +96,37 @@ export function canSaveService(odo: number | null, badItem: boolean): boolean {
 }
 
 /**
- * Form strings to the API's shape, and the one conversion that carries
- * invariant 6: an absolute figure goes IN, an interval comes OUT.
+ * Which parts on this visit reset a maintenance clock, by name.
  *
- * The interval is sent ALWAYS, not only when it differs from the default.
- * Every service sets the schedule for its part, so leaving the field at the
- * pre-filled figure is an answer ("same as before"), not an absence of one.
- * Sending it every time is what keeps one number in charge: the line item and
- * the vehicle's setting cannot drift apart if each service writes both.
+ * A clock resets for every part that is on the schedule (invariant 7: the
+ * line item IS the reset) and for any part this visit puts on it. A part on
+ * no schedule -- a throttle position sensor, replaced when it fails -- resets
+ * nothing, and the save confirmation must not claim it did. That exact false
+ * claim reached production once (2026-09-19), which is why this is computed
+ * rather than assumed to be "every part on the visit".
  */
-/**
- * Which parts this visit actually puts on a schedule, by name.
- *
- * DERIVED FROM toItemDrafts RATHER THAN FROM THE ITEM LIST, deliberately: the
- * save confirmation tells the owner which maintenance clocks moved, and the
- * only honest source for that is the same function that decides what gets
- * sent. Listing `items` instead — which is what this did until 2026-09-19 —
- * cannot go wrong while every part type carries an interval, and silently
- * starts lying the moment one does not.
- *
- * `pt_tps` (migration 0016) is the first such part: a sensor is replaced when
- * it fails, not on a schedule. It appeared under "Clocks now set by this
- * visit" having set no clock at all, which was noticed only because a real
- * service record was corrected on production.
- */
-export function partsSettingASchedule(
-  items: ItemDraft[],
-  odo: number,
-  defaultNextDueKm: (partTypeId: string) => number | null,
-): string[] {
-  const drafts = toItemDrafts(items, odo, defaultNextDueKm);
-  const names: string[] = [];
-  items.forEach((item, i) => {
-    if (drafts[i]?.intervalKmOverride !== undefined) names.push(item.partName);
-  });
-  return names;
+export function partsResettingAClock(items: ItemDraft[], maintenance: MaintenanceRow[]): string[] {
+  return items
+    .filter(
+      (i) =>
+        adoptedInterval(i) !== null || maintenance.some((r) => r.part_type_id === i.partTypeId),
+    )
+    .map((i) => i.partName);
 }
 
-export function toItemDrafts(
-  items: ItemDraft[],
-  odo: number,
-  defaultNextDueKm: (partTypeId: string) => number | null,
-): ServiceItemDraft[] {
+/** Which parts this visit changes the schedule of, by name. */
+export function partsChangingTheSchedule(items: ItemDraft[]): string[] {
+  return items.filter((i) => adoptedInterval(i) !== null).map((i) => i.partName);
+}
+
+/**
+ * Form strings to the API's shape.
+ *
+ * The interval fields are sent ONLY for a line the owner explicitly adopted a
+ * figure on. Their absence is the normal case and means "leave the schedule
+ * alone" -- the server writes the schedule from them and from nothing else.
+ */
+export function toItemDrafts(items: ItemDraft[]): ServiceItemDraft[] {
   return items.map((i) => {
     const draft: ServiceItemDraft = {
       partTypeId: i.partTypeId,
@@ -145,10 +139,9 @@ export function toItemDrafts(
     if (unit !== null) draft.unitCost = unit;
     if (i.warrantyMonths !== "") draft.warrantyMonths = Number(i.warrantyMonths);
 
-    const due = i.nextDueKm === "" ? defaultNextDueKm(i.partTypeId) : Number(i.nextDueKm);
-    if (due !== null && due > odo) {
-      draft.intervalKmOverride = due - odo;
-    }
+    const adopted = adoptedInterval(i);
+    if (adopted?.km != null) draft.intervalKmOverride = adopted.km;
+    if (adopted?.months != null) draft.intervalMonthsOverride = adopted.months;
     return draft;
   });
 }

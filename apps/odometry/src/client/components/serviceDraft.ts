@@ -24,11 +24,9 @@ export interface ServiceDraftState {
 }
 
 /**
- * `nextDueKm` is seeded from the ABSOLUTE figure the API already reconstructs
- * (`sr.odometer_km + si.interval_km_override`, see worker/data/services.ts),
- * which is the same absolute figure the form asks the user to type. The sheet
- * converts it back to an interval on save, so a record opened and saved
- * unchanged writes back exactly what it held.
+ * A record opened for editing starts with no schedule change on any line --
+ * see fromRecord. The schedule is changed on the schedule tab, or on a NEW
+ * visit through its early/late notice.
  */
 export function useServiceDraft(record: ServiceRecord | undefined, today: string, currentKm: number) {
   const [state, setState] = useState<ServiceDraftState>(() =>
@@ -75,7 +73,13 @@ function fromRecord(record: ServiceRecord): ServiceDraftState {
       quantity: item.quantityMilli === 1000 ? "" : String(fromQuantityMilli(item.quantityMilli)),
       unitCost: senToInput(item.unitCost),
       warrantyMonths: item.warrantyMonths === null ? "" : String(item.warrantyMonths),
-      nextDueKm: item.nextDueKm === null ? "" : String(item.nextDueKm),
+      // Never re-seeded from the stored override. Items are rewritten on
+      // update, so re-sending the figure this visit once adopted would put
+      // the schedule back to it -- silently, months later, while correcting a
+      // typo in the receipt.
+      adopting: false,
+      adoptKm: "",
+      adoptMonths: "",
     })),
   };
 }

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useBrandSuggestions } from "../api/hooks";
 import { INPUT, digitsOnly } from "@portals/core/client";
-import { formatKm } from "../lib/format";
 import { specPlaceholder } from "../lib/partCategories";
+import type { ScheduleCheck } from "./scheduleCheck";
+import { ScheduleNotice } from "./ScheduleNotice";
 
 /**
  * One line item on a service. Spec 8.4.
@@ -24,23 +25,29 @@ export interface ItemDraft {
   quantity: string;
   unitCost: string;
   warrantyMonths: string;
-  /** Absolute odometer figure, as the workshop sticker writes it. "" = default. */
-  nextDueKm: string;
+  /**
+   * The owner chose to change this part's schedule on this visit. Off by
+   * default: a service leaves the schedule alone unless asked (2026-09-20).
+   */
+  adopting: boolean;
+  /** The new interval while adopting. "" leaves that half unchanged. */
+  adoptKm: string;
+  adoptMonths: string;
 }
 
 export function ServiceItemRow({
   item,
   partTypeCode,
-  defaultNextDueKm,
-  odometerKm,
+  check,
+  partDefault,
   onChange,
   onRemove,
 }: {
   item: ItemDraft;
   partTypeCode: string;
-  /** odometer + this part's configured interval, or null if it has none. */
-  defaultNextDueKm: number | null;
-  odometerKm: number | null;
+  /** How this replacement sits against the schedule. Null when editing a saved visit. */
+  check: ScheduleCheck | null;
+  partDefault: { km: number | null; months: number | null };
   onChange: (next: ItemDraft) => void;
   onRemove: () => void;
 }) {
@@ -56,17 +63,6 @@ export function ServiceItemRow({
   );
   const brands = useBrandSuggestions(item.partTypeId);
   const set = (patch: Partial<ItemDraft>) => onChange({ ...item, ...patch });
-
-  // Shown filled with the derived default until the user overrides it. The
-  // default follows the odometer field, so correcting the odometer corrects
-  // this too -- which is the same property the stored interval gives us on
-  // the server side.
-  const shownNextDue =
-    item.nextDueKm !== "" ? item.nextDueKm : defaultNextDueKm !== null ? String(defaultNextDueKm) : "";
-
-  const typedNextDue = item.nextDueKm === "" ? null : Number(item.nextDueKm);
-  const nextDueTooLow =
-    typedNextDue !== null && odometerKm !== null && typedNextDue <= odometerKm;
 
   return (
     <li className="rounded-xl border border-edge bg-inset p-3">
@@ -103,32 +99,7 @@ export function ServiceItemRow({
         />
       </div>
 
-      <label className="mt-2 block">
-        <span className="text-xs text-ink-muted">Next due at</span>
-        <div className="flex items-baseline gap-2">
-          <input
-            type="text"
-            inputMode="numeric"
-            value={shownNextDue}
-            onChange={(e) => set({ nextDueKm: digitsOnly(e.target.value) })}
-            placeholder="not tracked"
-            className={INPUT + " mt-0 py-2 tabular-nums"}
-          />
-          <span className="text-sm text-ink-faint">km</span>
-        </div>
-      </label>
-      {nextDueTooLow ? (
-        <p className="mt-1 text-xs text-status-overdue-fg">
-          Must be past the service odometer of {formatKm(odometerKm)}.
-        </p>
-      ) : (
-        defaultNextDueKm === null &&
-        item.nextDueKm === "" && (
-          <p className="mt-1 text-xs text-ink-faint">
-            No interval set for this part &mdash; enter one to start tracking it.
-          </p>
-        )
-      )}
+      {check && <ScheduleNotice check={check} item={item} partDefault={partDefault} onChange={set} />}
 
       {open ? (
         <>

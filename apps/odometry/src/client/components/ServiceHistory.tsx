@@ -6,7 +6,7 @@ import {
   type VehicleType,
 } from "../api/hooks";
 import { formatSen, fromQuantityMilli } from "@portals/core";
-import { formatKm } from "../lib/format";
+import { formatInterval, formatKm } from "../lib/format";
 import { ServiceSheet } from "./ServiceSheet";
 import { ServiceAttachments } from "./Attachments";
 
@@ -135,9 +135,14 @@ function RecordRow({
                     at 60, and it is a sentence rather than a label.
                   */}
                   {item.note && <p className="text-ink-muted">{item.note}</p>}
-                  {item.nextDueKm !== null && (
+                  {(item.intervalKmOverride !== null || item.intervalMonthsOverride !== null) && (
+                    // Only a visit that changed the schedule carries these.
+                    // Since 2026-09-20 that takes the owner pressing "Change
+                    // to ..."; older visits set it on every tracked part.
                     <p className="text-ink-faint">
-                      Next due at {formatKm(item.nextDueKm)} &mdash; set on this visit
+                      Schedule set to every{" "}
+                      {formatInterval(item.intervalKmOverride, item.intervalMonthsOverride)} on
+                      this visit
                     </p>
                   )}
                   {item.warrantyExpiresOn && <WarrantyBadge until={item.warrantyExpiresOn} today={today} />}

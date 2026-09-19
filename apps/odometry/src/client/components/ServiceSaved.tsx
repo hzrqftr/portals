@@ -20,21 +20,25 @@ import { formatSen } from "@portals/core";
  * fails, not on a schedule -- so it was announced as resetting a clock it
  * never touched. Caught on production, correcting a real record.
  *
- * `scheduled` therefore comes from `partsSettingASchedule`, which reads the
- * output of the same function that builds the request. The screen cannot
- * claim a clock the API was not asked to set.
+ * `scheduled` therefore comes from `partsResettingAClock`: the parts that are
+ * on the schedule, plus any this visit put on it. `changed` is the parts whose
+ * schedule this visit changed -- only ever by the owner pressing a button on
+ * the form (2026-09-20), so it is usually empty and said plainly when not.
  */
 export function SavedConfirmation({
   parts,
   scheduled,
+  changed,
   editing,
   attachmentWarning,
   onClose,
 }: {
   /** Every part on the visit. Only distinguishes "some" from "none". */
   parts: string[];
-  /** The subset that actually put a part on a schedule. */
+  /** The subset that reset a maintenance clock. */
   scheduled: string[];
+  /** The subset whose schedule this visit changed. */
+  changed: string[];
   editing: boolean;
   /**
    * Set when the record saved but a receipt did not upload. Shown rather than
@@ -74,7 +78,7 @@ export function SavedConfirmation({
             ))}
           </ul>
           <p className="mt-3 text-xs text-ink-faint">
-            Give one an interval on the Maintenance tab if you want it tracked.
+            Give one an interval on the Schedule tab if you want it tracked.
           </p>
         </>
       ) : (
@@ -94,15 +98,18 @@ export function SavedConfirmation({
               Also recorded, on no schedule: {unscheduled.join(", ")}.
             </p>
           )}
+          {changed.length > 0 && (
+            <p className="mt-2 text-xs text-ink-muted">
+              Schedule changed for: {changed.join(", ")}.
+            </p>
+          )}
           {editing && (
-            // The one consequence of an edit that looks like a bug. Invariant
-            // 6: the last service sets the vehicle's interval, and there is no
-            // stored previous value to put back, so a part removed from this
-            // visit keeps the schedule the visit gave it. Changing that is the
-            // maintenance tab's job.
+            // The one consequence of an edit that looks like a bug: nothing
+            // stores what the schedule was before a visit changed it, so a
+            // part removed from this visit keeps that schedule.
             <p className="mt-3 text-xs text-ink-faint">
-              A part removed from this visit keeps the interval this visit set for it.
-              Change it on the Maintenance tab.
+              Removing a part from a visit does not change its schedule. Change it on the
+              Schedule tab.
             </p>
           )}
         </>

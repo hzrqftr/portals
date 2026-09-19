@@ -20,10 +20,11 @@ import { ServiceVisitFields } from "./ServiceVisitFields";
 import {
   canSaveService,
   deriveTotals,
-  makeDefaultNextDueKm,
-  partsSettingASchedule,
+  partsChangingTheSchedule,
+  partsResettingAClock,
   toItemDrafts,
 } from "./serviceTotals";
+import { checkAgainstSchedule } from "./scheduleCheck";
 
 /**
  * Log a service, or correct one already logged. Spec 8.4 -- "the
@@ -37,10 +38,10 @@ import {
  *
  * Two things here are not obvious from the layout:
  *
- * 1. "Next due at" is typed as an absolute odometer figure, because that is
- *    what the workshop sticker says, but it is SENT as an interval -- the gap
- *    from this service's odometer. The API never receives a due point, which
- *    is what keeps invariant 6 true structurally rather than by convention.
+ * 1. Logging a service does not change the schedule (2026-09-20). Each new
+ *    line says whether the part was replaced early or late against it, and
+ *    the schedule changes only if the owner presses "Change to ..." there.
+ *    What is sent is then an interval, never a due point (invariant 6).
  * 2. Total cost is shown, never typed. It is parts + labour by definition, so
  *    there is no third figure that can disagree with the other two.
  *
@@ -85,7 +86,11 @@ export function ServiceSheet({
   // Two lists, not one. `scheduled` is the subset that actually put a part on
   // a schedule, and the confirmation needs both to tell "no parts at all" from
   // "parts, none of them tracked" -- see SavedConfirmation.
-  const [saved, setSaved] = useState<{ parts: string[]; scheduled: string[] } | null>(null);
+  const [saved, setSaved] = useState<{
+    parts: string[];
+    scheduled: string[];
+    changed: string[];
+  } | null>(null);
 
   // Also the sheet's phase rather than the form's content: opening the panel
   // changes nothing about the visit being logged, and closing it must not.
@@ -101,13 +106,25 @@ export function ServiceSheet({
   const odo = odometer === "" ? null : Number(odometer);
   const nameOf = (id: string) => partTypes.data?.find((p) => p.id === id)?.name ?? "Part";
 
-  const defaultNextDueKm = makeDefaultNextDueKm(odo, maintenance.data ?? [], partTypes.data ?? []);
+  const maintenanceRows = maintenance.data ?? [];
   const { partsSubtotal, labourSen, grandTotal, nextService, badItem } = deriveTotals(
     items,
     labourCost,
     odo,
-    defaultNextDueKm,
+    maintenanceRows,
   );
+  // A saved visit is not measured: its part's baseline is the visit itself,
+  // so "early by" would compare it against its own odometer. And an edit must
+  // never re-send a schedule change -- items are rewritten on update, so a
+  // resent figure would silently put the schedule back to what it was then.
+  const checkFor = (partTypeId: string) =>
+    editing
+      ? null
+      : checkAgainstSchedule(
+          maintenanceRows.find((r) => r.part_type_id === partTypeId),
+          odo,
+          servicedOn,
+        );
   const canSave = canSaveService(odo, badItem);
 
   /**
@@ -132,7 +149,9 @@ export function ServiceSheet({
                 quantity: "",
                 unitCost: "",
                 warrantyMonths: "",
-                nextDueKm: "",
+                adopting: false,
+                adoptKm: "",
+                adoptMonths: "",
               },
             ],
           },
@@ -167,7 +186,7 @@ export function ServiceSheet({
         ...(workshop.trim() ? { workshopName: workshop.trim() } : {}),
         ...(labourSen !== null ? { labourCost: labourSen } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
-        items: toItemDrafts(items, odo, defaultNextDueKm),
+        items: toItemDrafts(items),
       },
       {
         onSuccess: async (result: { id: string }) => {
@@ -190,7 +209,8 @@ export function ServiceSheet({
           }
           setSaved({
             parts: items.map((i) => i.partName),
-            scheduled: partsSettingASchedule(items, odo, defaultNextDueKm),
+            scheduled: partsResettingAClock(items, maintenanceRows),
+            changed: partsChangingTheSchedule(items),
           });
         },
       },
@@ -205,6 +225,7 @@ export function ServiceSheet({
         <SavedConfirmation
           parts={saved.parts}
           scheduled={saved.scheduled}
+          changed={saved.changed}
           editing={editing}
           attachmentWarning={attachmentWarning}
           onClose={onClose}
@@ -228,10 +249,9 @@ export function ServiceSheet({
           <ServicePartsSection
             items={items}
             partTypes={partTypes.data ?? []}
-            maintenance={maintenance.data ?? []}
-            odometerKm={odo}
+            maintenance={maintenanceRows}
             nextService={nextService}
-            defaultNextDueKm={defaultNextDueKm}
+            checkFor={checkFor}
             addingCustom={addingCustom}
             onAddingCustomChange={setAddingCustom}
             onAddPart={addPart}

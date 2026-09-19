@@ -73,7 +73,7 @@ export interface MaintenanceRow {
   part_type_id: string;
   part_name: string;
   part_category: string;
-  /** The part's schedule. One number each, set by the most recent service. */
+  /** The part's schedule, as set on the schedule tab. */
   interval_km: number | null;
   interval_months: number | null;
   baseline_date: string | null;
@@ -310,9 +310,9 @@ export interface ServiceItemDraft {
   unitCost?: number;
   warrantyMonths?: number;
   /**
-   * An interval, not a due point. The sheet converts the absolute "next due"
-   * the user types into the gap from this service's odometer before it gets
-   * here -- see ServiceSheet. Invariant 6.
+   * A schedule change the owner explicitly chose on this visit -- absent
+   * otherwise, which leaves the schedule alone. An interval, never a due
+   * point (invariant 6). See serviceTotals.toItemDrafts.
    */
   intervalKmOverride?: number;
   intervalMonthsOverride?: number;
@@ -343,6 +343,7 @@ export function useLogService(vehicleId: string) {
       qc.invalidateQueries({ queryKey: ["vehicle", vehicleId] });
       qc.invalidateQueries({ queryKey: ["maintenance", vehicleId] });
       qc.invalidateQueries({ queryKey: ["services", vehicleId] });
+      qc.invalidateQueries({ queryKey: ["schedule", vehicleId] });
     },
   });
 }
@@ -370,6 +371,7 @@ export function useUpdateService(vehicleId: string, serviceId: string) {
       qc.invalidateQueries({ queryKey: ["vehicle", vehicleId] });
       qc.invalidateQueries({ queryKey: ["maintenance", vehicleId] });
       qc.invalidateQueries({ queryKey: ["services", vehicleId] });
+      qc.invalidateQueries({ queryKey: ["schedule", vehicleId] });
     },
   });
 }
@@ -568,24 +570,58 @@ export function useDeleteRenewal(vehicleId: string) {
   });
 }
 
-/** Per-vehicle interval editing. The Waja belt vs City chain case (spec 8.2). */
-export function useSetInterval(vehicleId: string) {
+/**
+ * One row of a vehicle's schedule table (spec 8.2, 2026-09-20). Snake case
+ * because it is the SQL row as-is, like MaintenanceRow.
+ */
+export interface ScheduleRow {
+  part_type_id: string;
+  part_name: string;
+  part_category: string;
+  is_custom: number;
+  /** 0: tracked, but no longer fits the vehicle's fuel. Shown so it can be cleared. */
+  applies: number;
+  /** The owner's schedule. Both null: not tracked. */
+  interval_km: number | null;
+  interval_months: number | null;
+  /** The manual's figure. A reference only; nothing is due from it. */
+  maker_km: number | null;
+  maker_months: number | null;
+  /** The generic figure, for "reset to default". */
+  default_km: number | null;
+  default_months: number | null;
+}
+
+export interface ScheduleRowDraft {
+  partTypeId: string;
+  intervalKm: number | null;
+  intervalMonths: number | null;
+  makerKm: number | null;
+  makerMonths: number | null;
+}
+
+export function useSchedule(vehicleId: string) {
+  return useQuery({
+    queryKey: ["schedule", vehicleId],
+    queryFn: () => api<ScheduleRow[]>(`/vehicles/${vehicleId}/schedule`),
+  });
+}
+
+/**
+ * Saves the rows the owner changed. The response is the whole new table, so
+ * it is written straight into the cache rather than refetched.
+ */
+export function useSaveSchedule(vehicleId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      partTypeId,
-      ...patch
-    }: {
-      partTypeId: string;
-      intervalKm?: number | null;
-      intervalMonths?: number | null;
-      isActive?: 0 | 1;
-    }) =>
-      api<unknown>(`/vehicles/${vehicleId}/intervals/${partTypeId}`, {
-        method: "PATCH",
-        json: patch,
+    mutationFn: (rows: ScheduleRowDraft[]) =>
+      api<ScheduleRow[]>(`/vehicles/${vehicleId}/schedule`, {
+        method: "PUT",
+        json: { rows },
       }),
-    onSuccess: () => {
+    onSuccess: (rows) => {
+      qc.setQueryData(["schedule", vehicleId], rows);
+      // Due points are computed from the schedule, so every status moves.
       qc.invalidateQueries({ queryKey: ["maintenance", vehicleId] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
@@ -638,6 +674,8 @@ export function useUpdateVehicle(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["vehicle", id] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
+      // A fuel change moves which parts the schedule offers.
+      qc.invalidateQueries({ queryKey: ["schedule", id] });
     },
   });
 }

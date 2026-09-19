@@ -10,6 +10,7 @@ import {
 } from "../api/hooks";
 import { Page, AppHeader, STICKY_UNDER_BAR_AND_CRUMB } from "../components/Layout";
 import { MaintenanceList } from "../components/MaintenanceList";
+import { ScheduleTable } from "../components/ScheduleTable";
 import { ServiceHistory } from "../components/ServiceHistory";
 import { FuelHistory } from "../components/FuelHistory";
 import { ServiceSheet } from "../components/ServiceSheet";
@@ -20,7 +21,7 @@ import { RenewalsPanel } from "../components/RenewalsPanel";
 import { TabBar } from "../components/TabBar";
 import { formatKm } from "../lib/format";
 
-type Tab = "maintenance" | "history" | "renewals" | "fuel";
+type Tab = "maintenance" | "schedule" | "history" | "renewals" | "fuel";
 
 /**
  * The top switcher: the vehicle's own record, one card at a time. Details
@@ -36,7 +37,7 @@ const TOP_TABS: { value: TopTab; label: string }[] = [
 
 /**
  * Spec 8.2. Two independent switchers: Details | Grant for the vehicle's own
- * record, and Maintenance | Service history | Renewals | Fuel for everything
+ * record, and Maintenance | Schedule | Service history | Renewals | Fuel for everything
  * logged against it. Maintenance stays visible on arrival without a click.
  */
 export default function VehicleDetail() {
@@ -125,6 +126,9 @@ export default function VehicleDetail() {
           <TabBar
             tabs={[
               { value: "maintenance", label: "Maintenance", count: maintenance.data?.length ?? 0 },
+              // What the maintenance tab is measured against: every part that
+              // fits, and the owner's interval for each (2026-09-20).
+              { value: "schedule", label: "Schedule" },
               { value: "history", label: "Service history", count: services.data?.length ?? 0 },
               // Active records only -- one per type, not the history.
               { value: "renewals", label: "Renewals", count: renewals.data?.length ?? 0 },
@@ -137,11 +141,11 @@ export default function VehicleDetail() {
 
         {tab === "maintenance" && (
           <MaintenanceList
-            vehicleId={id}
-            vehicleType={vehicle.data?.vehicleType ?? "car"}
             rows={maintenance.data ?? []}
+            onEditSchedule={() => setTab("schedule")}
           />
         )}
+        {tab === "schedule" && <ScheduleTable vehicleId={id} />}
         {tab === "history" && (
           <section className="mt-4">
             {today && (

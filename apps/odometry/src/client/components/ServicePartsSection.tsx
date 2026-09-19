@@ -3,6 +3,7 @@ import { formatKm } from "../lib/format";
 import { CustomPartDialog } from "./CustomPartDialog";
 import { PartPicker } from "./PartPicker";
 import { ServiceItemRow, type ItemDraft } from "./ServiceItemRow";
+import type { ScheduleCheck } from "./scheduleCheck";
 
 /**
  * The "Parts replaced" half of ServiceSheet: the line items, the headline they
@@ -17,9 +18,8 @@ export function ServicePartsSection({
   items,
   partTypes,
   maintenance,
-  odometerKm,
   nextService,
-  defaultNextDueKm,
+  checkFor,
   addingCustom,
   onAddingCustomChange,
   onAddPart,
@@ -29,9 +29,9 @@ export function ServicePartsSection({
   items: ItemDraft[];
   partTypes: PartType[];
   maintenance: MaintenanceRow[];
-  odometerKm: number | null;
   nextService: number | undefined;
-  defaultNextDueKm: (partTypeId: string) => number | null;
+  /** Null when editing a saved visit, which is measured against nothing. */
+  checkFor: (partTypeId: string) => ScheduleCheck | null;
   addingCustom: boolean;
   onAddingCustomChange: (adding: boolean) => void;
   /** `name` is passed only for a part type created seconds ago, whose fetch has not landed. */
@@ -62,8 +62,8 @@ export function ServicePartsSection({
                 key={item.key}
                 item={item}
                 partTypeCode={partTypes.find((p) => p.id === item.partTypeId)?.code ?? ""}
-                odometerKm={odometerKm}
-                defaultNextDueKm={defaultNextDueKm(item.partTypeId)}
+                check={checkFor(item.partTypeId)}
+                partDefault={partDefaultOf(partTypes, item.partTypeId)}
                 onChange={onChangeItem}
                 onRemove={() => onRemoveItem(item.key)}
               />
@@ -94,4 +94,9 @@ export function ServicePartsSection({
       )}
     </>
   );
+}
+
+function partDefaultOf(partTypes: PartType[], partTypeId: string) {
+  const p = partTypes.find((t) => t.id === partTypeId);
+  return { km: p?.default_interval_km ?? null, months: p?.default_interval_months ?? null };
 }
