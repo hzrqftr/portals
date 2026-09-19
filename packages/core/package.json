@@ -18,7 +18,7 @@
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.0",
     "zod": "^3.23.8",
-    "react-router-dom": "^6.27.0"
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260815.1",

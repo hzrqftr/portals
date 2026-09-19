@@ -18,7 +18,7 @@
     "hono": "^4.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.27.0",
+    "react-router-dom": "^7.18.4",
     "zod": "^3.23.8"
   },
   "devDependencies": {

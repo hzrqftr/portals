@@ -233,6 +233,17 @@ export function AppHeader({
  * deep link directly, or landing here after a refresh. React Router tracks
  * its own position in `history.state.idx`; at 0 there is no app history
  * behind us, and navigate(-1) would walk the user out of the app entirely.
+ *
+ * `history.state.idx` IS A REACT ROUTER INTERNAL, not a documented API, and
+ * it is the one thing in this file that a router upgrade could break in
+ * silence: if `idx` ever stopped being written, `canGoBack` would be false
+ * everywhere and Back would always jump to the root instead of going back.
+ * Nothing would error and no test would fail.
+ *
+ * Re-checked on the v6 -> v7 upgrade (2026-09-19): v7's `getHistoryState`
+ * still writes `idx: index`, and both `pushState` and `replaceState` carry
+ * it. Check it again on the next major, by clicking Back from a vehicle page
+ * rather than by reading the source.
  */
 function BackButton() {
   const navigate = useNavigate();
