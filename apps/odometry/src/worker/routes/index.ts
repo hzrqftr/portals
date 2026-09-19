@@ -8,7 +8,7 @@ import {
   serviceUpdate,
   renewalInput,
   renewalPatch,
-  intervalPatch,
+  schedulePut,
   settingsPatch,
   serviceType,
   serviceTemplatePut,
@@ -101,12 +101,20 @@ export function registerRoutes(app: Hono<AppContext>): void {
     c.json(await c.get("repos").status.maintenance(c.req.param("id"))),
   );
 
-  app.patch("/api/vehicles/:id/intervals/:pid", async (c) => {
+  /**
+   * The schedule table: every part that fits the vehicle, the owner's
+   * interval for each, the manufacturer's figure beside it, and the generic
+   * default (spec 8.2, 2026-09-20). This is now the ONLY place a schedule is
+   * edited, apart from the explicit "change schedule" choice on a service.
+   */
+  app.get("/api/vehicles/:id/schedule", async (c) =>
+    c.json(await c.get("repos").schedule.list(c.req.param("id"))),
+  );
+
+  app.put("/api/vehicles/:id/schedule", async (c) => {
     assertCanWrite(c.get("scope"));
-    const patch = intervalPatch.parse(await c.req.json());
-    return c.json(
-      await c.get("repos").vehicles.setInterval(c.req.param("id"), c.req.param("pid"), patch),
-    );
+    const { rows } = schedulePut.parse(await c.req.json());
+    return c.json(await c.get("repos").schedule.save(c.req.param("id"), rows));
   });
 
   // --- services --------------------------------------------------------

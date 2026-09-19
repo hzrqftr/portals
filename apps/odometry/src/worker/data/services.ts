@@ -170,12 +170,11 @@ export class ServiceRepo extends GarageScopedRepo {
    *    (invariant 6): correcting the baseline must move every due point
    *    derived from it, or it was a stored due date all along.
    *
-   * 3. REMOVING A LINE ITEM DOES NOT REVERT THE VEHICLE'S INTERVAL. Invariant
-   *    6 says the last service sets the schedule, and there is no stored
-   *    previous value to revert to -- an item that set 10,000 km leaves the
-   *    part on 10,000 km after it is deleted. That is deliberate, not an
-   *    oversight to fix: the interval is edited on the maintenance tab, which
-   *    is the one place it lives.
+   * 3. REMOVING A LINE ITEM DOES NOT REVERT THE VEHICLE'S INTERVAL. An item
+   *    that changed the schedule to 10,000 km leaves the part on 10,000 km
+   *    after it is deleted, because nothing stores what the schedule was
+   *    before. That is deliberate, not an oversight to fix: the schedule tab
+   *    is where the interval lives and where it is changed back.
    */
   async update(id: string, input: ServiceUpdate) {
     // Loading the record IS the tenant check -- the garage predicate here
@@ -349,7 +348,7 @@ export class ServiceRepo extends GarageScopedRepo {
   }
 
   /**
-   * The line items of a visit, plus the interval each one sets.
+   * The line items of a visit, plus any schedule change the owner chose.
    *
    * Shared by create() and update() because it carries invariant 6 and a
    * second copy of it is invisible when the two drift apart.
@@ -392,20 +391,21 @@ export class ServiceRepo extends GarageScopedRepo {
           ),
       );
 
-      // The interval keyed in at a service BECOMES the vehicle's interval.
+      // The owner chose, at this service, to change the part's schedule.
       //
-      // One number governs a part, and the last service is what sets it --
-      // so the figure written on the workshop sticker is the schedule from
-      // then on, until the next service writes a different one. An earlier
-      // design kept this as a one-cycle override sitting on top of a separate
-      // standing setting; two numbers for one part meant the schedule on
-      // screen could disagree with the schedule in the editor, and the owner
-      // had no way to tell which one was in charge.
+      // Only then. Logging a service does not touch the schedule by itself
+      // any more (2026-09-20): the form shows "early by 4,000 km" against the
+      // schedule and offers a "Change schedule" button, and these two fields
+      // arrive only if that button was used. Before, every "Next due at"
+      // figure silently became the schedule, which the owner found impossible
+      // to reason about -- the schedule changed without anyone deciding it.
       //
-      // COALESCE so a km-only entry does not blank out the months, and the
-      // other way round. The copy on the line item stays as history: what the
-      // schedule was at that service, which is worth keeping even though
-      // nothing computes from it.
+      // One number still governs a part: this writes maintenance_intervals,
+      // the same row the schedule table edits, so there is never a second
+      // figure to disagree with the first. COALESCE so a km-only change does
+      // not blank out the months, and the other way round. The copy on the
+      // line item stays as history: this service is where the schedule was
+      // changed, and to what.
       const setsInterval =
         item.intervalKmOverride != null || item.intervalMonthsOverride != null;
       if (setsInterval) {

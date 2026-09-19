@@ -604,9 +604,9 @@ describe("due status handles missing halves of an interval (spec 6.2 step 5)", (
  * moves. A stored due point passes the first test and fails all the rest,
  * silently, while continuing to display a plausible number.
  *
- * The interval keyed in at a service also BECOMES the vehicle's interval --
- * one number per part, set by the most recent service. See CLAUDE.md
- * invariant 6.
+ * A service changes the vehicle's interval ONLY when it carries one -- which
+ * the client sends only when the owner explicitly chose "Change schedule"
+ * (2026-09-20). One number per part either way. See CLAUDE.md invariant 6.
  */
 describe("per-service intervals (invariant 6)", () => {
   const findOil = (body: { part_type_id: string }[]) =>
@@ -693,6 +693,26 @@ describe("per-service intervals (invariant 6)", () => {
     expect(oil.due_km).toBe(60_000); // 55,000 baseline + 5,000
   });
 
+  it("leaves the schedule alone when a service is logged early", async () => {
+    // The revamp's core promise. Oil changed at 6,000 km on a 10,000 km
+    // schedule: the baseline moves (the clock restarts), the schedule does
+    // not. Before 2026-09-20 the form always sent a figure, so every service
+    // quietly rewrote the schedule.
+    const vehicleId = await makeVehicle();
+    for (const [servicedOn, odometerKm] of [
+      ["2026-01-10", 50_000],
+      ["2026-04-10", 56_000],
+    ] as const) {
+      await call(`/api/vehicles/${vehicleId}/services`, {
+        method: "POST",
+        json: { servicedOn, odometerKm, items: [{ partTypeId: "pt_engine_oil" }] },
+      });
+    }
+    const oil = findOil((await call(`/api/vehicles/${vehicleId}/maintenance`)).body);
+    expect(oil.interval_km).toBe(10_000);
+    expect(oil.due_km).toBe(66_000);
+  });
+
   it("lets editing the interval take effect on the cycle already running", async () => {
     const vehicleId = await makeVehicle();
     await call(`/api/vehicles/${vehicleId}/services`, {
@@ -711,9 +731,19 @@ describe("per-service intervals (invariant 6)", () => {
     // that started it all: the edit used to be stored but outranked by the
     // last service's number, so the due point never moved and the save read
     // as having silently failed.
-    await call(`/api/vehicles/${vehicleId}/intervals/pt_engine_oil`, {
-      method: "PATCH",
-      json: { intervalKm: 6_000 },
+    await call(`/api/vehicles/${vehicleId}/schedule`, {
+      method: "PUT",
+      json: {
+        rows: [
+          {
+            partTypeId: "pt_engine_oil",
+            intervalKm: 6_000,
+            intervalMonths: 12,
+            makerKm: null,
+            makerMonths: null,
+          },
+        ],
+      },
     });
 
     const oil = findOil((await call(`/api/vehicles/${vehicleId}/maintenance`)).body);
@@ -770,54 +800,9 @@ describe("per-service intervals (invariant 6)", () => {
   });
 });
 
-describe("per-vehicle interval configuration (spec 8.2)", () => {
-  it("starts tracking a part the seeder skipped", async () => {
-    // The belt-versus-chain case. Timing chain has no default intervals, so
-    // no interval row exists and there is nothing on screen to switch on.
-    const vehicleId = await makeVehicle();
-    const res = await call(`/api/vehicles/${vehicleId}/intervals/pt_timing_chain`, {
-      method: "PATCH",
-      json: { intervalKm: 150_000 },
-    });
-    expect(res.status).toBe(200);
-
-    const rows = (await call(`/api/vehicles/${vehicleId}/maintenance`)).body;
-    const chain = rows.find(
-      (r: { part_type_id: string }) => r.part_type_id === "pt_timing_chain",
-    );
-    expect(chain.interval_km).toBe(150_000);
-    expect(chain.status).toBe("unknown"); // tracked, but no baseline yet
-  });
-
-  it("hides a part switched off, and brings it back when switched on", async () => {
-    const vehicleId = await makeVehicle();
-    const present = (body: { part_type_id: string }[]) =>
-      body.some((r) => r.part_type_id === "pt_timing_belt");
-
-    expect(present((await call(`/api/vehicles/${vehicleId}/maintenance`)).body)).toBe(true);
-
-    await call(`/api/vehicles/${vehicleId}/intervals/pt_timing_belt`, {
-      method: "PATCH",
-      json: { isActive: 0 },
-    });
-    expect(present((await call(`/api/vehicles/${vehicleId}/maintenance`)).body)).toBe(false);
-
-    await call(`/api/vehicles/${vehicleId}/intervals/pt_timing_belt`, {
-      method: "PATCH",
-      json: { isActive: 1 },
-    });
-    expect(present((await call(`/api/vehicles/${vehicleId}/maintenance`)).body)).toBe(true);
-  });
-
-  it("refuses an interval with neither a distance nor a time", async () => {
-    const vehicleId = await makeVehicle();
-    const res = await call(`/api/vehicles/${vehicleId}/intervals/pt_engine_oil`, {
-      method: "PATCH",
-      json: { intervalKm: null, intervalMonths: null },
-    });
-    expect(res.status).toBe(422);
-  });
-});
+// Per-vehicle interval configuration (spec 8.2) moved to the schedule table
+// on 2026-09-20 and is tested in schedule.test.ts: starting to track a part
+// the seeder skipped, switching one off and on, and refusing bad figures.
 
 describe("service type is a label, not a clock (invariant 7)", () => {
   it("resets nothing when a typed service has no line items", async () => {

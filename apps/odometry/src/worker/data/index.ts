@@ -14,6 +14,7 @@ import { SettingsRepo } from "./settings";
 import { ServiceTemplateRepo } from "./serviceTemplates";
 import { DashboardRepo } from "./dashboard";
 import { FuelRepo } from "./fuel";
+import { ScheduleRepo } from "./schedule";
 import type { Env, Scope } from "../types";
 
 export interface Repos {
@@ -30,6 +31,7 @@ export interface Repos {
   serviceTemplates: ServiceTemplateRepo;
   dashboard: DashboardRepo;
   fuel: FuelRepo;
+  schedule: ScheduleRepo;
 }
 
 /**
@@ -52,6 +54,7 @@ export function makeRepos(env: Env, scope: Scope): Repos {
     serviceTemplates: new ServiceTemplateRepo(db, raw, scope),
     dashboard: new DashboardRepo(db, raw, scope),
     fuel: new FuelRepo(db, raw, scope),
+    schedule: new ScheduleRepo(db, raw, scope),
   };
 }
 
@@ -65,4 +68,5 @@ export {
   SettingsRepo,
   ServiceTemplateRepo,
   FuelRepo,
+  ScheduleRepo,
 };

@@ -99,6 +99,8 @@ export async function resetDb(): Promise<void> {
     "service_records",
     "odometer_readings",
     "maintenance_intervals",
+    // Migration 0019. Child of garages, vehicles and part_types.
+    "maker_intervals",
     // References garages, vehicles and part_types, so it goes before all
     // three -- and before the part_types delete below.
     "service_templates",

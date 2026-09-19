@@ -190,6 +190,7 @@ describe("cross-tenant isolation", () => {
       `/api/vehicles/${alice.vehicleId}`,
       `/api/vehicles/${alice.vehicleId}/odometer`,
       `/api/vehicles/${alice.vehicleId}/maintenance`,
+      `/api/vehicles/${alice.vehicleId}/schedule`,
       `/api/vehicles/${alice.vehicleId}/fuel`,
       `/api/vehicles/${alice.vehicleId}/services`,
       `/api/services/${alice.serviceId}/attachments`,
@@ -205,6 +206,7 @@ describe("cross-tenant isolation", () => {
       `/api/vehicles/${bob.vehicleId}`,
       `/api/vehicles/${bob.vehicleId}/odometer`,
       `/api/vehicles/${bob.vehicleId}/maintenance`,
+      `/api/vehicles/${bob.vehicleId}/schedule`,
       `/api/vehicles/${bob.vehicleId}/fuel`,
       `/api/vehicles/${bob.vehicleId}/services`,
       `/api/services/${bob.serviceId}/attachments`,
@@ -411,13 +413,24 @@ describe("cross-tenant isolation", () => {
         (await call(`/api/vehicles/${bob.vehicleId}`, { method: "DELETE" })).status,
       ).toBe(404);
 
-      // setInterval creates a row when none exists, so this is an INSERT
-      // against another garage's vehicle, not just a no-op UPDATE.
+      // Saving the schedule upserts, so this is an INSERT against another
+      // garage's vehicle -- into maintenance_intervals AND maker_intervals --
+      // not just a no-op UPDATE.
       expect(
         (
-          await call(`/api/vehicles/${bob.vehicleId}/intervals/pt_timing_chain`, {
-            method: "PATCH",
-            json: { intervalKm: 150_000 },
+          await call(`/api/vehicles/${bob.vehicleId}/schedule`, {
+            method: "PUT",
+            json: {
+              rows: [
+                {
+                  partTypeId: "pt_timing_chain",
+                  intervalKm: 150_000,
+                  intervalMonths: null,
+                  makerKm: 150_000,
+                  makerMonths: null,
+                },
+              ],
+            },
           })
         ).status,
       ).toBe(404);

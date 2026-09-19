@@ -182,6 +182,26 @@ export const maintenanceIntervals = sqliteTable(
   (t) => ({ uq: uniqueIndex("uq_interval_vehicle_part").on(t.vehicleId, t.partTypeId) }),
 );
 
+/**
+ * The manufacturer's figure for a part, typed in from the manual (migration
+ * 0019). A reference shown beside the schedule, never a clock: no view reads
+ * it. The primary key is (vehicle_id, part_type_id), so there is no `id`.
+ */
+export const makerIntervals = sqliteTable(
+  "maker_intervals",
+  {
+    garageId: text("garage_id").notNull(),
+    vehicleId: text("vehicle_id").notNull(),
+    partTypeId: text("part_type_id").notNull(),
+    intervalKm: integer("interval_km"),
+    intervalMonths: integer("interval_months"),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.vehicleId, t.partTypeId] }),
+    garageIdx: index("idx_maker_intervals_garage").on(t.garageId),
+  }),
+);
+
 export const serviceRecords = sqliteTable(
   "service_records",
   {

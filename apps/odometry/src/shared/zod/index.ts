@@ -92,10 +92,15 @@ export const vehicleInput = z.object({
  *
  * currentOdometerKm is omitted, not nullable: the odometer moves through
  * readings (spec 8.5), never by editing the vehicle.
+ *
+ * vehicleType is omitted too. It decides which parts a vehicle has, and
+ * changing it would not re-seed or un-seed anything, so a car PATCHed into a
+ * motorcycle would keep forty car parts on its schedule. The form already
+ * showed it read-only on an edit; this makes the server agree.
  */
 export const vehiclePatch = vehicleInput
   .partial()
-  .omit({ currentOdometerKm: true })
+  .omit({ currentOdometerKm: true, vehicleType: true })
   .extend({
     plate: z.string().max(20).nullable().optional(),
     make: z.string().max(40).nullable().optional(),
@@ -137,13 +142,15 @@ export const serviceItemInput = z.object({
   unitCost: sen.nonnegative().optional(),
   warrantyMonths: z.number().int().nonnegative().max(240).optional(),
   /**
-   * "Next due N km / N months from THIS service."
+   * "Change this part's schedule to N km / N months" -- sent ONLY when the
+   * owner explicitly adopts a figure at this service (the "Change schedule"
+   * button on an early/late notice, or "Add to schedule" for an untracked
+   * part). Logging a service without them leaves the schedule alone; that is
+   * the whole point of the 2026-09-20 revamp.
    *
-   * An INTERVAL, deliberately, not the absolute odometer figure the user
-   * types into the form. The client subtracts the service odometer before
-   * sending, so the API cannot be handed a due point at all -- which is what
-   * keeps invariant 6 true rather than merely intended. Bounds match
-   * intervalPatch below, since these values can become an interval.
+   * An INTERVAL, never a due point, so the API cannot be handed a stored due
+   * date (invariant 6). Bounds match scheduleRowInput below, since these
+   * values become the schedule.
    */
   intervalKmOverride: z.number().int().positive().max(1_000_000).nullable().optional(),
   intervalMonthsOverride: z.number().int().positive().max(600).nullable().optional(),
@@ -248,14 +255,33 @@ export const renewalPatch = z
   })
   .strict();
 
-export const intervalPatch = z
+const intervalKmValue = z.number().int().positive().max(1_000_000).nullable();
+const intervalMonthsValue = z.number().int().positive().max(600).nullable();
+
+/**
+ * Saving the schedule table (spec 8.2). One row per part the owner touched.
+ *
+ * intervalKm/intervalMonths are the owner's schedule: both null means "do not
+ * track this part". makerKm/makerMonths are the manual's figure, a reference
+ * only -- both null clears it. Every value is a whole positive number; there
+ * is no zero interval, and "no figure" is null rather than 0 so the two can
+ * never be confused.
+ */
+export const scheduleRowInput = z
   .object({
-    intervalKm: z.number().int().positive().max(1_000_000).nullable().optional(),
-    intervalMonths: z.number().int().positive().max(600).nullable().optional(),
-    isActive: z.union([z.literal(0), z.literal(1)]).optional(),
+    partTypeId: z.string().min(1),
+    intervalKm: intervalKmValue,
+    intervalMonths: intervalMonthsValue,
+    makerKm: intervalKmValue,
+    makerMonths: intervalMonthsValue,
   })
-  .refine((v) => v.intervalKm !== null || v.intervalMonths !== null, {
-    message: "An interval needs a distance, a time, or both",
+  .strict();
+
+export const schedulePut = z
+  .object({ rows: z.array(scheduleRowInput).min(1).max(200) })
+  .strict()
+  .refine((v) => new Set(v.rows.map((r) => r.partTypeId)).size === v.rows.length, {
+    message: "Each part may appear only once",
   });
 
 export const settingsPatch = z.object({
@@ -299,7 +325,8 @@ export type ServiceUpdate = z.infer<typeof serviceUpdate>;
 export type AttachmentUpload = z.infer<typeof attachmentUpload>;
 export type RenewalInput = z.infer<typeof renewalInput>;
 export type RenewalPatch = z.infer<typeof renewalPatch>;
-export type IntervalPatch = z.infer<typeof intervalPatch>;
+export type ScheduleRowInput = z.infer<typeof scheduleRowInput>;
+export type SchedulePut = z.infer<typeof schedulePut>;
 export type SettingsPatch = z.infer<typeof settingsPatch>;
 export type ServiceType = z.infer<typeof serviceType>;
 export type ServiceTemplatePut = z.infer<typeof serviceTemplatePut>;

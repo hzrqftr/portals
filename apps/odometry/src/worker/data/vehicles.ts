@@ -1,9 +1,8 @@
-import { and, eq, desc } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { GarageScopedRepo } from "./base";
-import { vehicles, odometerReadings, maintenanceIntervals } from "../schema";
+import { vehicles, odometerReadings } from "../schema";
 import {
   NotFoundError,
-  ValidationError,
   assertReadingNotBackwards,
   odometerWriteStatements,
 } from "@portals/core/worker";
@@ -190,65 +189,5 @@ export class VehicleRepo extends GarageScopedRepo {
         source: input.source ?? "manual",
       }),
     );
-  }
-
-  async setInterval(
-    vehicleId: string,
-    partTypeId: string,
-    patch: { intervalKm?: number | null; intervalMonths?: number | null; isActive?: number },
-  ) {
-    await this.assertOwnedVehicle(vehicleId);
-    await this.assertUsablePartType(partTypeId);
-
-    if (patch.intervalKm === null && patch.intervalMonths === null) {
-      throw new ValidationError("An interval needs a distance, a time, or both");
-    }
-
-    const [row] = await this.db
-      .update(maintenanceIntervals)
-      .set(patch)
-      .where(
-        this.where(
-          maintenanceIntervals,
-          and(
-            eq(maintenanceIntervals.vehicleId, vehicleId),
-            eq(maintenanceIntervals.partTypeId, partTypeId),
-          ),
-        ),
-      )
-      .returning();
-    if (row) return row;
-
-    /**
-     * No row yet, so create one.
-     *
-     * The seeder only creates intervals for part types that ship with a
-     * default, which leaves two parts permanently unreachable from the UI:
-     * anything deliberately intervalless (Timing chain is inspect-on-symptom,
-     * so both its defaults are NULL) and any part type the owner added
-     * themselves. Without this branch, "start tracking this part" is a
-     * 404 forever and the belt-versus-chain case has no answer.
-     *
-     * A patch carrying only isActive still 404s: there is genuinely nothing
-     * to switch on or off, and inventing a row with no interval in it would
-     * fail the table's CHECK constraint anyway.
-     */
-    if (patch.intervalKm == null && patch.intervalMonths == null) {
-      throw new NotFoundError("Interval not found");
-    }
-
-    const [created] = await this.db
-      .insert(maintenanceIntervals)
-      .values({
-        id: crypto.randomUUID(),
-        garageId: this.garageId,
-        vehicleId,
-        partTypeId,
-        intervalKm: patch.intervalKm ?? null,
-        intervalMonths: patch.intervalMonths ?? null,
-        isActive: patch.isActive ?? 1,
-      })
-      .returning();
-    return created;
   }
 }
