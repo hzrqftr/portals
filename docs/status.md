@@ -40,13 +40,54 @@ Verified after, not assumed:
   own `ACCESS_AUD` and not Coinbox's, which is the separation that keeps a
   token minted for one portal from opening the other.
 
-### Two things to check yourself
+### Verified signed-in, against production itself
 
-- **Sign in to each portal once.** Everything above was verified from outside
-  Access; a coding session cannot sign in, so the first authenticated page
-  load on the new code is still unobserved. The local equivalents were clicked
-  through thoroughly -- see the browser section below -- so this is
-  confirmation rather than exploration.
+The first item below was closed the same day. **Chrome already held a valid
+Access session**, so production opened without a sign-in step -- which is also
+the cleanest possible confirmation that the deploy did not disturb Access.
+Everything here is the real database, read-only; nothing was saved.
+
+- **Odometry dashboard** -- RS150R 92,377 km, City 112,198 km, Waja 128,073 km.
+- **Service history** on the RS150R, expanded: the 2026-09-10 repair at
+  RM 424.00 with three line items, each showing its own "set on this visit"
+  due point, the visit note, and **its receipt `MS.pdf` (2.4 MB) listed from
+  `portals-docs`** -- the R2 attachment path working in production.
+- **Fuel tab**, 10 real fills: 3.0 L/100km over 9 tanks, the first fill
+  correctly showing "--" for distance and consumption (invariant 10: a segment
+  needs a preceding full tank), and **no money anywhere on the page**, which is
+  the garage-scoping rule holding.
+- **Coinbox dashboard** -- September net +RM 3,774.14, out RM 6,474.26 against
+  a RM 7,242.94 three-month average, RM 4,415.02 committed across 9 rule
+  postings, YTD +RM 3,189.24, and staleness reporting "Today · 78 entries in
+  September".
+- **The refactored ledger table**, real data through 2026-09-19, all eight
+  columns, vehicle attribution populated only on Transportation rows.
+- **No console errors** on a full production page load of either portal.
+
+Cells were deliberately NOT clicked on production: `CellInput` commits on
+blur, so opening an editor and clicking away is a write path, and a no-op
+write is still a write worth not making by accident.
+
+### A record that is now worth revisiting
+
+The 2026-09-10 RS150R repair carries a RM 320 line called **"Throttle body
+clean"** and a VISIT-level note reading "Update throttle body clean as it
+includes TPS replacement and adjustment valve fix".
+
+That is a workaround for two things that did not exist when it was entered:
+a throttle position sensor part type, and a per-LINE note. **Both shipped in
+migrations 0016 and 0017 on 2026-09-11 and went to production only with
+today's deploy** -- the client work had been sitting undeployed since the
+11th. So the record predates the feature built for it.
+
+It can now be corrected: split the TPS onto its own line against `pt_tps`, and
+move the explanation onto that line's note where it says which part it is
+about. Worth doing while the receipt is still to hand, because the parts
+history is the thing that gets consulted years later, and "Throttle body
+clean, RM 320" will not say a sensor was replaced.
+
+### The other thing to check yourself
+
 - **Tonight's 18:00 UTC backup is the first run on Drizzle 0.45.** The backup
   reader is the one unscoped query in the system and it sits outside
   `BaseScopedRepo`, so it did not benefit from the isolation suites that
