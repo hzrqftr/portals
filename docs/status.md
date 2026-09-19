@@ -3,25 +3,25 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-09-19 (renewals, renewal documents and the vehicle grant built on branch `renewals`, NOT deployed; Sheets mirror dropped)
+**Last updated:** 2026-09-19 (renewals, renewal documents and the vehicle grant built and DEPLOYED; Sheets mirror dropped)
 
 ---
 
 ## Start here if you are new, or on a different machine
 
-**Work IS in flight -- see "Renewals, renewal documents and the grant" just
-below.** It is on the branch `renewals`, migration `0018` is applied LOCALLY
-ONLY, and production does not have it. Everything on `main` is deployed.
+**Everything in this repo is deployed. There is no work in flight.** As of
+2026-09-19 the tree, `origin/main` and both production Workers all carry the
+same code, remote migrations are fully applied, and the only branch is `main`.
 
 | | |
 |---|---|
-| Last commit that changed CODE | `101c36a` -- everything after it is documentation |
+| Last commit that changed CODE | `2e5410c` (renewals, documents, grant) -- everything after it is documentation |
 | Deployed code vs `main` | identical; a docs-only commit moves `main` and ships nothing |
-| `fleet-portal` | version `26fbef6a-3811-477b-967d-0d4bc70977f8` |
+| `fleet-portal` | version `13c64152-a70f-4a5c-b325-89b92f1bbc8d` |
 | `coinbox` | version `568535ba-bb2e-478e-b3c4-9c3fb52c287c` |
-| Remote migrations | all 17 applied; nothing pending |
-| Production schema | 24 tables, 6 views, 62 seeded part types |
-| `npm test` | lint over 158 files, then 161 Odometry + 194 Coinbox |
+| Remote migrations | all 18 applied; nothing pending |
+| Production schema | 26 tables, 6 views, 62 seeded part types |
+| `npm test` | lint over 165 files, then 194 Coinbox + 176 Odometry |
 
 **Do not trust that table -- it is a snapshot and this file ages.** Four
 commands confirm the whole of it in under a minute, and they are cheap enough
@@ -56,7 +56,7 @@ where even `SELECT 1` failed, and worked immediately from a normal
 
 ---
 
-## Renewals, renewal documents and the grant — 2026-09-19, BUILT, NOT DEPLOYED
+## Renewals, renewal documents and the grant — 2026-09-19, DEPLOYED
 
 The top of "Next" since the API was written, now with a screen. Three things
 shipped together because they share one piece of machinery:
@@ -108,11 +108,25 @@ How it was built, for whoever touches it next:
   12px wide; the tab row now scrolls within itself. The test data was deleted
   again afterwards.
 
-**To ship it:** merge `renewals`, then `npm run deploy -w odometry`, which
-applies `0018` remotely before the Worker goes out. Count `vehicles` and
-`renewals` on `--remote` before and after; `0018` only adds tables and
-columns, so both counts must be unchanged. **Receipts, certificates and grants
-are all outside the backup** -- see `docs/backups.md`.
+**Shipped 2026-09-19** as `2e5410c`, `fleet-portal` version
+`13c64152-a70f-4a5c-b325-89b92f1bbc8d`, through `npm run deploy -w odometry`
+(tests, build, `0018` remote, then the Worker). Production before and after:
+3 vehicles, 0 renewals, 2 service receipts, 4,508 transactions -- identical,
+`PRAGMA foreign_key_check` clean, nothing left to apply.
+
+**Checked live, signed in, READ-ONLY.** The Renewals tab and grant card
+render; every new list endpoint returns 200 for all three vehicles and the
+item routes 404 an unknown id; every vehicle row carries the four grant
+fields; and both existing receipts (RS150R, Waja) still download byte for
+byte with `application/pdf` and `nosniff` through the refactored repository.
+Creating a test renewal in production was blocked by the session's
+permission guard, so the write path was proven locally and in the test suite,
+not against production. The first real road tax the owner enters is its
+first production write.
+
+The recovery runbook page was republished the same day for the new files.
+**Receipts, certificates and grants are all outside the backup** -- see
+`docs/backups.md`.
 
 ---
 
@@ -1428,9 +1442,6 @@ Still open on this page, and deliberately not built:
   of the portal nobody has opened it on a real phone.
 
 ## Next
-
-**Ship renewals.** Built on branch `renewals` and not deployed -- see the top
-of this file. Merge, then `npm run deploy -w odometry`.
 
 **Backup alerting.** A failed nightly run writes to the log and tells nobody.
 `observability` is on so the evidence persists, but real alerting needs an
