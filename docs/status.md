@@ -15,13 +15,13 @@ same code, remote migrations are fully applied, and the only branch is `main`.
 
 | | |
 |---|---|
-| Last commit that changed CODE | `ba5bb30` (fuel consumption card) -- everything after it is documentation |
+| Last commit that changed CODE | `ddb4bb8` (in-app file viewer) -- everything after it is documentation |
 | Deployed code vs `main` | identical; a docs-only commit moves `main` and ships nothing |
-| `fleet-portal` | version `13c64152-a70f-4a5c-b325-89b92f1bbc8d` |
+| `fleet-portal` | version `ad6a6d85-9225-429b-a07d-62f5a748edde` |
 | `coinbox` | version `12267973-a130-4457-a810-7294d4fdad3b` |
 | Remote migrations | all 18 applied; nothing pending |
 | Production schema | 26 tables, 6 views, 62 seeded part types |
-| `npm test` | lint over 165 files, then 193 Coinbox + 176 Odometry |
+| `npm test` | lint over 172 files, then 193 Coinbox + 179 Odometry |
 
 **Do not trust that table -- it is a snapshot and this file ages.** Four
 commands confirm the whole of it in under a minute, and they are cheap enough
@@ -56,7 +56,7 @@ where even `SELECT 1` failed, and worked immediately from a normal
 
 ---
 
-## In-app file viewer — 2026-09-19
+## In-app file viewer — 2026-09-19, DEPLOYED
 
 Every attached file -- service receipts, renewal documents, the grant, and
 files still pending in the log-service form -- now opens in a full-screen
@@ -77,6 +77,10 @@ be previewed (HEIC outside Safari).
   typed workshop name survived; at 375px no sideways scroll. The test found and
   fixed two bugs -- pages at zero width, and a page lock the viewer could leave
   behind. Test files deleted afterwards. See `apps/odometry/CLAUDE.md`.
+- **Deployed** as `ddb4bb8`, `fleet-portal` version
+  `ad6a6d85-9225-429b-a07d-62f5a748edde`. Checked live, read-only: the Waja
+  grant (a 4.9 MB, one-page PDF) opened in the viewer and rendered, with no
+  console errors, and the page did not navigate away.
 
 ---
 
