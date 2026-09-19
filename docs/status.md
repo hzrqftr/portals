@@ -23,9 +23,9 @@ branch is `main`.
 
 | | |
 |---|---|
-| Last deployed code | `fcb21ff` (vehicle page Details \| Grant tabs). Odometry carries everything on `main`; Coinbox lacks only three unused-import removals, which change no behaviour |
+| Last deployed code | `fcb21ff` (vehicle page Details \| Grant tabs). Both Workers carry everything on `main` |
 | `fleet-portal` (Odometry) | version `5ff34dfd-1a2a-44ed-b77f-b55171581690` |
-| `coinbox` | version `12267973-a130-4457-a810-7294d4fdad3b` |
+| `coinbox` | version `b88aa53b-16b6-40e7-a735-eed32c3fadf4` |
 | Remote migrations | all 18 applied (`0001`-`0018`); nothing pending |
 | Production schema | 26 tables (including `d1_migrations`, excluding `sqlite_%`/`_cf_%`), 6 views, 62 global part types |
 | Production data, 2026-09-19 | 3 vehicles, 7 service records, 3 receipts, 3 grant files, 0 renewals, 12 fuel fills, 4,509 transactions, 9 recurring rules |

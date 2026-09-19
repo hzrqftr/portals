@@ -65,6 +65,12 @@ the PDF opens in the viewer, the two switchers keep separate selections, and
 `5ff34dfd-1a2a-44ed-b77f-b55171581690`. Checked live, read-only: the Waja page
 opens on Details and Maintenance, and Grant shows the card with its file.
 
+Coinbox was redeployed the same day (version
+`b88aa53b-16b6-40e7-a735-eed32c3fadf4`) to carry the three unused-import
+removals from 2026-09-19, so both Workers now match `main`. Checked live,
+read-only: dashboard, ledger and categories all 200. No branches, worktrees or
+stashes remained to clear.
+
 ---
 
 ## Docs split into status and history; loose ends tied — 2026-09-19
