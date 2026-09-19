@@ -8,7 +8,7 @@ import {
   useFuel,
   useRenewalStatus,
 } from "../api/hooks";
-import { Page, AppHeader, SectionTitle, STICKY_UNDER_BAR_AND_CRUMB } from "../components/Layout";
+import { Page, AppHeader, STICKY_UNDER_BAR_AND_CRUMB } from "../components/Layout";
 import { MaintenanceList } from "../components/MaintenanceList";
 import { ServiceHistory } from "../components/ServiceHistory";
 import { FuelHistory } from "../components/FuelHistory";
@@ -17,18 +17,28 @@ import { VehicleSheet } from "../components/VehicleSheet";
 import { VehicleSpec } from "../components/VehicleSpec";
 import { GrantCard } from "../components/GrantCard";
 import { RenewalsPanel } from "../components/RenewalsPanel";
+import { TabBar } from "../components/TabBar";
 import { formatKm } from "../lib/format";
 
 type Tab = "maintenance" | "history" | "renewals" | "fuel";
 
-const TABS: { value: Tab; label: string }[] = [
-  { value: "maintenance", label: "Maintenance" },
-  { value: "history", label: "Service history" },
-  { value: "renewals", label: "Renewals" },
-  { value: "fuel", label: "Fuel" },
+/**
+ * The top switcher: the vehicle's own record, one card at a time. Details
+ * opens by default; the grant (added 2026-09-19) moved behind its own tab so
+ * the top of the page stays one card tall.
+ */
+type TopTab = "details" | "grant";
+
+const TOP_TABS: { value: TopTab; label: string }[] = [
+  { value: "details", label: "Details" },
+  { value: "grant", label: "Grant" },
 ];
 
-/** Spec 8.2: overview, maintenance, service history and renewals. */
+/**
+ * Spec 8.2. Two independent switchers: Details | Grant for the vehicle's own
+ * record, and Maintenance | Service history | Renewals | Fuel for everything
+ * logged against it. Maintenance stays visible on arrival without a click.
+ */
 export default function VehicleDetail() {
   const { id = "" } = useParams();
   const vehicle = useVehicle(id);
@@ -43,6 +53,7 @@ export default function VehicleDetail() {
   const fuel = useFuel(id);
   const renewals = useRenewalStatus(id);
   const [tab, setTab] = useState<Tab>("maintenance");
+  const [topTab, setTopTab] = useState<TopTab>("details");
 
   if (vehicle.isLoading) return <p className="p-6 text-ink-muted">Loading&hellip;</p>;
   if (vehicle.isError) return <p className="p-6 text-status-overdue-fg">Vehicle not found.</p>;
@@ -76,13 +87,17 @@ export default function VehicleDetail() {
         </div>
 
         <section className="mt-8">
-          <SectionTitle>Details</SectionTitle>
-          {vehicle.data && (
-            <>
-              <VehicleSpec vehicle={vehicle.data} onEdit={() => setEditing(true)} />
-              <GrantCard vehicle={vehicle.data} />
-            </>
+          {/* Not sticky, unlike the switcher below: only one of the two may
+              pin under the header, and the lower one is the long list. */}
+          <div className="border-b border-edge">
+            <TabBar tabs={TOP_TABS} value={topTab} onChange={setTopTab} />
+          </div>
+          {/* GrantCard mounts only on its tab, so the grant files are fetched
+              only when someone looks at them. */}
+          {vehicle.data && topTab === "details" && (
+            <VehicleSpec vehicle={vehicle.data} onEdit={() => setEditing(true)} />
           )}
+          {vehicle.data && topTab === "grant" && <GrantCard vehicle={vehicle.data} />}
         </section>
 
         {/*
@@ -107,36 +122,17 @@ export default function VehicleDetail() {
             "bg-page/90 px-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
           }
         >
-          {/* Four tabs do not fit 375px. The row scrolls within itself rather
-              than widening the page, and labels never wrap onto two lines. */}
-          <div className="flex gap-1 overflow-x-auto [scrollbar-width:none]">
-            {TABS.map((t) => (
-              <button
-                key={t.value}
-                onClick={() => setTab(t.value)}
-                aria-current={tab === t.value ? "page" : undefined}
-                className={
-                  "-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm transition " +
-                  (tab === t.value
-                    ? "border-ink font-medium text-ink"
-                    : "border-transparent text-ink-muted hover:text-ink")
-                }
-              >
-                {t.label}
-                <span className="ml-1.5 text-xs text-ink-faint">
-                  {
-                    {
-                      maintenance: maintenance.data?.length ?? 0,
-                      history: services.data?.length ?? 0,
-                      // Active records only -- one per type, not the history.
-                      renewals: renewals.data?.length ?? 0,
-                      fuel: fuel.data?.length ?? 0,
-                    }[t.value]
-                  }
-                </span>
-              </button>
-            ))}
-          </div>
+          <TabBar
+            tabs={[
+              { value: "maintenance", label: "Maintenance", count: maintenance.data?.length ?? 0 },
+              { value: "history", label: "Service history", count: services.data?.length ?? 0 },
+              // Active records only -- one per type, not the history.
+              { value: "renewals", label: "Renewals", count: renewals.data?.length ?? 0 },
+              { value: "fuel", label: "Fuel", count: fuel.data?.length ?? 0 },
+            ]}
+            value={tab}
+            onChange={setTab}
+          />
         </div>
 
         {tab === "maintenance" && (

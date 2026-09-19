@@ -19,6 +19,7 @@ their reasoning survives.
 
 ## Contents
 
+- Vehicle page: Details | Grant tabs — 2026-09-20
 - Docs split into status and history; loose ends tied — 2026-09-19
 - File viewer: zoom out, and a modal instead of full screen — 2026-09-19, DEPLOYED
 - In-app file viewer — 2026-09-19, DEPLOYED
@@ -43,6 +44,22 @@ their reasoning survives.
 - The Home dashboard is built and live — 2026-08-31
 - Snapshot: the old "Start here" section, as it stood on 2026-09-19
 - Snapshot: the old "Next" and "Picking this up on another machine" sections, as they stood on 2026-09-19
+
+---
+
+## Vehicle page: Details | Grant tabs — 2026-09-20
+
+Owner request: the Grant card sat under Details and made the top of the page
+long. The top section is now its own switcher, **Details | Grant**, with
+Details selected on open; the lower Maintenance | Service history | Renewals |
+Fuel switcher is unchanged, so maintenance is still visible without a click
+(the owner chose this over one combined six-tab row). Both rows are one
+`TabBar` component, so they cannot drift apart. Only the lower one is sticky.
+
+`GrantCard` now mounts only on its tab, so grant files are fetched only when
+someone opens it. Checked locally: Details on open, Grant shows the card and
+the PDF opens in the viewer, the two switchers keep separate selections, and
+375 px has no sideways scroll. No server change.
 
 ---
 

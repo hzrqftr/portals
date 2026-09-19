@@ -8,7 +8,7 @@ The dated log of how it got here -- every build, finding and decision with its
 reasoning -- is **`docs/history.md`**. Search it before changing something
 whose *why* is not obvious.
 
-**Last updated:** 2026-09-19.
+**Last updated:** 2026-09-20.
 
 **Keep this file current, and keep it short.** When a change lands, update the
 section it affects here and add a dated entry to the top of `docs/history.md`.
@@ -73,7 +73,8 @@ in the app's `CLAUDE.md`, the spec section, or `docs/history.md`.
 |---|---|
 | Dashboard: attention list (maintenance **and** renewals), vehicle cards, stale-odometer warning, one-tap odometer | spec §8.1, §8.5; `worker/data/dashboard.ts` |
 | Vehicles: add (intervals seeded by type and fuel), edit details, cars and motorbikes | §8.3; migration `0008` for bikes |
-| Grant (geran) on each vehicle: chassis/engine no., registration date, colour, plus the grant file. **Owner name, IC and address are never fields** | `GrantCard.tsx`; migration `0018` |
+| Vehicle page: a **Details \| Grant** switcher at the top (Details on open), and **Maintenance \| Service history \| Renewals \| Fuel** below, pinned under the header. Both use `TabBar.tsx` | `routes/VehicleDetail.tsx` |
+| Grant (geran) on each vehicle, on its own tab: chassis/engine no., registration date, colour, plus the grant file. **Owner name, IC and address are never fields** | `GrantCard.tsx`; migration `0018` |
 | Maintenance: parts grouped by category, overdue pinned, search, inline interval editing, track/untrack | §8.2; invariants 6-7; migrations `0005`, `0007`, `0009` |
 | Log a service: line items, labour as its own cost, per-item note, custom part types, confirmation of which clocks reset | §8.4; migrations `0006`, `0016`, `0017` |
 | Correct or delete a logged service (odometer reading and cached odometer kept in step) | migration `0014`; `tests/serviceEdit.test.ts` |
