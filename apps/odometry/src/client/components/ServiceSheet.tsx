@@ -6,13 +6,14 @@ import {
   usePartTypes,
   useServiceTemplates,
   uploadAttachment,
+  serviceReceipts,
   type ServiceRecord,
   type ServiceTypeName,
   type VehicleType,
 } from "../api/hooks";
 import { Field, INPUT, Sheet } from "@portals/core/client";
 import { useServiceDraft } from "./serviceDraft";
-import { ServiceAttachments } from "./ServiceAttachments";
+import { ServiceAttachments } from "./Attachments";
 import { ServicePartsSection } from "./ServicePartsSection";
 import { SavedConfirmation, Total } from "./ServiceSaved";
 import { ServiceVisitFields } from "./ServiceVisitFields";
@@ -177,7 +178,7 @@ export function ServiceSheet({
           const failed: string[] = [];
           for (const file of pendingFiles) {
             try {
-              await uploadAttachment(result.id, file);
+              await uploadAttachment(serviceReceipts(result.id), file);
             } catch {
               failed.push(file.name);
             }

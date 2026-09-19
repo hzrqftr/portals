@@ -49,8 +49,9 @@ export class VehicleRepo extends GarageScopedRepo {
           `INSERT INTO vehicles
              (id, garage_id, nickname, vehicle_type, plate, make, model, year, engine_cc,
               fuel_type, transmission, vin, purchase_date, purchase_price,
-              current_odometer_km, odometer_updated_on, notes, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              current_odometer_km, odometer_updated_on, notes, created_at, updated_at,
+              engine_no, registered_on, colour)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         )
         .bind(
           id,
@@ -72,6 +73,9 @@ export class VehicleRepo extends GarageScopedRepo {
           input.notes ?? null,
           ts,
           ts,
+          input.engineNo ?? null,
+          input.registeredOn ?? null,
+          input.colour ?? null,
         ),
 
       // Seed intervals as one INSERT ... SELECT rather than fetching part

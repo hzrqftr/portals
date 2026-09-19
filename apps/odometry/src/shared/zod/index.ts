@@ -64,7 +64,14 @@ export const vehicleInput = z.object({
   engineCc: z.number().int().positive().max(20_000).optional(),
   fuelType: fuelType.optional(),
   transmission: transmission.optional(),
+  // The chassis number printed on the grant.
   vin: z.string().max(32).optional(),
+  // The rest of the grant's VEHICLE details (migration 0018). The registered
+  // owner's name, IC and address are deliberately absent -- they live only in
+  // the grant PDF, never in a column.
+  engineNo: z.string().max(32).optional(),
+  registeredOn: calendarDate.optional(),
+  colour: z.string().max(40).optional(),
   purchaseDate: calendarDate.optional(),
   purchasePrice: sen.nonnegative().optional(),
   currentOdometerKm: km.optional(),
@@ -98,6 +105,9 @@ export const vehiclePatch = vehicleInput
     fuelType: fuelType.nullable().optional(),
     transmission: transmission.nullable().optional(),
     vin: z.string().max(32).nullable().optional(),
+    engineNo: z.string().max(32).nullable().optional(),
+    registeredOn: calendarDate.nullable().optional(),
+    colour: z.string().max(40).nullable().optional(),
     purchaseDate: calendarDate.nullable().optional(),
     purchasePrice: sen.nonnegative().nullable().optional(),
     notes: z.string().max(2000).nullable().optional(),
@@ -225,13 +235,16 @@ export const renewalInput = z.object({
  *
  * .strict() means a client that sends `expiresOn` anyway gets a 422 rather
  * than having the field quietly ignored.
+ *
+ * `documentKey` was here once and was removed with migration 0018: it let the
+ * client write an arbitrary R2 key onto a row. Files attach through
+ * /api/renewals/:id/attachments, which names the key itself.
  */
 export const renewalPatch = z
   .object({
     provider: z.string().max(120).optional(),
     referenceNo: z.string().max(60).optional(),
     notes: z.string().max(2000).optional(),
-    documentKey: z.string().max(200).optional(),
   })
   .strict();
 

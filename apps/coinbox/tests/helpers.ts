@@ -98,6 +98,9 @@ export async function resetDb(): Promise<void> {
     "odometer_readings",
     "maintenance_intervals",
     "service_templates",
+    // Children of renewals and vehicles (migration 0018), so before both.
+    "renewal_attachments",
+    "vehicle_documents",
     "renewals",
     "cost_estimates",
     "vehicles",

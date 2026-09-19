@@ -8,7 +8,7 @@ import {
 import { formatSen, fromQuantityMilli } from "@portals/core";
 import { formatKm } from "../lib/format";
 import { ServiceSheet } from "./ServiceSheet";
-import { ServiceAttachments } from "./ServiceAttachments";
+import { ServiceAttachments } from "./Attachments";
 
 /**
  * Service history, reverse chronological, expandable to line items

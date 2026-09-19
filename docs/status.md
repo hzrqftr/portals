@@ -3,15 +3,15 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-09-19 (housekeeping: Drizzle 0.45 and React Router 7, two component splits, docs resynced)
+**Last updated:** 2026-09-19 (renewals, renewal documents and the vehicle grant built on branch `renewals`, NOT deployed; Sheets mirror dropped)
 
 ---
 
 ## Start here if you are new, or on a different machine
 
-**Everything in this repo is deployed. There is no work in flight.** As of
-2026-09-19 the tree, `origin/main` and both production Workers all carry the
-same code, remote migrations are fully applied, and the only branch is `main`.
+**Work IS in flight -- see "Renewals, renewal documents and the grant" just
+below.** It is on the branch `renewals`, migration `0018` is applied LOCALLY
+ONLY, and production does not have it. Everything on `main` is deployed.
 
 | | |
 |---|---|
@@ -53,6 +53,66 @@ very long path. It was reproduced twice from a ~200-character temp directory,
 where even `SELECT 1` failed, and worked immediately from a normal
 `github/portals-clonetest`. If a fresh clone cannot talk to its own local D1,
 **check the path length before debugging the migrations**.
+
+---
+
+## Renewals, renewal documents and the grant — 2026-09-19, BUILT, NOT DEPLOYED
+
+The top of "Next" since the API was written, now with a screen. Three things
+shipped together because they share one piece of machinery:
+
+- **A Renewals tab** on each vehicle. Road tax and insurance always get a card;
+  a type never entered is a setup prompt, not an alert (spec 6.3). Each card
+  shows the active record, its status pill and countdown ("expires in about 2
+  weeks"), provider, reference, cost and documents. **Renew** always inserts a
+  new row (invariant 8); **Correct** edits only provider, reference and notes.
+  Superseded rows are listed below as history.
+- **Documents on a renewal** (cover note, certificate): table
+  `renewal_attachments`.
+- **The vehicle grant (geran)**: a card under Details with chassis no. (the
+  existing `vin`), engine no., registration date and colour -- three new
+  columns on `vehicles` -- and the grant file itself in `vehicle_documents`.
+
+**Owner decision, recorded because someone will propose reversing it:** the
+grant's OWNER details (name, IC number, address) are not fields. Every column
+lands in the nightly backup JSON and the CSV export, and a garage can be
+shared; the PDF is served only through the garage-scoped route and is not in
+the backup. `tests/renewals.test.ts` fails if a column with one of those names
+appears on `vehicles`.
+
+**One deliberate exception to "renewals are immutable":** a renewal can now be
+DELETED, labelled "entered by mistake". Without it a mistyped LATER expiry
+stayed active forever, since active is simply the greatest `expires_on`.
+Deleting a row that never happened is not re-dating one that did.
+`DELETE /api/renewals/:id` clears the row's R2 objects the same way deleting a
+service does.
+
+How it was built, for whoever touches it next:
+
+- **One attachment repository, three owners.** `AttachmentRepo` in
+  `apps/odometry/src/worker/data/attachments.ts` is configured by
+  `SERVICE_RECEIPTS`, `RENEWAL_DOCUMENTS` or `VEHICLE_GRANT` rather than
+  copied. Service receipt routes are unchanged; the new ones are
+  `/api/renewals/:id/attachments`, `/api/renewal-attachments/:id[/content]`,
+  `/api/vehicles/:id/grant` and `/api/grant-documents/:id[/content]`.
+- **`documentKey` was removed from `renewalPatch`.** It let a client write an
+  arbitrary R2 key onto a row. Nothing called it.
+- **Isolation suite extended** with every new read, upload and delete, and
+  seen to fail: dropping the garage filter from the download query failed the
+  receipt, renewal and grant tests together; dropping it from the renewal
+  delete failed that test. Both restored.
+- **Seen in a browser, 2026-09-19**, against the local database: added a road
+  tax through the form, got the upload step, card showed "Due soon", the
+  dashboard attention list picked it up, the download came back as
+  `application/pdf` with `nosniff`. At 375px the new fourth tab pushed the page
+  12px wide; the tab row now scrolls within itself. The test data was deleted
+  again afterwards.
+
+**To ship it:** merge `renewals`, then `npm run deploy -w odometry`, which
+applies `0018` remotely before the Worker goes out. Count `vehicles` and
+`renewals` on `--remote` before and after; `0018` only adds tables and
+columns, so both counts must be unchanged. **Receipts, certificates and grants
+are all outside the backup** -- see `docs/backups.md`.
 
 ---
 
@@ -1196,7 +1256,7 @@ the endpoints exist and are covered by the isolation suite.
 
 | Gap | Spec | Why it matters |
 |---|---|---|
-| Renewals | §4.6, §6.3 | Road tax and insurance are half the reason the app exists |
+| ~~Renewals~~ | §4.6, §6.3 | **BUILT 2026-09-19, not yet deployed**, with renewal documents and the vehicle grant (migration `0018`). See the top of this file |
 | Vehicle delete | §10 | Editing is built (Details → Edit details); deleting is not. `DELETE /api/vehicles/:id` archives and is isolation-tested, but nothing calls it |
 | Add-vehicle baseline prompt | §8.3 | Spec says prompt for baselines after saving; it currently saves and dismisses, which is how all three vehicles ended up with no odometer |
 | Inline odometer edit, usage rate | §8.2 | The Details panel now shows the spec, but the odometer can only be changed from the dashboard (or now by correcting the service that recorded it), and the usage rate with its confidence indicator is not surfaced anywhere |
@@ -1225,7 +1285,7 @@ something that looks wrong, trust the code.
 | ~~Sheet import~~ | §6 | **DONE 2026-08-28.** 4,421 rows reconciled exactly. The triage screen was not needed — the real count was 14, not ~80 |
 | ~~Backup + restore~~ | §7.6 | **BUILT 2026-08-28.** Nightly whole-database export to R2, 90-day retention, restore round trip in CI |
 | ~~Recurring entries~~ | §9 | **BUILT 2026-08-30**, delete wired into the page **2026-09-07**. Declared rules, nightly cron, edit, pause, delete. See below |
-| The Sheets mirror | §7.6 | Still open. A readable copy on a phone without the app; needs a Google service account and JWT signing in the Worker |
+| ~~The Sheets mirror~~ | §7.6 | **DROPPED 2026-09-19, owner decision.** The ledger view in Coinbox is enough. Do not reopen it as a task |
 | Backup failure alerting | — | A failed nightly run writes to the log and tells nobody. Needs an email provider |
 | Off-Cloudflare backup copies | — | Every backup is in the account it protects. One downloaded file a month closes it |
 | ~~Home dashboard~~ | §10 | **BUILT AND DEPLOYED 2026-08-31.** The surplus/deficit table as a chart, a month drill-down, and cost per km. See below |
@@ -1369,25 +1429,8 @@ Still open on this page, and deliberately not built:
 
 ## Next
 
-**Odometry — renewals (§4.6, §6.3).** The oldest outstanding commitment in this
-repo, and half the reason the fleet portal exists: road tax and insurance.
-Client-only work — all four endpoints are built and isolation-tested
-(`GET /api/vehicles/:id/renewals`, `.../renewals/status`, `POST`, and
-`PATCH /api/renewals/:id`).
-
-One rule is easy to get wrong: **renewing INSERTS a new row and never updates
-`expires_on` in place** (invariant 8). The active renewal per `(vehicle, type)`
-is the greatest `expires_on`; superseded rows stay as the cost history the
-forecast is built from. `renewalPatch` is `.strict()` and omits every date and
-cost field, so re-dating a renewal is a 422 rather than a silent rewrite. A
-missing renewal type is a setup prompt, not an alert.
-
-**Coinbox — the Sheets mirror** (§7.6). Weaker than it was: the monthly totals
-that were the main reason to open the Sheet are now the Home dashboard. What a
-mirror would still buy is a copy readable on a phone without going through
-Access, and arbitrary slicing the dashboard deliberately does not offer. Costs
-a Google service account, JWT signing in the Worker, and a secret to rotate —
-so weigh it against that narrower benefit before starting.
+**Ship renewals.** Built on branch `renewals` and not deployed -- see the top
+of this file. Merge, then `npm run deploy -w odometry`.
 
 **Backup alerting.** A failed nightly run writes to the log and tells nobody.
 `observability` is on so the evidence persists, but real alerting needs an

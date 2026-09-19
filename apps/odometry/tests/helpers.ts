@@ -102,6 +102,9 @@ export async function resetDb(): Promise<void> {
     // References garages, vehicles and part_types, so it goes before all
     // three -- and before the part_types delete below.
     "service_templates",
+    // Children of renewals and vehicles (migration 0018), so before both.
+    "renewal_attachments",
+    "vehicle_documents",
     "renewals",
     "cost_estimates",
     "vehicles",

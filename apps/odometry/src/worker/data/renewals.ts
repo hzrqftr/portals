@@ -1,8 +1,9 @@
 import { eq, desc } from "drizzle-orm";
 import { GarageScopedRepo } from "./base";
 import { renewals } from "../schema";
-import { NotFoundError } from "@portals/core/worker";
+import { NotFoundError, deleteAttachments } from "@portals/core/worker";
 import type { RenewalInput, RenewalPatch } from "@shared/zod";
+import type { Env, Scope } from "../types";
 
 /**
  * Renewals are immutable historical records. CLAUDE.md invariant 8, spec 4.6.
@@ -13,6 +14,13 @@ import type { RenewalInput, RenewalPatch } from "@shared/zod";
  * is gone, silently and unrecoverably.
  */
 export class RenewalRepo extends GarageScopedRepo {
+  private readonly docs: R2Bucket;
+
+  constructor(db: ConstructorParameters<typeof GarageScopedRepo>[0], raw: D1Database, scope: Scope, env: Env) {
+    super(db, raw, scope);
+    this.docs = env.DOCS;
+  }
+
   /** Full history for a vehicle, newest expiry first. */
   async list(vehicleId: string) {
     await this.assertOwnedVehicle(vehicleId);
@@ -68,5 +76,43 @@ export class RenewalRepo extends GarageScopedRepo {
       .returning();
     if (!row) throw new NotFoundError("Renewal not found");
     return row;
+  }
+
+  /**
+   * For a row that should never have existed -- NOT a way to re-date one.
+   *
+   * Immutability protects the history of real renewals. It gave no way out of
+   * a typo: the active renewal is simply the greatest `expires_on`, so a
+   * mistyped LATER expiry would stay "active" forever, hiding every real
+   * renewal inserted after it. Deleting that row removes something that never
+   * happened; editing a real one would rewrite something that did. The UI
+   * labels this "entered by mistake" for that reason.
+   *
+   * renewal_attachments rows cascade (migration 0018); the R2 objects do not,
+   * so their keys are read BEFORE the delete, exactly as ServiceRepo.remove().
+   */
+  async remove(id: string): Promise<void> {
+    const existing = await this.raw
+      .prepare(`SELECT 1 FROM renewals WHERE id = ? AND garage_id = ?`)
+      .bind(id, this.garageId)
+      .first();
+    if (!existing) throw new NotFoundError("Renewal not found");
+
+    const attached = await this.raw
+      .prepare(`SELECT r2_key FROM renewal_attachments WHERE renewal_id = ? AND garage_id = ?`)
+      .bind(id, this.garageId)
+      .all<{ r2_key: string }>();
+
+    await this.raw
+      .prepare(`DELETE FROM renewals WHERE id = ? AND garage_id = ?`)
+      .bind(id, this.garageId)
+      .run();
+
+    // After the row is gone, never before: a failed delete must not have
+    // already destroyed the files.
+    await deleteAttachments(
+      this.docs,
+      attached.results.map((r) => r.r2_key),
+    );
   }
 }

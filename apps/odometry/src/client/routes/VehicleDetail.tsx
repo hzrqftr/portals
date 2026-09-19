@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { useVehicle, useMaintenance, useDashboard, useServices, useFuel } from "../api/hooks";
+import {
+  useVehicle,
+  useMaintenance,
+  useDashboard,
+  useServices,
+  useFuel,
+  useRenewalStatus,
+} from "../api/hooks";
 import { Page, AppHeader, SectionTitle, STICKY_UNDER_BAR_AND_CRUMB } from "../components/Layout";
 import { MaintenanceList } from "../components/MaintenanceList";
 import { ServiceHistory } from "../components/ServiceHistory";
@@ -8,17 +15,20 @@ import { FuelHistory } from "../components/FuelHistory";
 import { ServiceSheet } from "../components/ServiceSheet";
 import { VehicleSheet } from "../components/VehicleSheet";
 import { VehicleSpec } from "../components/VehicleSpec";
+import { GrantCard } from "../components/GrantCard";
+import { RenewalsPanel } from "../components/RenewalsPanel";
 import { formatKm } from "../lib/format";
 
-type Tab = "maintenance" | "history" | "fuel";
+type Tab = "maintenance" | "history" | "renewals" | "fuel";
 
 const TABS: { value: Tab; label: string }[] = [
   { value: "maintenance", label: "Maintenance" },
   { value: "history", label: "Service history" },
+  { value: "renewals", label: "Renewals" },
   { value: "fuel", label: "Fuel" },
 ];
 
-/** Spec 8.2: overview, maintenance, and service history. */
+/** Spec 8.2: overview, maintenance, service history and renewals. */
 export default function VehicleDetail() {
   const { id = "" } = useParams();
   const vehicle = useVehicle(id);
@@ -31,6 +41,7 @@ export default function VehicleDetail() {
   const [editing, setEditing] = useState(false);
   const services = useServices(id);
   const fuel = useFuel(id);
+  const renewals = useRenewalStatus(id);
   const [tab, setTab] = useState<Tab>("maintenance");
 
   if (vehicle.isLoading) return <p className="p-6 text-ink-muted">Loading&hellip;</p>;
@@ -67,7 +78,10 @@ export default function VehicleDetail() {
         <section className="mt-8">
           <SectionTitle>Details</SectionTitle>
           {vehicle.data && (
-            <VehicleSpec vehicle={vehicle.data} onEdit={() => setEditing(true)} />
+            <>
+              <VehicleSpec vehicle={vehicle.data} onEdit={() => setEditing(true)} />
+              <GrantCard vehicle={vehicle.data} />
+            </>
           )}
         </section>
 
@@ -78,7 +92,7 @@ export default function VehicleDetail() {
           2,500px tall, and service history sat below all of it -- reachable
           only by scrolling past every tile. Anchor links would fix getting
           there and not getting back. Spec 8.2 already calls for five sections
-          on this page (Renewals and Costs still to come), so the switcher is
+          on this page (Costs still to come), so the switcher is
           the shape this page was heading for anyway.
         */}
         {/*
@@ -93,14 +107,16 @@ export default function VehicleDetail() {
             "bg-page/90 px-4 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
           }
         >
-          <div className="flex gap-1">
+          {/* Four tabs do not fit 375px. The row scrolls within itself rather
+              than widening the page, and labels never wrap onto two lines. */}
+          <div className="flex gap-1 overflow-x-auto [scrollbar-width:none]">
             {TABS.map((t) => (
               <button
                 key={t.value}
                 onClick={() => setTab(t.value)}
                 aria-current={tab === t.value ? "page" : undefined}
                 className={
-                  "-mb-px border-b-2 px-3 py-3 text-sm transition " +
+                  "-mb-px shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm transition " +
                   (tab === t.value
                     ? "border-ink font-medium text-ink"
                     : "border-transparent text-ink-muted hover:text-ink")
@@ -108,11 +124,15 @@ export default function VehicleDetail() {
               >
                 {t.label}
                 <span className="ml-1.5 text-xs text-ink-faint">
-                  {t.value === "maintenance"
-                    ? (maintenance.data?.length ?? 0)
-                    : t.value === "history"
-                      ? (services.data?.length ?? 0)
-                      : (fuel.data?.length ?? 0)}
+                  {
+                    {
+                      maintenance: maintenance.data?.length ?? 0,
+                      history: services.data?.length ?? 0,
+                      // Active records only -- one per type, not the history.
+                      renewals: renewals.data?.length ?? 0,
+                      fuel: fuel.data?.length ?? 0,
+                    }[t.value]
+                  }
                 </span>
               </button>
             ))}
@@ -138,6 +158,7 @@ export default function VehicleDetail() {
             )}
           </section>
         )}
+        {tab === "renewals" && <RenewalsPanel vehicleId={id} />}
         {tab === "fuel" && (
           <section className="mt-4">
             <FuelHistory vehicleId={id} />

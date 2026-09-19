@@ -31,6 +31,9 @@ const B_MARKERS = [
   "BOB_POLICY_REF",
   "BOB_SPARE_PART",
   "BOB_RECEIPT_FILENAME",
+  "BOB_ENGINE_NO",
+  "BOB_COVERNOTE_FILENAME",
+  "BOB_GRANT_FILENAME",
 ];
 
 interface Seeded {
@@ -39,6 +42,8 @@ interface Seeded {
   renewalId: string;
   partTypeId: string;
   attachmentId: string;
+  renewalDocId: string;
+  grantDocId: string;
 }
 
 async function seed(email: string, tag: string): Promise<Seeded> {
@@ -49,6 +54,8 @@ async function seed(email: string, tag: string): Promise<Seeded> {
     json: {
       nickname: `${tag}_VEHICLE_NICKNAME`,
       plate: tag === "BOB" ? "BOB_PLATE_9999" : "ALICE_PLATE_1111",
+      // A grant field (migration 0018), returned by every vehicle read.
+      engineNo: `${tag}_ENGINE_NO`,
       fuelType: "petrol",
       currentOdometerKm: 50_000,
     },
@@ -120,12 +127,28 @@ async function seed(email: string, tag: string): Promise<Seeded> {
   });
   expect(attachment.status).toBe(201);
 
+  // A cover note on the renewal, and the vehicle's grant (migration 0018).
+  // Same idea: the marker is in the filename.
+  const renewalDoc = await call(`/api/renewals/${renewal.body.id}/attachments`, {
+    method: "POST",
+    form: filePart(pdfBytes(tag), `${tag}_COVERNOTE_FILENAME.pdf`),
+  });
+  expect(renewalDoc.status).toBe(201);
+
+  const grantDoc = await call(`/api/vehicles/${vehicleId}/grant`, {
+    method: "POST",
+    form: filePart(pdfBytes(tag), `${tag}_GRANT_FILENAME.pdf`),
+  });
+  expect(grantDoc.status).toBe(201);
+
   return {
     vehicleId,
     serviceId: service.body.id as string,
     renewalId: renewal.body.id as string,
     partTypeId,
     attachmentId: attachment.body.id as string,
+    renewalDocId: renewalDoc.body.id as string,
+    grantDocId: grantDoc.body.id as string,
   };
 }
 
@@ -172,6 +195,8 @@ describe("cross-tenant isolation", () => {
       `/api/services/${alice.serviceId}/attachments`,
       `/api/vehicles/${alice.vehicleId}/renewals`,
       `/api/vehicles/${alice.vehicleId}/renewals/status`,
+      `/api/renewals/${alice.renewalId}/attachments`,
+      `/api/vehicles/${alice.vehicleId}/grant`,
       "/api/part-types",
       "/api/part-types/pt_engine_oil/brands",
       "/api/service-templates",
@@ -185,6 +210,8 @@ describe("cross-tenant isolation", () => {
       `/api/services/${bob.serviceId}/attachments`,
       `/api/vehicles/${bob.vehicleId}/renewals`,
       `/api/vehicles/${bob.vehicleId}/renewals/status`,
+      `/api/renewals/${bob.renewalId}/attachments`,
+      `/api/vehicles/${bob.vehicleId}/grant`,
     ];
 
     for (const path of readEndpoints) {
@@ -233,6 +260,58 @@ describe("cross-tenant isolation", () => {
     expect(bobs.body).toHaveLength(1);
     expect(bobs.body[0].filename).toBe("BOB_RECEIPT_FILENAME.pdf");
     expect((await as(B)(`/api/attachments/${bob.attachmentId}/content`)).status).toBe(200);
+  });
+
+  /**
+   * The same four doors as the receipts, for the two owners migration 0018
+   * added. Each has its own table and its own routes, so each is proven on its
+   * own -- sharing a repository class is exactly how a predicate bug would
+   * reach all three at once.
+   */
+  it.each([
+    {
+      name: "renewal documents",
+      list: (s: Seeded) => `/api/renewals/${s.renewalId}/attachments`,
+      item: (s: Seeded) => `/api/renewal-attachments/${s.renewalDocId}`,
+      filename: "BOB_COVERNOTE_FILENAME.pdf",
+    },
+    {
+      name: "the vehicle grant",
+      list: (s: Seeded) => `/api/vehicles/${s.vehicleId}/grant`,
+      item: (s: Seeded) => `/api/grant-documents/${s.grantDocId}`,
+      filename: "BOB_GRANT_FILENAME.pdf",
+    },
+  ])("never serves one garage $name of another", async ({ list, item, filename }) => {
+    const call = as(A);
+
+    expect((await call(`${item(bob)}/content`)).status).toBe(404);
+    expect((await call(list(bob))).status).toBe(404);
+    expect(
+      (
+        await call(list(bob), {
+          method: "POST",
+          form: filePart(pdfBytes("ALICE"), "ALICE_INTRUDER.pdf"),
+        })
+      ).status,
+    ).toBe(404);
+    expect((await call(item(bob), { method: "DELETE" })).status).toBe(404);
+
+    // The 404s do not prove the writes were refused; reading B back does.
+    const bobs = await as(B)(list(bob));
+    expect(bobs.status).toBe(200);
+    expect(bobs.body).toHaveLength(1);
+    expect(bobs.body[0].filename).toBe(filename);
+    expect((await as(B)(`${item(bob)}/content`)).status).toBe(200);
+  });
+
+  it("will not let one garage delete another's renewal", async () => {
+    expect((await as(A)(`/api/renewals/${bob.renewalId}`, { method: "DELETE" })).status).toBe(404);
+
+    const bobs = await as(B)(`/api/vehicles/${bob.vehicleId}/renewals`);
+    expect(bobs.body).toHaveLength(1);
+    expect(bobs.body[0].provider).toBe("BOB_INSURER");
+    const docs = await as(B)(`/api/renewals/${bob.renewalId}/attachments`);
+    expect(docs.body).toHaveLength(1);
   });
 
   it("404s rather than 403s on another garage's IDs", async () => {

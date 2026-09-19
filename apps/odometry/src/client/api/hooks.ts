@@ -48,6 +48,11 @@ export interface VehicleDetails {
   transmission: "manual" | "auto" | null;
   engineCc: number | null;
   vin: string | null;
+  // The grant's vehicle details (migration 0018). Owner details are
+  // deliberately not columns -- they live only in the grant PDF.
+  engineNo: string | null;
+  registeredOn: string | null;
+  colour: string | null;
   currentOdometerKm: number;
   odometerUpdatedOn: string | null;
   purchaseDate: string | null;
@@ -377,16 +382,56 @@ export interface Attachment {
   uploadedAt: string;
 }
 
-/** Where the bytes come from. Used directly as a link and an image source. */
-export function attachmentUrl(id: string): string {
-  return `/api/attachments/${id}/content`;
+/**
+ * Which files, and through which routes. Three owners share one component and
+ * one set of hooks: receipts on a service, documents on a renewal, and the
+ * vehicle's grant. Each has its own routes on the server (and its own table),
+ * so the target carries both paths rather than the hooks guessing them.
+ */
+export interface AttachmentTarget {
+  /** TanStack Query key for the list. */
+  queryKey: readonly [string, string];
+  /** List and upload, relative to /api. */
+  listPath: string;
+  /** One file lives at `${itemBase}/:id`, bytes at `${itemBase}/:id/content`. */
+  itemBase: string;
 }
 
-export function useAttachments(serviceId: string) {
-  return useQuery({
+export function serviceReceipts(serviceId: string): AttachmentTarget {
+  return {
     queryKey: ["attachments", serviceId],
-    queryFn: () => api<Attachment[]>(`/services/${serviceId}/attachments`),
-    enabled: serviceId !== "",
+    listPath: `/services/${serviceId}/attachments`,
+    itemBase: "/attachments",
+  };
+}
+
+export function renewalDocuments(renewalId: string): AttachmentTarget {
+  return {
+    queryKey: ["renewal-documents", renewalId],
+    listPath: `/renewals/${renewalId}/attachments`,
+    itemBase: "/renewal-attachments",
+  };
+}
+
+export function grantDocuments(vehicleId: string): AttachmentTarget {
+  return {
+    queryKey: ["grant-documents", vehicleId],
+    listPath: `/vehicles/${vehicleId}/grant`,
+    itemBase: "/grant-documents",
+  };
+}
+
+/** Where the bytes come from. Used directly as a link and an image source. */
+export function attachmentUrl(target: AttachmentTarget, id: string): string {
+  return `/api${target.itemBase}/${id}/content`;
+}
+
+/** `null` while the parent does not exist yet -- nothing to list. */
+export function useAttachments(target: AttachmentTarget | null) {
+  return useQuery({
+    queryKey: target?.queryKey ?? ["attachments", ""],
+    queryFn: () => api<Attachment[]>(target!.listPath),
+    enabled: target !== null,
   });
 }
 
@@ -400,32 +445,126 @@ export function useAttachments(serviceId: string) {
  * a content-type header here -- the browser has to set it, because only it
  * knows the multipart boundary it generated.
  */
-export function uploadAttachment(serviceId: string, file: File): Promise<Attachment> {
+export function uploadAttachment(target: AttachmentTarget, file: File): Promise<Attachment> {
   const form = new FormData();
   form.set("file", file);
-  return api<Attachment>(`/services/${serviceId}/attachments`, {
-    method: "POST",
-    body: form,
-  });
+  return api<Attachment>(target.listPath, { method: "POST", body: form });
 }
 
-export function useUploadAttachment(serviceId: string) {
+export function useUploadAttachment(target: AttachmentTarget | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (file: File) => uploadAttachment(serviceId, file),
+    mutationFn: (file: File) => uploadAttachment(target!, file),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["attachments", serviceId] });
+      if (target) qc.invalidateQueries({ queryKey: target.queryKey });
     },
   });
 }
 
-export function useDeleteAttachment(serviceId: string) {
+export function useDeleteAttachment(target: AttachmentTarget | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api<void>(`/attachments/${id}`, { method: "DELETE" }),
+    mutationFn: (id: string) => api<void>(`${target!.itemBase}/${id}`, { method: "DELETE" }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["attachments", serviceId] });
+      if (target) qc.invalidateQueries({ queryKey: target.queryKey });
     },
+  });
+}
+
+// --- renewals ----------------------------------------------------------
+
+export type RenewalType = "road_tax" | "insurance" | "inspection" | "warranty";
+
+/** A row of GET /vehicles/:id/renewals -- the full history, newest expiry first. */
+export interface Renewal {
+  id: string;
+  vehicleId: string;
+  type: RenewalType;
+  provider: string | null;
+  referenceNo: string | null;
+  issuedOn: string | null;
+  expiresOn: string;
+  cost: number | null;
+  notes: string | null;
+}
+
+/**
+ * A row of GET /vehicles/:id/renewals/status: the ACTIVE renewal per type,
+ * with its status computed server-side against the owner's own "today".
+ * snake_case because it is raw SQL, like the dashboard's own query.
+ */
+export interface RenewalStatus {
+  id: string;
+  type: RenewalType;
+  expires_on: string;
+  days_remaining: number;
+  status: Exclude<Status, "unknown">;
+}
+
+export interface RenewalDraft {
+  type: RenewalType;
+  provider?: string;
+  referenceNo?: string;
+  issuedOn?: string;
+  expiresOn: string;
+  cost?: number;
+  notes?: string;
+}
+
+export function useRenewals(vehicleId: string) {
+  return useQuery({
+    queryKey: ["renewals", vehicleId],
+    queryFn: () => api<Renewal[]>(`/vehicles/${vehicleId}/renewals`),
+  });
+}
+
+export function useRenewalStatus(vehicleId: string) {
+  return useQuery({
+    queryKey: ["renewal-status", vehicleId],
+    queryFn: () => api<RenewalStatus[]>(`/vehicles/${vehicleId}/renewals/status`),
+  });
+}
+
+/** Everything a renewal write can move: both lists and the attention list. */
+function invalidateRenewals(qc: ReturnType<typeof useQueryClient>, vehicleId: string) {
+  qc.invalidateQueries({ queryKey: ["renewals", vehicleId] });
+  qc.invalidateQueries({ queryKey: ["renewal-status", vehicleId] });
+  qc.invalidateQueries({ queryKey: ["dashboard"] });
+}
+
+/** Always an INSERT -- renewing never edits the previous row (invariant 8). */
+export function useCreateRenewal(vehicleId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RenewalDraft) =>
+      api<{ id: string }>(`/vehicles/${vehicleId}/renewals`, { method: "POST", json: input }),
+    onSuccess: () => invalidateRenewals(qc, vehicleId),
+  });
+}
+
+/** Corrections to the words only. Dates and cost are refused server-side. */
+export function useCorrectRenewal(vehicleId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...patch
+    }: {
+      id: string;
+      provider?: string;
+      referenceNo?: string;
+      notes?: string;
+    }) => api<Renewal>(`/renewals/${id}`, { method: "PATCH", json: patch }),
+    onSuccess: () => invalidateRenewals(qc, vehicleId),
+  });
+}
+
+/** For a row entered by mistake. Not how a real renewal is changed. */
+export function useDeleteRenewal(vehicleId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/renewals/${id}`, { method: "DELETE" }),
+    onSuccess: () => invalidateRenewals(qc, vehicleId),
   });
 }
 
@@ -464,6 +603,10 @@ export interface VehicleDraft {
   year?: number | null;
   fuelType?: "petrol" | "diesel" | "hybrid" | "ev" | null;
   transmission?: "manual" | "auto" | null;
+  vin?: string | null;
+  engineNo?: string | null;
+  registeredOn?: string | null;
+  colour?: string | null;
   currentOdometerKm?: number;
 }
 

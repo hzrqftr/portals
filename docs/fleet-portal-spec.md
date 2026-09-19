@@ -214,7 +214,12 @@ CREATE TABLE vehicles (
                         CHECK (vehicle_type IN ('car','motorcycle')),
   fuel_type           TEXT CHECK (fuel_type IN ('petrol','diesel','hybrid','ev')),
   transmission        TEXT CHECK (transmission IN ('manual','auto')),
-  vin                 TEXT,
+  vin                 TEXT,             -- the grant's chassis no.
+  engine_no           TEXT,             -- 0018, from the grant
+  registered_on       TEXT,             -- 0018, from the grant
+  colour              TEXT,             -- 0018, from the grant
+                                        -- the grant's OWNER details are not
+                                        -- columns: they stay in the PDF
   purchase_date       TEXT,
   purchase_price      INTEGER,          -- minor units
   current_odometer_km INTEGER NOT NULL DEFAULT 0,
@@ -298,10 +303,15 @@ CREATE TABLE renewals (
   issued_on    TEXT,
   expires_on   TEXT NOT NULL,
   cost         INTEGER,           -- minor units
-  document_key TEXT,
+  document_key TEXT,               -- SUPERSEDED by renewal_attachments (0018),
+                                  -- always NULL, kept to avoid a rebuild
   notes        TEXT
 );
 ```
+
+Files attached to a renewal live in `renewal_attachments`; the vehicle grant in
+`vehicle_documents` (`kind = 'grant'`). Both are shaped like
+`service_attachments`, with the bytes in R2. See migration 0018.
 
 Renewals are immutable historical records. Renewing inserts a **new row**; the active one per `(vehicle, type)` is the greatest `expires_on`. This preserves cost history for forecasting.
 
@@ -449,7 +459,12 @@ DELETE /api/services/:id
 
 GET    /api/vehicles/:id/renewals
 POST   /api/vehicles/:id/renewals
-PATCH  /api/renewals/:id
+PATCH  /api/renewals/:id                 → provider, reference, notes only
+DELETE /api/renewals/:id                → a row entered by mistake (0018)
+
+GET/POST /api/services/:id/attachments  → receipts; bytes at /api/attachments/:id/content
+GET/POST /api/renewals/:id/attachments  → bytes at /api/renewal-attachments/:id/content
+GET/POST /api/vehicles/:id/grant        → bytes at /api/grant-documents/:id/content
 
 GET    /api/dashboard                   → single aggregated attention payload
 GET    /api/costs/forecast
@@ -514,16 +529,17 @@ Desktop-first, responsive down to 375px. Dark theme only -- the palette lives in
 
 **Phase 1 — Core.** Access setup, user and garage bootstrap, vehicle CRUD, odometer logging, intervals with seeded defaults, service records and items, renewals, dashboard status computation, and the isolation test suite from §5.2.
 *Done when you can stop using your current spreadsheet.*
-**In progress.** Every API endpoint and the isolation suite are built. The
-client is missing service records (§8.4), renewals, vehicle edit and delete,
-and interval inline editing, so the "stop using the spreadsheet" bar is not
-met yet.
+**In progress.** Every API endpoint and the isolation suite are built, and
+so are the service records, renewals (2026-09-19), vehicle edit and interval
+inline editing screens. What is left is in `docs/status.md`'s Odometry gap
+table -- vehicle delete, the add-vehicle baseline prompt, and inline odometer
+edit among them.
 
 **Phase 2 — Money.** Cost estimates, forecast, run rate, spend breakdowns, derived estimates. *Not started.*
 
 **Phase 3 — Multi-user.** Invitations, role enforcement in UI, garage switching. *Not started.*
 
-**Phase 4 — Automation.** Cron reminder emails, ~~R2 document upload~~ (**built 2026-09-10** for service records; renewals still unbuilt), scheduled database export (§11.6). *Not started — but see §11.6, the export is worth pulling forward before bulk-entering historical records.*
+**Phase 4 — Automation.** Cron reminder emails, ~~R2 document upload~~ (**built 2026-09-10** for service records, **2026-09-19** for renewals and the vehicle grant), scheduled database export (§11.6). *Not started — but see §11.6, the export is worth pulling forward before bulk-entering historical records.*
 
 ---
 
@@ -614,7 +630,7 @@ If replication is enabled later, a write followed immediately by a read may retu
 |---|---|---|
 | ~~Fuel logging~~ **RESOLVED 2026-09-03** | Enables L/100km, not just cost/km | Built as `fuel_fills` (migration 0013), entered from Coinbox. See below |
 | Depreciation in run rate | Materially changes cost/km | Separate, labelled estimate, off by default |
-| ~~Document storage~~ **RESOLVED 2026-09-10** | Receipts on service records | Built as `service_attachments` + R2 bucket `portals-docs` (migration 0015). Renewals still unbuilt |
+| ~~Document storage~~ **RESOLVED 2026-09-10** | Receipts on service records | Built as `service_attachments` + R2 bucket `portals-docs` (migration 0015). Renewals and the grant followed on 2026-09-19 (migration 0018) |
 | Email provider for reminders | Needs a free-tier transactional sender | Decide at Phase 4 |
 
 **On fuel logging.** §1.2 put "fuel and economy logging" out of scope for v1 and

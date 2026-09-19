@@ -114,6 +114,12 @@ Renewing road tax or insurance **inserts a new row**. Never update `expires_on`
 in place — cost history drives the forecast. The active renewal per
 `(vehicle, type)` is the greatest `expires_on`.
 
+**Deleting is allowed, for a row entered by mistake (added 2026-09-19).**
+Because "active" is simply the greatest `expires_on`, a mistyped LATER expiry
+would otherwise stay active forever and hide every real renewal. Removing a row
+that never happened is not the same as re-dating one that did, and the UI
+labels it that way. `PATCH` still refuses dates and cost.
+
 ### 10. Consumption is measured full tank to full tank
 
 `fuel_fills` (migration `0013`) records litres and `is_full_tank`. A segment
@@ -153,14 +159,24 @@ It RETURNS statements rather than running them, so each caller folds them into
 its own `batch()`. That is not a style choice — Coinbox has to write a
 transaction, a reading and a fill atomically.
 
-## Receipts on a service record
+## Files: receipts, renewal documents, the grant
 
-`service_attachments` (migration 0015) holds the metadata; the files are in the
-R2 bucket `portals-docs`, bound as `DOCS`. The portal-agnostic half -- size
-limit, type sniffing, key naming, R2 calls -- is
-`packages/core/src/worker/attachments.ts`, so Coinbox can reuse it. The table is
-not shared: Coinbox scopes on `ledger_id` and a shared table would need a
-nullable tenant column.
+Three tables, one per parent: `service_attachments` (migration 0015),
+`renewal_attachments` and `vehicle_documents` (0018, `kind = 'grant'`). The
+files are in the R2 bucket `portals-docs`, bound as `DOCS`. One
+`AttachmentRepo` serves all three, configured by `SERVICE_RECEIPTS`,
+`RENEWAL_DOCUMENTS` or `VEHICLE_GRANT` in `src/worker/data/attachments.ts` --
+add an owner there rather than copying the class, because the rules below are
+exactly what a copy drifts on. The portal-agnostic half -- size limit, type
+sniffing, key naming, R2 calls -- is `packages/core/src/worker/attachments.ts`,
+so Coinbox can reuse it. The tables are not shared with Coinbox: it scopes on
+`ledger_id` and a shared table would need a nullable tenant column.
+
+**The grant's owner details are never columns.** Chassis no. (`vin`), engine
+no., registration date and colour are; the registered owner's name, IC number
+and address stay inside the PDF (owner decision, 2026-09-19). Columns go into
+the nightly backup JSON and the CSV export, and a garage is shared.
+`tests/renewals.test.ts` fails if a column with one of those names appears.
 
 Three rules that are invisible when broken:
 
@@ -169,15 +185,17 @@ Three rules that are invisible when broken:
   uploaded as `image/png` whose bytes are markup executes on the portal's own
   origin when served back. The download route pairs the sniffed type with
   `nosniff`. Do not "simplify" by trusting `file.type`.
-- **R2 objects do not cascade; rows do.** `ServiceRepo.remove()` reads the keys
-  BEFORE the delete and clears the bucket after. Any new path that deletes a
-  service record has to do the same, and the database looks correct either way
-  -- `tests/attachments.test.ts` is what notices.
+- **R2 objects do not cascade; rows do.** `ServiceRepo.remove()` and
+  `RenewalRepo.remove()` read the keys BEFORE the delete and clear the bucket
+  after. Any new path that deletes a parent has to do the same, and the
+  database looks correct either way -- `tests/attachments.test.ts` and
+  `tests/renewals.test.ts` are what notice. (Vehicles are archived, never
+  deleted, so grant files have no such path today.)
 - **`Env.DOCS` is required, unlike `Env.BACKUPS`.** A backup that skips a
   missing binding is a no-op; an upload that skips one reports success for a
   file it never stored.
 
-Receipts are outside both backup nets. See `docs/backups.md`.
+These files are outside both backup nets. See `docs/backups.md`.
 
 ## Domain traps
 

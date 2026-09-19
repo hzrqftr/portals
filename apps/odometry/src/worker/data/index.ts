@@ -1,7 +1,12 @@
 import { makeDb } from "./base";
 import { VehicleRepo } from "./vehicles";
 import { ServiceRepo } from "./services";
-import { AttachmentRepo } from "./attachments";
+import {
+  AttachmentRepo,
+  SERVICE_RECEIPTS,
+  RENEWAL_DOCUMENTS,
+  VEHICLE_GRANT,
+} from "./attachments";
 import { RenewalRepo } from "./renewals";
 import { StatusRepo } from "./status";
 import { PartTypeRepo } from "./partTypes";
@@ -14,7 +19,10 @@ import type { Env, Scope } from "../types";
 export interface Repos {
   vehicles: VehicleRepo;
   services: ServiceRepo;
+  /** Receipts on service records. The name predates the other two owners. */
   attachments: AttachmentRepo;
+  renewalDocuments: AttachmentRepo;
+  grantDocuments: AttachmentRepo;
   renewals: RenewalRepo;
   status: StatusRepo;
   partTypes: PartTypeRepo;
@@ -34,8 +42,10 @@ export function makeRepos(env: Env, scope: Scope): Repos {
   return {
     vehicles: new VehicleRepo(db, raw, scope),
     services: new ServiceRepo(db, raw, scope, env),
-    attachments: new AttachmentRepo(db, raw, scope, env),
-    renewals: new RenewalRepo(db, raw, scope),
+    attachments: new AttachmentRepo(db, raw, scope, env, SERVICE_RECEIPTS),
+    renewalDocuments: new AttachmentRepo(db, raw, scope, env, RENEWAL_DOCUMENTS),
+    grantDocuments: new AttachmentRepo(db, raw, scope, env, VEHICLE_GRANT),
+    renewals: new RenewalRepo(db, raw, scope, env),
     status: new StatusRepo(db, raw, scope),
     partTypes: new PartTypeRepo(db, raw, scope),
     settings: new SettingsRepo(env, scope),

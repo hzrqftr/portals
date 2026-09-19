@@ -272,32 +272,43 @@ a command:
   This is the practical answer to "let me look at my own data", and it landed
   before the import deliberately, so the readable path exists from the first
   row rather than after.
-- **The Sheets mirror** (`docs/coinbox-spec.md` §7, decision 6). A nightly
-  overwrite of a Google Sheet, so a readable copy always exists without anyone
-  running a command. Deferred until the ledger has rows worth mirroring, and it
-  costs more than it looks: a Google service account, JWT signing inside the
-  Worker, and a secret to rotate.
-
-**Neither is blocking anything, and both are worth deciding before the import
-rather than after.** Being able to read your own ledger without the app is a
-reasonable thing to want from a system that replaced a spreadsheet.
+- ~~**The Sheets mirror**~~ (`docs/coinbox-spec.md` §7, decision 6).
+  **Dropped 2026-09-19, owner decision** -- the ledger view in Coinbox is
+  enough. It would have been a nightly overwrite of a Google Sheet, at the cost
+  of a Google service account, JWT signing inside the Worker, and a secret to
+  rotate. The CSV export remains the way back to a Sheet.
 
 ---
 
-## Receipts are not in the backup
+## Receipts, certificates and grants are not in the backup
 
-Since 2026-09-10 a service record in Odometry can carry scanned receipts. The
-**rows** describing them are in the nightly export like everything else -- the
-filename, size, type and the key that finds the file. **The files themselves
-are not.** They live in a separate R2 bucket, `portals-docs`, which nothing
-backs up and which D1 Time Travel does not reach.
+Since 2026-09-10 a service record in Odometry can carry scanned receipts, and
+since 2026-09-19 a renewal can carry its certificate or cover note and a
+vehicle can carry its **grant (geran)**. The **rows** describing them are in
+the nightly export like everything else -- the filename, size, type and the
+key that finds the file. **The files themselves are not.** They live in a
+separate R2 bucket, `portals-docs`, which nothing backs up and which D1 Time
+Travel does not reach.
 
-So the two safety nets above protect the database, and receipts sit outside
+**The grant raises the stakes.** A lost receipt is an inconvenience; a lost
+grant is a trip to JPJ. Keep your own copy of each grant somewhere that is not
+this Cloudflare account -- the paper original, or the PDF saved elsewhere.
+The app's copy is a convenience, not the record.
+
+**Its owner details are deliberately NOT in the backup file.** The grant's
+vehicle details (chassis no., engine no., registration date, colour) are
+columns, so they are in the nightly JSON and the CSV export. The registered
+owner's name, IC number and address are not columns anywhere -- they exist
+only inside the PDF, in `portals-docs`. That was an owner decision on
+2026-09-19, so that a backup file or a CSV lying in a downloads folder does
+not carry an IC number.
+
+So the two safety nets above protect the database, and these files sit outside
 both. What that means in practice:
 
 | If this happens | The receipts |
 |---|---|
-| You delete a service record by accident | Gone. Deleting a record deletes its files deliberately, and Time Travel restoring the row will not bring the file back |
+| You delete a service record or a renewal by accident | Gone. Deleting a record deletes its files deliberately, and Time Travel restoring the row will not bring the file back |
 | You restore the database to an earlier day | Rows may point at files that were since deleted; the app shows those as "Attachment file is missing" rather than breaking |
 | You lose the Cloudflare account | Gone, along with everything else -- this is the gap the whole "off-Cloudflare copies" item below is about |
 
@@ -306,7 +317,7 @@ mean re-uploading every receipt inside a JSON file every night for ninety
 nights, and the export encodes columns with `JSON.stringify`, which turns a
 binary column into `{}` and breaks the restore silently.
 
-**If receipts start mattering as much as the data**, the cheap fix is R2
+**If these files start mattering as much as the data**, the cheap fix is R2
 object versioning plus a lifecycle rule on `portals-docs`, set from the
 dashboard -- no code. The thorough fix is including the bucket in the nightly
 job, which changes the export from one JSON file into something that needs its
@@ -324,7 +335,7 @@ npx wrangler r2 object list portals-docs --remote
   provider.
 - **XLSX specifically.** CSV is built (see above) and opens in Excel; a real
   `.xlsx` with one sheet per table is not, and has not been needed.
-- **The Sheets mirror.** See above.
+- ~~**The Sheets mirror.**~~ Dropped 2026-09-19. See above.
 - **Off-Cloudflare copies.** Every backup is in R2, which is in the same
   account as the database. That covers deletion and corruption, not account
   loss. Downloading one object a month somewhere else closes it, and takes a

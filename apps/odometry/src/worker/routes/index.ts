@@ -134,66 +134,22 @@ export function registerRoutes(app: Hono<AppContext>): void {
   });
 
   // --- attachments -----------------------------------------------------
-  // Receipts and invoices hanging off a service visit. Metadata comes back as
-  // JSON; the bytes only ever leave through the content route below, which is
-  // garage-scoped like every other read. There is no public R2 URL and there
-  // must not be one -- an unguessable link is not an access control.
-
-  app.get("/api/services/:id/attachments", async (c) =>
-    c.json(await c.get("repos").attachments.listFor(c.req.param("id"))),
+  // Files hanging off a service visit, a renewal, or the vehicle itself (the
+  // grant). Metadata comes back as JSON; the bytes only ever leave through a
+  // content route, which is garage-scoped like every other read. There is no
+  // public R2 URL and there must not be one -- an unguessable link is not an
+  // access control.
+  //
+  // The service paths keep their original names (/api/attachments/...) so the
+  // client that shipped on 2026-09-10 is unaffected.
+  mountAttachments(app, "attachments", "/api/services/:id/attachments", "/api/attachments");
+  mountAttachments(
+    app,
+    "renewalDocuments",
+    "/api/renewals/:id/attachments",
+    "/api/renewal-attachments",
   );
-
-  // One file per request. Multiple selections are a client-side loop, so a
-  // single failure names the file that failed instead of sinking the batch.
-  app.post("/api/services/:id/attachments", async (c) => {
-    assertCanWrite(c.get("scope"));
-    const form = await c.req.formData();
-    const file = form.get("file");
-    if (!(file instanceof File)) throw new ValidationError("No file was uploaded");
-
-    // The name is sanitised here because it is echoed in a response header;
-    // the TYPE is not taken from the request at all -- the repository reads it
-    // out of the bytes.
-    const { filename } = attachmentUpload.parse({ filename: file.name });
-    const meta = await c.get("repos").attachments.create(c.req.param("id"), {
-      bytes: await file.arrayBuffer(),
-      filename,
-    });
-    return c.json(meta, 201);
-  });
-
-  /**
-   * The bytes. Streamed straight from R2 rather than buffered.
-   *
-   * The three headers are one control, not three conveniences. This Worker
-   * serves the SPA from the same origin as the API, so an uploaded file that
-   * the browser decides to treat as markup executes with the caller's Access
-   * session. `content-type` is the type sniffed at upload and stored, never
-   * anything the client said; `nosniff` stops the browser second-guessing it;
-   * and the filename in `content-disposition` has already had quotes and
-   * control characters removed by attachmentUpload.
-   */
-  app.get("/api/attachments/:id/content", async (c) => {
-    const { body, contentType, filename } = await c
-      .get("repos")
-      .attachments.open(c.req.param("id"));
-    return new Response(body, {
-      headers: {
-        "content-type": contentType,
-        "content-disposition": `inline; filename="${filename}"`,
-        "x-content-type-options": "nosniff",
-        // Private: this is one garage's document, not something a shared cache
-        // may hold on to.
-        "cache-control": "private, max-age=3600",
-      },
-    });
-  });
-
-  app.delete("/api/attachments/:id", async (c) => {
-    assertCanWrite(c.get("scope"));
-    await c.get("repos").attachments.remove(c.req.param("id"));
-    return c.body(null, 204);
-  });
+  mountAttachments(app, "grantDocuments", "/api/vehicles/:id/grant", "/api/grant-documents");
 
   // --- renewals --------------------------------------------------------
   app.get("/api/vehicles/:id/renewals", async (c) =>
@@ -218,6 +174,14 @@ export function registerRoutes(app: Hono<AppContext>): void {
     assertCanWrite(c.get("scope"));
     const patch = renewalPatch.parse(await c.req.json());
     return c.json(await c.get("repos").renewals.update(c.req.param("id"), patch));
+  });
+
+  // A renewal entered by mistake, not a way to re-date a real one -- see
+  // RenewalRepo.remove() for why the two are different things.
+  app.delete("/api/renewals/:id", async (c) => {
+    assertCanWrite(c.get("scope"));
+    await c.get("repos").renewals.remove(c.req.param("id"));
+    return c.body(null, 204);
   });
 
   // --- reference data --------------------------------------------------
@@ -256,5 +220,74 @@ export function registerRoutes(app: Hono<AppContext>): void {
     const type = serviceType.parse(c.req.param("type"));
     const { partTypeIds } = serviceTemplatePut.parse(await c.req.json());
     return c.json(await c.get("repos").serviceTemplates.put(type, partTypeIds));
+  });
+}
+
+type AttachmentRepoKey = "attachments" | "renewalDocuments" | "grantDocuments";
+
+/**
+ * List, upload, download and delete for one attachment owner.
+ *
+ * `listPath` carries the parent's `:id`; `itemBase` is where individual files
+ * live, as `${itemBase}/:id/content` and `${itemBase}/:id`.
+ */
+function mountAttachments(
+  app: Hono<AppContext>,
+  repo: AttachmentRepoKey,
+  listPath: string,
+  itemBase: string,
+): void {
+  app.get(listPath, async (c) => c.json(await c.get("repos")[repo].listFor(c.req.param("id")!)));
+
+  // One file per request. Multiple selections are a client-side loop, so a
+  // single failure names the file that failed instead of sinking the batch.
+  app.post(listPath, async (c) => {
+    assertCanWrite(c.get("scope"));
+    const form = await c.req.formData();
+    const file = form.get("file");
+    if (!(file instanceof File)) throw new ValidationError("No file was uploaded");
+
+    // The name is sanitised here because it is echoed in a response header;
+    // the TYPE is not taken from the request at all -- the repository reads it
+    // out of the bytes.
+    const { filename } = attachmentUpload.parse({ filename: file.name });
+    const meta = await c.get("repos")[repo].create(c.req.param("id")!, {
+      bytes: await file.arrayBuffer(),
+      filename,
+    });
+    return c.json(meta, 201);
+  });
+
+  /**
+   * The bytes. Streamed straight from R2 rather than buffered.
+   *
+   * The three headers are one control, not three conveniences. This Worker
+   * serves the SPA from the same origin as the API, so an uploaded file that
+   * the browser decides to treat as markup executes with the caller's Access
+   * session. `content-type` is the type sniffed at upload and stored, never
+   * anything the client said; `nosniff` stops the browser second-guessing it;
+   * and the filename in `content-disposition` has already had quotes and
+   * control characters removed by attachmentUpload.
+   */
+  app.get(`${itemBase}/:id/content`, async (c) => {
+    const { body, contentType, filename } = await c
+      .get("repos")
+      [repo].open(c.req.param("id"));
+    return new Response(body, {
+      headers: {
+        "content-type": contentType,
+        "content-disposition": `inline; filename="${filename}"`,
+        "x-content-type-options": "nosniff",
+        // Private: this is one garage's document, not something a shared cache
+        // may hold on to.
+        "cache-control": "private, max-age=3600",
+      },
+    });
+  });
+
+  app.delete(`${itemBase}/:id`, async (c) => {
+    assertCanWrite(c.get("scope"));
+    await c.get("repos")[repo].remove(c.req.param("id"));
+    return c.body(null, 204);
   });
 }

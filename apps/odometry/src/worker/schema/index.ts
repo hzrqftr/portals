@@ -109,7 +109,7 @@ export const vehicles = sqliteTable(
     vehicleType: text("vehicle_type", { enum: ["car", "motorcycle"] }).notNull().default("car"),
     fuelType: text("fuel_type", { enum: ["petrol", "diesel", "hybrid", "ev"] }),
     transmission: text("transmission", { enum: ["manual", "auto"] }),
-    vin: text("vin"),
+    vin: text("vin"), // the grant's chassis number
     purchaseDate: text("purchase_date"),
     purchasePrice: integer("purchase_price"), // sen
     currentOdometerKm: integer("current_odometer_km").notNull().default(0),
@@ -118,6 +118,12 @@ export const vehicles = sqliteTable(
     notes: text("notes"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
+    // The grant's vehicle details (migration 0018). The registered owner's
+    // name, IC and address are deliberately NOT columns -- they stay inside
+    // the grant PDF. See the migration header.
+    engineNo: text("engine_no"),
+    registeredOn: text("registered_on"),
+    colour: text("colour"),
   },
   (t) => ({ garageIdx: index("idx_vehicles_garage").on(t.garageId) }),
 );
@@ -308,10 +314,61 @@ export const renewals = sqliteTable(
     issuedOn: text("issued_on"),
     expiresOn: text("expires_on").notNull(),
     cost: integer("cost"), // sen
+    // NULL in every row and superseded by renewal_attachments (0018). Kept to
+    // avoid a table rebuild. Do not start writing it.
     documentKey: text("document_key"),
     notes: text("notes"),
   },
   (t) => ({ lookupIdx: index("idx_renewals_lookup").on(t.vehicleId, t.type, t.expiresOn) }),
+);
+
+const ATTACHMENT_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+] as const;
+
+/** Certificates and cover notes for a renewal (migration 0018). */
+export const renewalAttachments = sqliteTable(
+  "renewal_attachments",
+  {
+    id: text("id").primaryKey(),
+    garageId: text("garage_id").notNull(),
+    renewalId: text("renewal_id").notNull(),
+    r2Key: text("r2_key").notNull(),
+    filename: text("filename").notNull(),
+    contentType: text("content_type", { enum: ATTACHMENT_TYPES }).notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    uploadedAt: text("uploaded_at").notNull(),
+    uploadedBy: text("uploaded_by").notNull(),
+  },
+  (t) => ({
+    parentIdx: index("idx_renewal_attach_parent").on(t.renewalId),
+    keyUq: uniqueIndex("uq_renewal_attach_key").on(t.r2Key),
+  }),
+);
+
+/** Documents that belong to the vehicle itself -- the grant (migration 0018). */
+export const vehicleDocuments = sqliteTable(
+  "vehicle_documents",
+  {
+    id: text("id").primaryKey(),
+    garageId: text("garage_id").notNull(),
+    vehicleId: text("vehicle_id").notNull(),
+    kind: text("kind", { enum: ["grant"] }).notNull(),
+    r2Key: text("r2_key").notNull(),
+    filename: text("filename").notNull(),
+    contentType: text("content_type", { enum: ATTACHMENT_TYPES }).notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    uploadedAt: text("uploaded_at").notNull(),
+    uploadedBy: text("uploaded_by").notNull(),
+  },
+  (t) => ({
+    parentIdx: index("idx_vehicle_docs_parent").on(t.vehicleId, t.kind),
+    keyUq: uniqueIndex("uq_vehicle_docs_key").on(t.r2Key),
+  }),
 );
 
 export const costEstimates = sqliteTable("cost_estimates", {

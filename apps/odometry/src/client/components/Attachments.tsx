@@ -4,46 +4,54 @@ import {
   useAttachments,
   useDeleteAttachment,
   useUploadAttachment,
+  serviceReceipts,
   type Attachment,
+  type AttachmentTarget,
 } from "../api/hooks";
 
 /**
- * Receipts on a service visit.
+ * Files on a service visit, a renewal, or the vehicle's grant.
  *
- * Two modes, because a receipt can be attached before the service record
- * exists (in the log-service form) and after it (from the history row):
+ * Two modes, because a file can be attached before its parent exists (in the
+ * log-service form) and after it:
  *
- *  - `serviceId` given  -> uploads immediately, lists what is already there.
- *  - `serviceId` null   -> holds the files locally and hands them back through
- *                          `onPendingChange`, for the caller to upload once it
- *                          has an id.
+ *  - `target` given  -> uploads immediately, lists what is already there.
+ *  - `target` null   -> holds the files locally and hands them back through
+ *                       `onPendingChange`, for the caller to upload once it
+ *                       has an id.
  *
- * PDF is the primary path on purpose: the owner scans invoices with a phone,
+ * PDF is the primary path on purpose: the owner scans paper with a phone,
  * which produces a PDF. Images are the fallback, and `accept` is ordered to
  * say so.
  */
-export function ServiceAttachments({
-  serviceId,
+export function Attachments({
+  target,
+  title,
+  emptyHint,
+  addLabel,
   pending,
   onPendingChange,
 }: {
-  serviceId: string | null;
+  target: AttachmentTarget | null;
+  title: string;
+  emptyHint: string;
+  addLabel: string;
   pending?: File[];
   onPendingChange?: (files: File[]) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const attachments = useAttachments(serviceId ?? "");
-  const upload = useUploadAttachment(serviceId ?? "");
-  const remove = useDeleteAttachment(serviceId ?? "");
+  const attachments = useAttachments(target);
+  const upload = useUploadAttachment(target);
+  const remove = useDeleteAttachment(target);
 
   async function onPick(files: FileList | null) {
     if (!files || files.length === 0) return;
     setError(null);
     const picked = Array.from(files);
 
-    if (serviceId === null) {
+    if (target === null) {
       onPendingChange?.([...(pending ?? []), ...picked]);
     } else {
       // One at a time, so a rejected file names itself instead of failing the
@@ -66,12 +74,10 @@ export function ServiceAttachments({
 
   return (
     <div className="mt-4">
-      <h3 className="text-sm font-medium uppercase tracking-wider text-ink-faint">Receipts</h3>
+      <h3 className="text-sm font-medium uppercase tracking-wider text-ink-faint">{title}</h3>
 
       {existing.length === 0 && held.length === 0 && (
-        <p className="mt-2 text-sm text-ink-faint">
-          Nothing attached. Scan the workshop invoice with your phone and add the PDF.
-        </p>
+        <p className="mt-2 text-sm text-ink-faint">{emptyHint}</p>
       )}
 
       {(existing.length > 0 || held.length > 0) && (
@@ -80,6 +86,7 @@ export function ServiceAttachments({
             <SavedRow
               key={file.id}
               file={file}
+              href={attachmentUrl(target!, file.id)}
               busy={busy}
               onRemove={() => {
                 setError(null);
@@ -115,7 +122,7 @@ export function ServiceAttachments({
         disabled={busy}
         className="mt-3 w-full rounded-xl border border-dashed border-edge py-3 text-sm font-medium text-ink-muted hover:border-ink-faint hover:text-ink disabled:opacity-40"
       >
-        {upload.isPending ? "Uploading…" : "Add a receipt (PDF or photo)"}
+        {upload.isPending ? "Uploading…" : addLabel}
       </button>
 
       {error && <p className="mt-2 text-sm text-status-overdue-fg">{error}</p>}
@@ -125,18 +132,20 @@ export function ServiceAttachments({
 
 function SavedRow({
   file,
+  href,
   busy,
   onRemove,
 }: {
   file: Attachment;
+  href: string;
   busy: boolean;
   onRemove: () => void;
 }) {
   return (
     <li className="flex items-center gap-3 rounded-xl border border-edge bg-inset p-2">
-      <Thumb contentType={file.contentType} href={attachmentUrl(file.id)} />
+      <Thumb contentType={file.contentType} href={href} />
       <a
-        href={attachmentUrl(file.id)}
+        href={href}
         target="_blank"
         rel="noreferrer"
         className="min-w-0 flex-1 text-sm text-ink hover:underline"
@@ -178,6 +187,28 @@ function PendingRow({ file, onRemove }: { file: File; onRemove: () => void }) {
         Remove
       </button>
     </li>
+  );
+}
+
+/** Receipts on a service visit: the original caller, unchanged in behaviour. */
+export function ServiceAttachments({
+  serviceId,
+  pending,
+  onPendingChange,
+}: {
+  serviceId: string | null;
+  pending?: File[];
+  onPendingChange?: (files: File[]) => void;
+}) {
+  return (
+    <Attachments
+      target={serviceId === null ? null : serviceReceipts(serviceId)}
+      title="Receipts"
+      emptyHint="Nothing attached. Scan the workshop invoice with your phone and add the PDF."
+      addLabel="Add a receipt (PDF or photo)"
+      pending={pending}
+      onPendingChange={onPendingChange}
+    />
   );
 }
 

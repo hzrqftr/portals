@@ -394,7 +394,7 @@ Genuinely undecided. Whoever implements next should ask rather than pick.
    "Odometry" and licensed for personal use only, so it cannot be reused.
    Coinbox stays on body type. Nothing depends on this and it was cluttering
    the blocked list; reopen it only if the owner actively wants a face.
-6. **Backups — RESOLVED for R2, 2026-08-28. Sheets mirror still open.**
+6. **Backups — RESOLVED for R2, 2026-08-28. Sheets mirror DROPPED 2026-09-19.**
    The nightly D1 → R2 export is built and runs from the fleet-portal Worker
    (one D1, one backup, covering both portals). Retention is 90 days, chosen
    because D1 Time Travel was measured at 30 and a shorter window would add
@@ -405,8 +405,11 @@ Genuinely undecided. Whoever implements next should ask rather than pick.
    every `npm test`, and it was run by hand against the local database — 208
    rows, 15 tables, foreign key check clean.
 
-   **Still open: the Sheets mirror.** Deferred deliberately until the ledger
-   has rows worth mirroring. It needs a Google service account, JWT signing
+   ~~**Still open: the Sheets mirror.**~~ **DROPPED 2026-09-19, owner
+   decision:** the ledger view in Coinbox is enough, and the Home dashboard
+   already carries the monthly totals that were the main reason to open the
+   Sheet. The reasoning below is kept for the record; do not reopen it as a
+   task. It had been deferred until the ledger had rows worth mirroring. It needs a Google service account, JWT signing
    inside the Worker, and a rotatable secret — a separate piece of work from
    the durability guarantee, which is now met. Its appeal is that a mirror is
    readable on a phone without the app, which the R2 JSON is not.
