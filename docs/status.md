@@ -56,6 +56,24 @@ where even `SELECT 1` failed, and worked immediately from a normal
 
 ---
 
+## File viewer: zoom out, and a modal instead of full screen — 2026-09-19
+
+Owner feedback after using it: the browser's own PDF viewer can zoom OUT past
+fit, and full screen was too much. So:
+
+- Zoom now runs **50%, 75%, fit, 125%, 150%, 200%, 300%** -- below fit a whole
+  page (or photo) sits centred with room around it. Keyboard `-` / `+` / `0`
+  as well as the buttons; Ctrl-combinations are left to the browser.
+- On a desktop the viewer is a **centred modal** (max ~900 px wide, 85% of the
+  window high) over a dimmed page, and clicking the dimmed area closes it. On
+  a phone it stays full screen, where a modal's margins would only cost room.
+- **Seen in a browser, locally,** with the owner's own City grant PDF as the
+  sample: 896x774 modal on a 1920 px window, 50% shows the whole page centred,
+  a click inside stays open, a click outside closes and unlocks the page, 375
+  px is full screen with no sideways scroll.
+
+---
+
 ## In-app file viewer — 2026-09-19, DEPLOYED
 
 Every attached file -- service receipts, renewal documents, the grant, and

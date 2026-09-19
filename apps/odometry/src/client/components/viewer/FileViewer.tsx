@@ -12,11 +12,21 @@ export interface ViewerItem {
   contentType: string;
 }
 
-const ZOOMS = [1, 1.5, 2, 3];
+/**
+ * Zoom steps, relative to "fit". Below 1 zooms OUT past fit, as the browser's
+ * own PDF viewer does -- asked for on 2026-09-19, to see a whole page (or a
+ * whole receipt photo) with room around it.
+ */
+const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+const FIT = ZOOMS.indexOf(1);
 
 /**
- * The in-app viewer for attached files: images and PDFs, full screen, with
- * previous/next across the list it was opened from.
+ * The in-app viewer for attached files: images and PDFs, with previous/next
+ * across the list it was opened from.
+ *
+ * A centred modal on a desktop (asked for on 2026-09-19 -- full screen was too
+ * much), full screen on a phone, where a modal's margins would only take room
+ * away from the document. Clicking the dimmed area around it closes it.
  *
  * IT MUST NOT CLOSE THE FORM UNDERNEATH IT. It is routinely opened from inside
  * a Sheet (the log-service form, the renewal save step), and two things would
@@ -40,13 +50,13 @@ export function FileViewer({
   onClose: () => void;
 }) {
   const [index, setIndex] = useState(start);
-  const [zoomStep, setZoomStep] = useState(0);
+  const [zoomStep, setZoomStep] = useState(FIT);
   const item = items[Math.min(index, items.length - 1)];
   const count = items.length;
 
   const go = (delta: number) => {
     setIndex((i) => (i + delta + count) % count);
-    setZoomStep(0);
+    setZoomStep(FIT);
   };
 
   useEffect(() => {
@@ -54,6 +64,11 @@ export function FileViewer({
       if (e.key === "Escape") onClose();
       else if (e.key === "ArrowRight" && count > 1) go(1);
       else if (e.key === "ArrowLeft" && count > 1) go(-1);
+      // The browser's own shortcuts would zoom the whole page instead.
+      else if ((e.key === "+" || e.key === "=") && !e.ctrlKey && !e.metaKey)
+        setZoomStep((z) => Math.min(z + 1, ZOOMS.length - 1));
+      else if (e.key === "-" && !e.ctrlKey && !e.metaKey) setZoomStep((z) => Math.max(z - 1, 0));
+      else if (e.key === "0" && !e.ctrlKey && !e.metaKey) setZoomStep(FIT);
       else return;
       e.stopImmediatePropagation();
       e.preventDefault();
@@ -87,13 +102,25 @@ export function FileViewer({
   const zoom = ZOOMS[zoomStep] ?? 1;
 
   return createPortal(
+    // The scrim. Every click is stopped here whatever else happens -- see the
+    // comment above about the Sheet underneath -- and a click on the scrim
+    // itself (not the panel) closes the viewer.
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 sm:p-6"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (e.target === e.currentTarget) onClose();
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
     <div
       role="dialog"
       aria-modal="true"
       aria-label={`Viewing ${item.filename}`}
-      className="fixed inset-0 z-[60] flex flex-col bg-page/95 backdrop-blur"
-      onClick={(e) => e.stopPropagation()}
-      onPointerDown={(e) => e.stopPropagation()}
+      className={
+        "flex h-full w-full flex-col overflow-hidden bg-surface " +
+        "sm:h-[85vh] sm:max-w-4xl sm:rounded-2xl sm:border sm:border-edge sm:shadow-2xl"
+      }
     >
       <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
         <div className="min-w-0 flex-1">
@@ -109,7 +136,7 @@ export function FileViewer({
             <Btn label="Zoom out" disabled={zoomStep === 0} onClick={() => setZoomStep((z) => z - 1)}>
               &minus;
             </Btn>
-            <Btn label="Fit" disabled={zoomStep === 0} onClick={() => setZoomStep(0)}>
+            <Btn label="Fit" disabled={zoomStep === FIT} onClick={() => setZoomStep(FIT)}>
               <span className="text-xs tabular-nums">{Math.round(zoom * 100)}%</span>
             </Btn>
             <Btn
@@ -159,6 +186,7 @@ export function FileViewer({
           </>
         )}
       </div>
+    </div>
     </div>,
     document.body,
   );

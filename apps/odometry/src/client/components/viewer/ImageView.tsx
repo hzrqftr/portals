@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Unsupported } from "./Unsupported";
 
 /**
- * One image, fitted to the viewer at zoom 1, enlarged inside a scroll
- * container above that so it can be panned by dragging (touch) or scrolling.
+ * One image, fitted to the viewer at zoom 1, drawn smaller below 1, and
+ * enlarged inside a scroll container above 1 so it can be panned.
  *
  * Zoom is a width multiplier rather than a CSS transform: a transform does not
  * change layout size, so the scroll container would not know the image grew
@@ -30,24 +30,33 @@ export function ImageView({
     );
   }
 
-  return (
-    <div className="h-full overflow-auto overscroll-contain">
-      <div
-        className="flex min-h-full items-center justify-center p-4"
-        // At zoom 1 the image fits the box; beyond that the wrapper grows and
-        // the scroll container above supplies the panning.
-        style={zoom > 1 ? { width: `${zoom * 100}%` } : undefined}
-      >
+  // At or below "fit" the image is contained in the panel and, below it,
+  // simply drawn smaller -- nothing to pan, so a transform is fine there.
+  if (zoom <= 1) {
+    return (
+      <div className="flex h-full items-center justify-center overflow-hidden p-4">
         <img
           src={url}
           alt={filename}
           onError={() => setFailed(true)}
-          className={
-            zoom > 1
-              ? "w-full max-w-none rounded-lg"
-              : "max-h-full max-w-full rounded-lg object-contain"
-          }
-          style={zoom > 1 ? undefined : { maxHeight: "calc(100vh - 8rem)" }}
+          className="max-h-full max-w-full rounded-lg object-contain transition-transform"
+          style={zoom < 1 ? { transform: `scale(${zoom})` } : undefined}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-auto overscroll-contain">
+      {/* Above fit the wrapper grows and the scroll container supplies the
+          panning -- a transform would not change layout size, so there would
+          be nothing to scroll to. */}
+      <div className="p-4" style={{ width: `${zoom * 100}%` }}>
+        <img
+          src={url}
+          alt={filename}
+          onError={() => setFailed(true)}
+          className="w-full max-w-none rounded-lg"
         />
       </div>
     </div>

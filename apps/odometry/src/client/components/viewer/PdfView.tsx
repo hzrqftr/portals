@@ -92,7 +92,7 @@ export function PdfView({ url, filename, zoom }: { url: string; filename: string
       {!doc ? (
         <p className="p-6 text-center text-sm text-ink-muted">Loading&hellip;</p>
       ) : (
-        <div className="flex flex-col items-center gap-3 p-4" style={{ width: pageWidth + 32 }}>
+        <div className="mx-auto flex flex-col items-center gap-3 p-4" style={{ width: pageWidth + 32 }}>
           {Array.from({ length: doc.numPages }, (_, i) => (
             <PdfPage key={i} doc={doc} number={i + 1} width={pageWidth} aspect={aspect} />
           ))}
