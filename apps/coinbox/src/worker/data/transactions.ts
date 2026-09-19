@@ -1,4 +1,4 @@
-import { and, desc, eq, like, or, sql } from "drizzle-orm";
+import { desc, eq, like, or, sql } from "drizzle-orm";
 import {
   NotFoundError,
   assertReadingNotBackwards,

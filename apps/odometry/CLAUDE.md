@@ -202,7 +202,9 @@ These files are outside both backup nets. See `docs/backups.md`.
 Every file in `Attachments` -- saved or still pending in a form -- opens in
 `FileViewer`: images, and PDFs drawn by **PDF.js** (owner decision,
 2026-09-19; the browser's own viewer shows nothing inside a page on Android).
-Three rules that are invisible when broken:
+It is a centred modal on a desktop and full screen on a phone, with zoom from
+50% to 300% around "fit" (`-` / `+` / `0` on the keyboard). Three rules that
+are invisible when broken:
 
 - **Canvas only for PDFs.** No text layer, no annotation layer, so nothing in an
   uploaded PDF can become a link or a form on this origin. PDF.js is the legacy

@@ -555,7 +555,7 @@ this week?** Everything else is a report, not a dashboard.
 | Committed in the next 30 days | "How much of what is left is already spoken for?" |
 | Days since the last **typed** entry | "Can I believe the three figures above?" |
 | The year, as diverging columns + a running total | The shape a table of twelve numbers cannot show |
-| What moved, vs each category's own normal | "Why was this month unlike the others?" |
+| Where the month went, by category, biggest first | "Where did the money go?" (replaced "what moved vs normal", 2026-09-07 -- see 10.3) |
 | ~~Cost per km, per vehicle~~ | **Removed 2026-09-19** (owner decision) -- replaced by fuel consumption per vehicle, see 10.5 |
 | Fuel consumption, per vehicle | "Is this car drinking more than it did?" |
 

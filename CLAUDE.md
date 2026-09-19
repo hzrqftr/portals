@@ -13,9 +13,18 @@ Two portals, one Cloudflare account, one D1 database, one repo.
 | `apps/coinbox` | Personal expense ledger | `coinbox` | `docs/coinbox-spec.md` |
 | `packages/core` | Identity, money, dates, repository base, shared UI | — | — |
 
-**Resuming work? Read `docs/status.md` first.** It records what is actually
-built, what is not, and what to pick up next — the specs describe the
+**Resuming work? Read `docs/status.md` first.** It records what is deployed,
+what exists, what is next and what was decided against — the specs describe the
 destination, not the current position.
+
+| Doc | Read it for |
+|---|---|
+| `docs/status.md` | The present: deployed versions, a capability map, the ranked next list, decisions not to reopen, live traps |
+| `docs/history.md` | The *why*: every dated build, finding and decision. Search it for a migration number or file before changing that thing |
+| `docs/fleet-portal-spec.md`, `docs/coinbox-spec.md` | The design each portal is built to |
+| `docs/backups.md` | The recovery manual (also published; see Backups below) |
+| `docs/setup-checklist.md` | One-time Cloudflare and Google dashboard setup |
+| `apps/*/CLAUDE.md` | Each portal's domain rules that are invisible when broken |
 
 ## One database, one repo
 
@@ -146,6 +155,9 @@ It introduces read-after-write staleness for no benefit at this write volume.
    locally and committed.
 3. Any new list or read endpoint is added to that app's isolation test.
 4. The change is explained in plain language in the PR or summary.
+5. `docs/status.md` is updated where the change affects it (the capability map,
+   Next, the snapshot after a deploy), and a dated entry goes at the top of
+   `docs/history.md`. Status stays short; narrative goes in history.
 
 ## The cross-tenant tests
 
@@ -211,8 +223,9 @@ runs, how to restore, and what is deliberately not built. `apps/odometry/tests/b
 round trip on every `npm test`, because a backup nobody has restored from is a
 belief rather than a backup.
 
-**`portals-docs` is a second R2 bucket and is NOT backed up.** It holds the
-receipts attached to service records (migration 0015). The rows describing them
+**`portals-docs` is a second R2 bucket and is NOT backed up.** It holds every
+file attached in Odometry -- service receipts (migration 0015), renewal
+certificates and vehicle grants (0018). The rows describing them
 are in the nightly export; the files are not, and D1 Time Travel does not reach
 them either. That gap is written down in `docs/backups.md` rather than left for
 someone to discover during a restore.
@@ -256,7 +269,7 @@ migrations/            # ONE folder, one sequence, shared database
 wrangler.jsonc         # D1 admin only, declares no Worker
 scripts/
   check-db-imports.mjs # isolation lint, walks the whole tree
-docs/
+docs/                  # status (the present), history (the log), specs, backups
 apps/
   odometry/  coinbox/
     src/worker/

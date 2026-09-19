@@ -1,4 +1,4 @@
-import { asc, eq, or, sql } from "drizzle-orm";
+import { asc, sql } from "drizzle-orm";
 import { LedgerScopedRepo } from "./base";
 import { categories } from "../schema";
 

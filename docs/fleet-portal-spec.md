@@ -432,6 +432,8 @@ Same bands, date-only, against the active renewal per `(vehicle, type)`. A missi
 
 Trailing 12 months per vehicle: total spend (services plus renewals) over distance (odometer delta), giving cost per km and per month. Depreciation from `purchase_price` shown separately, labelled an estimate, off by default.
 
+**Deprioritised 2026-09-19 (owner):** cost per km is not a figure the owner reads -- Coinbox's cost-per-km card was removed that day for the same reason, and fuel consumption kept instead. If this is built, measure distance from `v_odometer_clean`, never the raw `MAX - MIN` of readings: one mistyped reading silently understates a raw figure, which is exactly the flaw the Coinbox card had.
+
 ---
 
 ## 7. API surface
@@ -508,7 +510,7 @@ One tap from the dashboard, numeric keypad, single field, save and dismiss. This
 ### 8.6 Budgets
 
 **Forecast:** stacked bar of estimated monthly spend over 12 months by vehicle, itemised table beneath, inline-editable estimates.
-**Run rate:** cost per km and per month by vehicle, compared across the fleet.
+**Run rate:** cost per km and per month by vehicle, compared across the fleet. *Deprioritised 2026-09-19 -- see §6.5.*
 
 ### 8.7 Settings
 
@@ -531,9 +533,9 @@ Desktop-first, responsive down to 375px. Dark theme only -- the palette lives in
 *Done when you can stop using your current spreadsheet.*
 **In progress.** Every API endpoint and the isolation suite are built, and
 so are the service records, renewals (2026-09-19), vehicle edit and interval
-inline editing screens. What is left is in `docs/status.md`'s Odometry gap
-table -- vehicle delete, the add-vehicle baseline prompt, and inline odometer
-edit among them.
+inline editing screens. What is left is item 4 of the Next list in
+`docs/status.md` -- vehicle delete, the add-vehicle baseline prompt, and inline
+odometer edit among them.
 
 **Phase 2 — Money.** Cost estimates, forecast, run rate, spend breakdowns, derived estimates. *Not started.*
 
@@ -650,5 +652,6 @@ the row above left room for a `fuel_logs` table. What was built is
   so a price there would be readable by every co-member. The money stays in
   Coinbox behind the ledger predicate.
 
-§6.5's run rate (spend over distance) is still unbuilt on this side; Coinbox's
-dashboard already computes cost per km from the money it owns.
+§6.5's run rate (spend over distance) is unbuilt and deprioritised. Coinbox
+used to compute a cost per km from the money it owns; that card was removed on
+2026-09-19 in favour of fuel consumption per vehicle.

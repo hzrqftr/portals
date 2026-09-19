@@ -5,7 +5,6 @@ import {
   useDeleteAttachment,
   useUploadAttachment,
   serviceReceipts,
-  type Attachment,
   type AttachmentTarget,
 } from "../api/hooks";
 import { PendingRow, SavedRow } from "./AttachmentRows";

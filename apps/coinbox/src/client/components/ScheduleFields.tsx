@@ -1,4 +1,4 @@
-import { DATE_INPUT, Field, Select, INPUT } from "@portals/core/client";
+import { DATE_INPUT, Field, Select } from "@portals/core/client";
 import { describeSchedule, ordinal } from "@shared/recurrence";
 
 /**
