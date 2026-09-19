@@ -3,7 +3,7 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-09-19 (housekeeping: dependencies, two component splits, docs resynced)
+**Last updated:** 2026-09-19 (housekeeping: Drizzle 0.45 and React Router 7, two component splits, docs resynced)
 
 ---
 
@@ -21,20 +21,91 @@ inside its existing `^4.6.0` range, clearing three advisories -- the relevant
 one being unbounded dot-notation nesting in `parseBody()`, now in the request
 path for receipt upload.
 
-**Two advisories are left open, deliberately, and both were checked for
-reachability rather than taken at face value:**
+**Both remaining advisories were then cleared in the same session, at the
+owner's instruction.** `npm audit --omit=dev` reports **zero vulnerabilities**,
+down from four. Neither had been reachable -- that was checked before deciding,
+not assumed from the severity label -- so this was hygiene rather than a fix:
 
-- `drizzle-orm` 0.36.4, rated high, SQL injection via unescaped identifiers.
-  **Not reachable here.** There is no `sql.identifier`, `sql.raw` or
+- `drizzle-orm` 0.36.4 -> **0.45.2**, rated high, SQL injection via unescaped
+  identifiers. Never reachable: there is no `sql.identifier`, `sql.raw` or
   `.dynamic()` anywhere in either portal, and `backup.ts` -- the one place that
   builds SQL from table names -- does its own `quoteIdent` on names read from
   `sqlite_master`, never through Drizzle.
-- `react-router-dom` 6.30.6, moderate, open redirect via a backslash in a
-  `to=`. **Not reachable here.** Every `to=` in either portal is a literal or
-  an internal path built from ids; nothing routes to a user-supplied target.
+- `react-router-dom` 6.30.6 -> **7.18.4**, moderate, open redirect via a
+  backslash in a `to=`. Never reachable: every `to=` is a literal or an
+  internal path built from ids; nothing routes to a user-supplied target.
 
-Both fixes are version jumps (0.36 -> 0.45, and a v7 major) and belong in their
-own session with the isolation suites run against them, not on a feature branch.
+**Neither upgrade needed a single source change.** tsc is clean in all three
+workspaces. The API surface both libraries are used through is small --
+Drizzle gets `eq/and/or/asc/desc/like/lte/sql` and the sqlite-core builders
+with no relational queries or prepared statements; React Router gets
+`BrowserRouter/Routes/Route/Link/NavLink/useParams/useSearchParams/
+useLocation/useNavigate` with no data routers, so v7's future-flag defaults do
+not apply.
+
+### How the Drizzle upgrade was made safe
+
+An ORM upgrade under a tenant-scoped system is the one place where "the tests
+pass" is not enough: a two-row fixture can pass while the predicate is
+subtly differently composed. So, in order:
+
+1. **`apps/odometry/tests/sqlFingerprint.test.ts` was written first, on
+   0.36**, asserting the literal SQL and bind order for every read shape the
+   repositories use. The one that matters most is `scope AND (a OR b)` -- had
+   that ever re-associated to `(scope AND a) OR b`, every row matching b would
+   escape the predicate. It passed **unchanged** on 0.45.
+2. **Both isolation suites were broken on purpose ON 0.45** and watched fail.
+   Odometry's garage predicate replaced with `1 = 1`: 5 failures, the first
+   reporting `BOB_VEHICLE_NICKNAME` leaking from `GET /api/vehicles`.
+   Coinbox's ledger predicate: 9 failures, including the garage co-member
+   case. Both restored.
+3. Local row counts compared either side and identical; `.wrangler/state` was
+   copied aside first.
+
+The fingerprint file is kept. Note it builds queries through `QueryBuilder`
+from `drizzle-orm/sqlite-core`, not the D1 client -- **the isolation lint
+rejected the first draft for importing `drizzle-orm/d1` outside
+`src/worker/data/`, correctly.** Widening that allow list to make one test
+easier would have left the lint permanently weaker, so the test changed
+instead. `QueryBuilder` needs no driver and was verified to emit identical SQL
+and binds. That makes it reads-only, which is the right half: a write with a
+broken predicate fails to find its row and is visible; a read with one returns
+someone else's data and is not.
+
+### The React Router check that nearly did not happen
+
+The workspace suites are worker-side and **do not touch the router at all**,
+so passing tests proved nothing. Route shapes were rendered through
+`MemoryRouter` in Node instead: `/`, `/vehicles/:id` (useParams), `/ledger`
+with both query parameters (useSearchParams), `Link` href, and `NavLink`
+active state. All correct on v7.
+
+**`BackButton` reads `window.history.state?.idx`, which is a React Router
+INTERNAL.** Had v7 stopped writing it, `canGoBack` would be false everywhere
+and Back would silently jump to the root rather than going back -- no error,
+no failing test, and nothing on screen to say so. v7's `getHistoryState` still
+writes `idx: index`. `layout.tsx` now records the dependency and says to check
+it by clicking, not by reading source, on the next major.
+
+### A trap that reappeared in a new disguise
+
+Restarting the dev servers **looked** successful. Odometry had actually died
+on `EADDRINUSE 127.0.0.1:9230` -- the inspector port from the 2026-09-08 entry
+below -- and port 5174 was still being served by the OLD process on the OLD
+dependencies. `curl` returned 200 from exactly the port the config names.
+
+**An HTTP 200 from your configured port is not evidence that your new build is
+running.** What proved it was killing by listening port and then finding
+`data-discover`, an attribute only v7 emits, in the dev bundle.
+
+Bundles grew, which is the one measurable cost: Workers 395.8 -> 407.4 kB
+(odometry) and 370.8 -> 382.4 kB (coinbox); clients 324.1 -> 340.8 kB and
+328.5 -> 344.9 kB, both near 101 kB gzipped. Well inside the limits.
+
+**Nothing was deployed and no migration was run** -- remote is untouched, and
+both portals are still running the pre-upgrade code in production. The next
+`npm run deploy -w <app>` ships these libraries; that deploy is worth doing
+when someone can watch it rather than at the end of an unrelated change.
 
 **The palette gained `status.info-bg/fg`.** The warranty badge in
 `ServiceHistory` was the last raw Tailwind colour in either portal
