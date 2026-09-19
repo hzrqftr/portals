@@ -6,22 +6,17 @@ import {
   usePartTypes,
   useServiceTemplates,
   uploadAttachment,
-  SERVICE_TYPES,
-  type ServiceItemDraft,
   type ServiceRecord,
   type ServiceTypeName,
   type VehicleType,
 } from "../api/hooks";
-import { parseSen, toQuantityMilli } from "@portals/core";
-import { DATE_INPUT, Field, INPUT, Select, digitsOnly } from "@portals/core/client";
-import { formatKm } from "../lib/format";
-import { Sheet } from "@portals/core/client";
-import { CustomPartDialog } from "./CustomPartDialog";
-import { PartPicker } from "./PartPicker";
-import { ServiceItemRow } from "./ServiceItemRow";
+import { Field, INPUT, Sheet } from "@portals/core/client";
 import { useServiceDraft } from "./serviceDraft";
 import { ServiceAttachments } from "./ServiceAttachments";
+import { ServicePartsSection } from "./ServicePartsSection";
 import { SavedConfirmation, Total } from "./ServiceSaved";
+import { ServiceVisitFields } from "./ServiceVisitFields";
+import { canSaveService, deriveTotals, makeDefaultNextDueKm, toItemDrafts } from "./serviceTotals";
 
 /**
  * Log a service, or correct one already logged. Spec 8.4 -- "the
@@ -41,6 +36,10 @@ import { SavedConfirmation, Total } from "./ServiceSaved";
  *    is what keeps invariant 6 true structurally rather than by convention.
  * 2. Total cost is shown, never typed. It is parts + labour by definition, so
  *    there is no third figure that can disagree with the other two.
+ *
+ * The arithmetic behind both of those is in serviceTotals.ts, where it can be
+ * tested directly; the form state is in serviceDraft.ts, where seeding an edit
+ * can be tested the same way. What is left here is the form itself.
  */
 export function ServiceSheet({
   vehicleId,
@@ -91,15 +90,14 @@ export function ServiceSheet({
   const odo = odometer === "" ? null : Number(odometer);
   const nameOf = (id: string) => partTypes.data?.find((p) => p.id === id)?.name ?? "Part";
 
-  /** The vehicle's own interval wins over the part-type default. */
-  function defaultNextDueKm(partTypeId: string): number | null {
-    if (odo === null) return null;
-    const row = maintenance.data?.find((r) => r.part_type_id === partTypeId);
-    const interval = row
-      ? row.interval_km
-      : (partTypes.data?.find((p) => p.id === partTypeId)?.default_interval_km ?? null);
-    return interval === null ? null : odo + interval;
-  }
+  const defaultNextDueKm = makeDefaultNextDueKm(odo, maintenance.data ?? [], partTypes.data ?? []);
+  const { partsSubtotal, labourSen, grandTotal, nextService, badItem } = deriveTotals(
+    items,
+    labourCost,
+    odo,
+    defaultNextDueKm,
+  );
+  const canSave = canSaveService(odo, badItem);
 
   /**
    * `name` is only passed for a part type created seconds ago, whose fetch has
@@ -147,58 +145,8 @@ export function ServiceSheet({
     }
   }
 
-  // Sen throughout, rounded once per line (invariant 1). Mirrors the
-  // line_total_cost generated column so the running total shown while typing
-  // matches what the server computes on save, to the sen.
-  const partsSubtotal = items.reduce((sum, i) => {
-    const unit = parseSen(i.unitCost);
-    const qty = Number(i.quantity) > 0 ? Number(i.quantity) : 1;
-    return unit === null ? sum : sum + Math.round(unit * qty);
-  }, 0);
-
-  const labourSen = parseSen(labourCost);
-  const grandTotal = partsSubtotal + (labourSen ?? 0);
-
-  // The single headline the owner asked for, derived from the lines rather
-  // than stored beside them: the soonest of whatever this visit set.
-  const nextService = items
-    .map((i) => (i.nextDueKm !== "" ? Number(i.nextDueKm) : defaultNextDueKm(i.partTypeId)))
-    .filter((v): v is number => v !== null)
-    .sort((a, b) => a - b)[0];
-
-  const badItem = items.some((i) => {
-    const typed = i.nextDueKm === "" ? null : Number(i.nextDueKm);
-    return typed !== null && odo !== null && typed <= odo;
-  });
-  const canSave = odo !== null && Number.isFinite(odo) && odo >= 0 && !badItem;
-
   function save() {
     if (!canSave || odo === null) return;
-
-    const drafts: ServiceItemDraft[] = items.map((i) => {
-      const draft: ServiceItemDraft = {
-        partTypeId: i.partTypeId,
-        quantityMilli: Number(i.quantity) > 0 ? toQuantityMilli(Number(i.quantity)) : 1000,
-      };
-      if (i.brand.trim()) draft.brand = i.brand.trim();
-      if (i.spec.trim()) draft.spec = i.spec.trim();
-      if (i.note.trim()) draft.note = i.note.trim();
-      const unit = parseSen(i.unitCost);
-      if (unit !== null) draft.unitCost = unit;
-      if (i.warrantyMonths !== "") draft.warrantyMonths = Number(i.warrantyMonths);
-
-      // Absolute figure in, interval out -- and always, not only when it
-      // differs from the default. Every service sets the schedule for its
-      // part, so leaving the field at the pre-filled figure is an answer
-      // ("same as before"), not an absence of one. Sending it every time is
-      // what keeps one number in charge: the line item and the vehicle's
-      // setting cannot drift apart if each service writes both.
-      const due = i.nextDueKm === "" ? defaultNextDueKm(i.partTypeId) : Number(i.nextDueKm);
-      if (due !== null && due > odo) {
-        draft.intervalKmOverride = due - odo;
-      }
-      return draft;
-    });
 
     save_.mutate(
       {
@@ -208,7 +156,7 @@ export function ServiceSheet({
         ...(workshop.trim() ? { workshopName: workshop.trim() } : {}),
         ...(labourSen !== null ? { labourCost: labourSen } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
-        items: drafts,
+        items: toItemDrafts(items, odo, defaultNextDueKm),
       },
       {
         onSuccess: async (result: { id: string }) => {
@@ -250,131 +198,41 @@ export function ServiceSheet({
         <>
           <h2 className="text-lg font-semibold">{heading}</h2>
 
-          {/* Stacked on a phone, paired from `sm` up. min-w-0 on Field stops
-              the date control overlapping the odometer, but two columns at
-              390px still leaves each field about 130px of text room for a
-              control the platform draws to its own taste -- and this form gets
-              filled in standing at a workshop counter, where a full-width tap
-              target is worth more than a tidy pair. */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Date">
-              <input
-                type="date"
-                value={servicedOn}
-                onChange={(e) => set("servicedOn", e.target.value)}
-                // Capped on a phone. Stacking fixed the overlap, but a date is
-                // a short fixed-length value and a full-bleed control for it
-                // reads as a mistake. From `sm` it shares a row with the
-                // odometer again and fills its own column.
-                className={DATE_INPUT + " max-w-[13rem] sm:max-w-none"}
-              />
-            </Field>
-            <Field label="Odometer (km)">
-              <input
-                type="text"
-                inputMode="numeric"
-                value={odometer}
-                onChange={(e) => set("odometer", digitsOnly(e.target.value))}
-                className={INPUT + " tabular-nums"}
-              />
-            </Field>
-          </div>
+          <ServiceVisitFields
+            servicedOn={servicedOn}
+            odometer={odometer}
+            serviceType={serviceType}
+            workshop={workshop}
+            editing={editing}
+            onServicedOnChange={(v) => set("servicedOn", v)}
+            onOdometerChange={(v) => set("odometer", v)}
+            onServiceTypeChange={chooseType}
+            onWorkshopChange={(v) => set("workshop", v)}
+          />
 
-          {editing && (
-            // Said here rather than discovered afterwards. Correcting the date
-            // or odometer also moves every maintenance due point derived from
-            // this visit -- invariant 6 working correctly, and alarming if it
-            // arrives unannounced.
-            <p className="mt-1 text-xs text-ink-faint">
-              Correcting the date or odometer also corrects the reading this visit
-              recorded, and moves anything due from it.
-            </p>
-          )}
-
-          <Field label="Type of service">
-            <Select
-              className="mt-1"
-              value={serviceType}
-              onChange={(e) => chooseType(e.target.value as ServiceTypeName | "")}
-            >
-              <option value="">Not specified</option>
-              {SERVICE_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field label="Workshop">
-            <input
-              value={workshop}
-              onChange={(e) => set("workshop", e.target.value)}
-              className={INPUT}
-            />
-          </Field>
-
-          <h3 className="mt-6 text-sm font-medium uppercase tracking-wider text-ink-faint">
-            Parts replaced
-          </h3>
-          {items.length === 0 ? (
-            <p className="mt-2 text-sm text-ink-muted">
-              None yet. A visit with no parts is a valid record &mdash; it just resets no
-              maintenance clocks.
-            </p>
-          ) : (
-            <>
-              {nextService !== undefined && (
-                <p className="mt-2 text-sm text-ink-muted">
-                  Next service at <strong>{formatKm(nextService)}</strong>
-                </p>
-              )}
-              <ul className="mt-2 space-y-2">
-                {items.map((item) => (
-                  <ServiceItemRow
-                    key={item.key}
-                    item={item}
-                    partTypeCode={partTypes.data?.find((p) => p.id === item.partTypeId)?.code ?? ""}
-                    odometerKm={odo}
-                    defaultNextDueKm={defaultNextDueKm(item.partTypeId)}
-                    onChange={(next) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        items: prev.items.map((p) => (p.key === next.key ? next : p)),
-                      }))
-                    }
-                    onRemove={() =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        items: prev.items.filter((p) => p.key !== item.key),
-                      }))
-                    }
-                  />
-                ))}
-              </ul>
-            </>
-          )}
-
-          {addingCustom ? (
-            <CustomPartDialog
-              // usePartTypes is refetching when this fires, so nameOf() cannot
-              // resolve the new id yet and addPart would label the row "Part".
-              // The name is already in hand here, so pass it through.
-              onCreated={(id, name) => {
-                addPart(id, name);
-                setAddingCustom(false);
-              }}
-              onCancel={() => setAddingCustom(false)}
-            />
-          ) : (
-            <PartPicker
-              partTypes={partTypes.data ?? []}
-              maintenance={maintenance.data ?? []}
-              exclude={items.map((i) => i.partTypeId)}
-              onAdd={addPart}
-              onAddCustom={() => setAddingCustom(true)}
-            />
-          )}
+          <ServicePartsSection
+            items={items}
+            partTypes={partTypes.data ?? []}
+            maintenance={maintenance.data ?? []}
+            odometerKm={odo}
+            nextService={nextService}
+            defaultNextDueKm={defaultNextDueKm}
+            addingCustom={addingCustom}
+            onAddingCustomChange={setAddingCustom}
+            onAddPart={addPart}
+            onChangeItem={(next) =>
+              setDraft((prev) => ({
+                ...prev,
+                items: prev.items.map((p) => (p.key === next.key ? next : p)),
+              }))
+            }
+            onRemoveItem={(key) =>
+              setDraft((prev) => ({
+                ...prev,
+                items: prev.items.filter((p) => p.key !== key),
+              }))
+            }
+          />
 
           <Field label="Labour (RM)">
             <input
