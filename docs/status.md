@@ -7,6 +7,55 @@ build; this file says how much of it exists.
 
 ---
 
+## Start here if you are new, or on a different machine
+
+**Everything in this repo is deployed. There is no work in flight.** As of
+2026-09-19 the tree, `origin/main` and both production Workers all carry the
+same code, remote migrations are fully applied, and the only branch is `main`.
+
+| | |
+|---|---|
+| Last commit that changed CODE | `101c36a` -- everything after it is documentation |
+| Deployed code vs `main` | identical; a docs-only commit moves `main` and ships nothing |
+| `fleet-portal` | version `26fbef6a-3811-477b-967d-0d4bc70977f8` |
+| `coinbox` | version `568535ba-bb2e-478e-b3c4-9c3fb52c287c` |
+| Remote migrations | all 17 applied; nothing pending |
+| Production schema | 24 tables, 6 views, 62 seeded part types |
+| `npm test` | lint over 158 files, then 161 Odometry + 194 Coinbox |
+
+**Do not trust that table -- it is a snapshot and this file ages.** Four
+commands confirm the whole of it in under a minute, and they are cheap enough
+to run before touching anything:
+
+```bash
+git status && git log --oneline -1          # clean? which commit?
+npx wrangler d1 migrations list fleet --remote -c wrangler.jsonc
+npx wrangler deployments list -c apps/odometry/wrangler.jsonc
+npm test                                    # lint + both suites
+```
+
+If the deployed version does not match what `git log` says shipped, **the
+deployed code is the truth and this file is stale** -- read the git history
+before believing any paragraph here.
+
+### The fresh-clone path is verified, 2026-09-19
+
+`git clone` -> `npm ci` -> `npm run db:apply:local` -> `npm test` was run end
+to end on a clean clone that day. It produced a local database with **24
+tables, 6 views, 62 part types and 17 migrations -- identical to production's
+schema** -- and a green suite. Nothing gitignored is needed: there is no
+`.dev.vars`, no secret, and no `process.env` read anywhere in either app's
+source. `wrangler login` is needed only for `--remote` commands and deploys.
+
+**One trap, and it is not the repo's fault.** `wrangler d1 ... --local` fails
+with a bare `internal error; reference = <id>` when the checkout sits under a
+very long path. It was reproduced twice from a ~200-character temp directory,
+where even `SELECT 1` failed, and worked immediately from a normal
+`github/portals-clonetest`. If a fresh clone cannot talk to its own local D1,
+**check the path length before debugging the migrations**.
+
+---
+
 ## Deployed — 2026-09-19, twice
 
 | Worker | Version | Carries |
@@ -683,14 +732,30 @@ day one rather than an empty state.
 Both portals were deployed because `packages/core` changed. That is exactly why
 the deploy script runs the WHOLE workspace's tests rather than one app's.
 
-**STILL NOT SEEN IN A BROWSER.** The Chrome extension was not connected in the
-session that built and shipped this, so the layout, the 375px behaviour and the
-hover readout have been reasoned about but never observed -- on local or on
-production. Deployed anyway at the owner's instruction. **First thing to check:
-open the dashboard and click a vehicle.** The likeliest faults are cosmetic and
-in the sheet: heading collision with the close button, the chart's y-axis
-labels at narrow widths, and the stacked bar when one slice rounds to under a
-pixel.
+**NOT SEEN IN A BROWSER WHEN THIS SHIPPED** -- the Chrome extension was not
+connected in the session that built it, so the layout, the 375px behaviour and
+the hover readout were reasoned about and never observed. Deployed anyway at
+the owner's instruction.
+
+**PARTLY RESOLVED 2026-09-19.** Both portals were finally opened, on local and
+on production -- see the browser section in the 2026-09-19 entry above. What
+that closed: the dashboard, vehicle detail, service history, the fuel tab, the
+log-service sheet, the Coinbox dashboard and the ledger table all render
+correctly with real data, at desktop width.
+
+**What it did NOT close, so do not read this as finished:**
+
+- **Narrow widths.** Nothing has been viewed at 375px, on either portal. Every
+  responsive decision in this repo is still unobserved.
+- **Coinbox's fuel drill-down** (`VehicleFuelSheet`, `ConsumptionChart`) was
+  never opened. That is the component this 2026-09-08 entry was worried about,
+  and it remains the one whose chart, y-axis labels and stacked bar have never
+  been looked at.
+- The Sheet heading/close-button collision noted in the gap table is likewise
+  still theoretical.
+
+So the "click a vehicle" instruction is discharged; the narrow-width and
+drill-down checks are not.
 
 One transient worth knowing: the first `wrangler d1 migrations list --remote`
 failed with `7403 The given account is not valid or is not authorized`, while
@@ -1118,8 +1183,9 @@ Verified against the deployed app, not just the test suite.
   kept its label on top. **Caught by looking at the render** -- the
   measurements said 208px and no overlap, and were no help at all.
 - Every Phase 1 API endpoint
-- 149 tests: tenant isolation, derived logic, service correction, attachments,
-  the backup round trip, the Access JWT fallback, and the log-service arithmetic
+- 161 tests: tenant isolation, derived logic, service correction, attachments,
+  the backup round trip, the Access JWT fallback, the log-service arithmetic,
+  and a fingerprint of the SQL Drizzle emits
 
 ---
 
@@ -1357,8 +1423,15 @@ npx wrangler login        # needs a real terminal; opens a browser
 npm run db:apply:local    # shared local D1, safe to re-run
 npm run dev -w odometry   # http://localhost:5174
 npm run dev -w coinbox    # http://localhost:5173 -- both can run at once
-npm test                  # lint + 149 Odometry + 194 Coinbox tests
+npm test                  # lint (158 files) + 161 Odometry + 194 Coinbox
 ```
+
+Those counts are a snapshot taken **2026-09-19**, not a contract. Tests only
+ever get added here, so a fresh clone seeing MORE than this is normal and
+means someone has been working; seeing FEWER means something is actually
+wrong. The lint's file count moves the same way. Do not spend time
+reconciling a higher number -- run `git log --oneline -- apps/*/tests` and
+carry on.
 
 This path is verified, not assumed: it was run end to end from a scratch clone
 on 2026-08-21 (clone → `npm ci` → migrations → 73 tests → build), and again
