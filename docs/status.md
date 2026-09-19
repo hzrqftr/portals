@@ -15,13 +15,13 @@ same code, remote migrations are fully applied, and the only branch is `main`.
 
 | | |
 |---|---|
-| Last commit that changed CODE | `2e5410c` (renewals, documents, grant) -- everything after it is documentation |
+| Last commit that changed CODE | `ba5bb30` (fuel consumption card) -- everything after it is documentation |
 | Deployed code vs `main` | identical; a docs-only commit moves `main` and ships nothing |
 | `fleet-portal` | version `13c64152-a70f-4a5c-b325-89b92f1bbc8d` |
-| `coinbox` | version `568535ba-bb2e-478e-b3c4-9c3fb52c287c` |
+| `coinbox` | version `12267973-a130-4457-a810-7294d4fdad3b` |
 | Remote migrations | all 18 applied; nothing pending |
 | Production schema | 26 tables, 6 views, 62 seeded part types |
-| `npm test` | lint over 165 files, then 194 Coinbox + 176 Odometry |
+| `npm test` | lint over 165 files, then 193 Coinbox + 176 Odometry |
 
 **Do not trust that table -- it is a snapshot and this file ages.** Four
 commands confirm the whole of it in under a minute, and they are cheap enough
@@ -56,7 +56,7 @@ where even `SELECT 1` failed, and worked immediately from a normal
 
 ---
 
-## Cost per km removed; fuel consumption is the card — 2026-09-19
+## Cost per km removed; fuel consumption is the card — 2026-09-19, DEPLOYED
 
 **Owner decision:** cost per km is not a figure that gets read; fuel
 consumption is the only analytics that is. So the Coinbox Home card now lists
@@ -79,6 +79,11 @@ had it -- it is measured between full-tank fills via the shared
 - **Seen in a browser, locally:** City at 7.9 L/100km over 4 tanks, 2,092 km;
   the sheet opens with no cost tiles, no spend panel and no km line.
 - **No migration.**
+- **Deployed 2026-09-19** as `ba5bb30`, `coinbox` version
+  `12267973-a130-4457-a810-7294d4fdad3b`. Checked live, signed in, read-only:
+  RS150R at 2.9 L/100km (35.0 km/L) over 10 tanks and 1,044 km; Waja listed
+  with one fill as "needs a second full tank"; the sheet opens with 11 fills
+  and no cost figures.
 
 ---
 
