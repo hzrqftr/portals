@@ -130,7 +130,7 @@ export function useCreateTransaction() {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
-      // A fill-up writes a fuel_fill, so the drill-down behind the cost-per-km
+      // A fill-up writes a fuel_fill, so the drill-down behind the consumption
       // card is stale too -- including on delete, which cascades the fill away.
       qc.invalidateQueries({ queryKey: ["vehicle-fuel"] });
     },
@@ -154,7 +154,7 @@ export function usePatchTransaction() {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
-      // A fill-up writes a fuel_fill, so the drill-down behind the cost-per-km
+      // A fill-up writes a fuel_fill, so the drill-down behind the consumption
       // card is stale too -- including on delete, which cascades the fill away.
       qc.invalidateQueries({ queryKey: ["vehicle-fuel"] });
     },
@@ -170,7 +170,7 @@ export function useUpdateTransaction(id: string) {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
-      // A fill-up writes a fuel_fill, so the drill-down behind the cost-per-km
+      // A fill-up writes a fuel_fill, so the drill-down behind the consumption
       // card is stale too -- including on delete, which cascades the fill away.
       qc.invalidateQueries({ queryKey: ["vehicle-fuel"] });
     },
@@ -273,7 +273,7 @@ export function useDeleteTransaction() {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
-      // A fill-up writes a fuel_fill, so the drill-down behind the cost-per-km
+      // A fill-up writes a fuel_fill, so the drill-down behind the consumption
       // card is stale too -- including on delete, which cascades the fill away.
       qc.invalidateQueries({ queryKey: ["vehicle-fuel"] });
     },
@@ -314,15 +314,16 @@ export interface UpcomingPosting {
   direction: "in" | "out";
 }
 
-export interface VehicleCost {
+/** Fuel consumption for one vehicle, full tank to full tank. No money. */
+export interface VehicleConsumption {
   vehicleId: string;
   nickname: string;
-  spendSen: number;
-  distanceKm: number;
-  senPerKm: number | null;
-  txnCount: number;
-  /** False when there are too few entries, or no odometer movement, to trust. */
-  confident: boolean;
+  fillCount: number;
+  /** Closed full-to-full segments. Zero means no figure yet. */
+  measuredCount: number;
+  segmentDistanceKm: number;
+  avgLPer100km: number | null;
+  avgKmPerLitre: number | null;
 }
 
 export interface Dashboard {
@@ -350,7 +351,7 @@ export interface Dashboard {
   lastEntryOn: string | null;
   lastTypedEntryOn: string | null;
   daysSinceTypedEntry: number | null;
-  vehicles: VehicleCost[];
+  consumption: VehicleConsumption[];
 }
 
 /**
@@ -398,36 +399,18 @@ export interface FuelTotals {
   avgLPer100km: number | null;
   avgKmPerLitre: number | null;
   fuelSpendSen: number;
-  fuelSenPerKm: number | null;
   avgSenPerLitre: number | null;
   latestSenPerLitre: number | null;
-}
-
-export interface SpendSlice {
-  label: string;
-  amountSen: number;
-  txnCount: number;
-  isFuel: boolean;
-}
-
-export interface UsageSummary {
-  readingCount: number;
-  firstReadingOn: string | null;
-  lastReadingOn: string | null;
-  distanceKm: number;
-  kmPerDay: number | null;
 }
 
 export interface VehicleFuel {
   vehicleId: string;
   fills: FuelFill[];
   totals: FuelTotals;
-  spend: { months: number; totalSen: number; slices: SpendSlice[] };
-  usage: UsageSummary;
 }
 
 /**
- * The drill-down behind a cost-per-km row. Fetched when the sheet opens, not
+ * The drill-down behind a row of the fuel consumption card. Fetched when the sheet opens, not
  * with the dashboard -- see the route's comment for why it is not one payload.
  *
  * `enabled` so the hook can sit in a component that renders before a vehicle

@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { addDays, addMonths, daysBetween, type CalendarDate } from "@portals/core";
 import { firstOccurrenceOnOrAfter, nextAfter, type Schedule } from "@shared/recurrence";
+import { fuelSegmentSql } from "@portals/core/worker";
 import { LedgerScopedRepo } from "./base";
 import { categories, recurringRules } from "../schema";
 
@@ -26,24 +27,27 @@ const NORMAL_MONTHS = 3;
 /** How far ahead "already committed" looks. */
 const COMMITTED_DAYS = 30;
 
-/** Months of ledger history behind a cost-per-km figure. */
-const VEHICLE_MONTHS = 12;
-
-/**
- * Attributed entries below which a cost-per-km figure is shown but flagged.
- *
- * Same stance as Odometry's usage rate, which needs two readings spanning 14
- * days before it will project: state the low confidence rather than hide the
- * number or, worse, present three fuel stops as a cost of ownership.
- */
-const CONFIDENT_TXNS = 5;
-
 /*
  * There is deliberately no category row limit. The old vs-normal panel capped
  * at eight because a ranking by *departure from normal* has a long tail nobody
  * reads. A ranking by amount does not: the reader is looking for where the
  * month went, and twenty seeded categories is the hard ceiling anyway.
  */
+
+/**
+ * Consumption totals over the shared full-to-full segments. The same sums the
+ * fuel drill-down makes, minus the money: `COUNT(l_per_100km)` counts CLOSED
+ * segments, and only closed segments contribute distance and litres.
+ */
+const CONSUMPTION_SQL = `
+SELECT COUNT(*)                                               AS fill_count,
+       COUNT(f.l_per_100km)                                   AS measured_count,
+       COALESCE(SUM(CASE WHEN f.l_per_100km IS NOT NULL
+                         THEN f.distance_km END), 0)          AS segment_km,
+       COALESCE(SUM(CASE WHEN f.l_per_100km IS NOT NULL
+                         THEN f.segment_litres_milli END), 0) AS segment_litres_milli
+  FROM (${fuelSegmentSql()}) f
+`;
 
 /** How many upcoming occurrences to name individually. */
 const UPCOMING_LIMIT = 6;
@@ -86,15 +90,21 @@ export interface UpcomingPosting {
   direction: "in" | "out";
 }
 
-export interface VehicleCost {
+/**
+ * One vehicle's fuel consumption, full tank to full tank. No money: this is
+ * the same physical fact Odometry's Fuel tab shows, so a garage co-member sees
+ * exactly what they would see there.
+ */
+export interface VehicleConsumption {
   vehicleId: string;
   nickname: string;
-  spendSen: number;
-  distanceKm: number;
-  /** Null when there is no odometer movement to divide by. */
-  senPerKm: number | null;
-  txnCount: number;
-  confident: boolean;
+  fillCount: number;
+  /** Closed full-to-full segments. Zero means no figure yet. */
+  measuredCount: number;
+  segmentDistanceKm: number;
+  /** Distance-weighted across closed segments. Null until one closes. */
+  avgLPer100km: number | null;
+  avgKmPerLitre: number | null;
 }
 
 export interface DashboardPayload {
@@ -126,7 +136,8 @@ export interface DashboardPayload {
   /** The last entry the owner TYPED. Recurring rules keep posting regardless. */
   lastTypedEntryOn: CalendarDate | null;
   daysSinceTypedEntry: number | null;
-  vehicles: VehicleCost[];
+  /** Fuel consumption per vehicle. Replaced cost per km on 2026-09-19. */
+  consumption: VehicleConsumption[];
 }
 
 /** "2026-08" plus a month delta, without going near a Date in this file. */
@@ -144,13 +155,13 @@ export class DashboardRepo extends LedgerScopedRepo {
     const focusMonth = month ?? today.slice(0, 7);
     const windowStart = shiftMonth(focusMonth, -NORMAL_MONTHS);
 
-    const [months, categoryRows, trailingOut, entryDates, vehicles, committed] =
+    const [months, categoryRows, trailingOut, entryDates, consumption, committed] =
       await Promise.all([
         this.monthSeries(),
         this.categorySpend(focusMonth, shiftMonth(focusMonth, -1)),
         this.trailingOutAverage(focusMonth, windowStart),
         this.entryDates(),
-        this.vehicleCosts(today),
+        this.consumption(),
         this.committed(today),
       ]);
 
@@ -183,7 +194,7 @@ export class DashboardRepo extends LedgerScopedRepo {
       daysSinceTypedEntry: entryDates.lastTyped
         ? daysBetween(entryDates.lastTyped, today)
         : null,
-      vehicles,
+      consumption,
     };
   }
 
@@ -435,83 +446,68 @@ export class DashboardRepo extends LedgerScopedRepo {
   }
 
   /**
-   * Cost per kilometre: the one figure neither portal can produce alone.
+   * Fuel consumption for every vehicle the caller can reach that has a fill.
    *
-   * The spend is Coinbox's and the distance is Odometry's, so this is the only
-   * READ in this portal that crosses the two ownership axes. It carries two
-   * independent guards, for the same reason `TransactionRepo.remove` does --
-   * so that removing either one alone is visible in the isolation suite:
+   * Replaced cost per kilometre on 2026-09-19 (owner decision): consumption is
+   * the figure that gets read, and it does not share cost per km's weakness --
+   * it is measured between full-tank fills, not from the raw odometer range,
+   * so one mistyped reading elsewhere cannot move it.
    *
-   * 1. The money is filtered by `ledger_id`, so only the caller's own spending
-   *    is ever summed. A vehicle the caller has never spent on is absent
-   *    entirely, whoever else drives it.
-   * 2. Both the vehicle and its odometer readings are joined through
-   *    `garage_members` for the CALLER. Without this, a stale `vehicle_id` --
-   *    left behind after someone was removed from a garage, since the column
-   *    deliberately carries no foreign key -- would still hand back that
-   *    vehicle's nickname and mileage.
+   * ONE GUARD, AND WHY ONE IS ENOUGH HERE. Vehicles are listed through
+   * `garage_members` for the CALLER, and every figure is garage-scoped fuel
+   * data with no money in it -- the same litres Odometry already shows a
+   * co-member. There is no ledger predicate because nothing here belongs to a
+   * ledger. The price stays on the drill-down, behind `t.ledger_id = ?`.
    *
-   * Only `direction = 'out'` counts: a refund or an insurance payout arriving
-   * against a vehicle is real money, but it is not a cost of running it, and
-   * netting it off would understate the figure it is used to compare.
+   * The segment arithmetic is the shared `fuelSegmentSql`, run once per
+   * vehicle in a single D1 batch: it is a per-vehicle window function, and
+   * restating it partitioned by vehicle would be a second copy that can drift.
+   * Aggregation stays in SQL (invariant 4); a garage has a handful of vehicles.
    */
-  private async vehicleCosts(today: CalendarDate): Promise<VehicleCost[]> {
-    const since = addMonths(today, -VEHICLE_MONTHS);
-
-    const res = await this.raw
+  private async consumption(): Promise<VehicleConsumption[]> {
+    const listed = await this.raw
       .prepare(
-        `WITH spend AS (
-           SELECT t.vehicle_id,
-                  SUM(t.amount_sen) AS spend_sen,
-                  COUNT(*)          AS txn_count
-             FROM transactions t
-            WHERE t.ledger_id = ?
-              AND t.vehicle_id IS NOT NULL
-              AND t.direction = 'out'
-              AND t.occurred_on >= ?
-            GROUP BY t.vehicle_id
-         ),
-         dist AS (
-           SELECT o.vehicle_id,
-                  MAX(o.reading_km) - MIN(o.reading_km) AS km
-             FROM odometer_readings o
-             JOIN vehicles v       ON v.id = o.vehicle_id
-             JOIN garage_members m ON m.garage_id = v.garage_id AND m.user_id = ?
-            WHERE o.recorded_on >= ?
-            GROUP BY o.vehicle_id
-         )
-         SELECT v.id        AS vehicle_id,
-                v.nickname  AS nickname,
-                s.spend_sen AS spend_sen,
-                s.txn_count AS txn_count,
-                COALESCE(d.km, 0) AS km
-           FROM spend s
-           JOIN vehicles v       ON v.id = s.vehicle_id
+        `SELECT v.id AS vehicle_id, v.nickname, v.garage_id
+           FROM vehicles v
            JOIN garage_members m ON m.garage_id = v.garage_id AND m.user_id = ?
-           LEFT JOIN dist d      ON d.vehicle_id = s.vehicle_id
-          ORDER BY s.spend_sen DESC`,
+          WHERE v.is_active = 1
+            AND EXISTS (SELECT 1 FROM fuel_fills f
+                         WHERE f.vehicle_id = v.id AND f.garage_id = v.garage_id)
+          ORDER BY v.nickname`,
       )
-      // Statement order: ledger, spend window, membership (dist), distance
-      // window, membership (outer). Five binds, and the two user ids are the
-      // same value in two different joins -- not a duplicate to be tidied away.
-      .bind(this.ledgerId, since, this.scope.userId, since, this.scope.userId)
-      .all<{
-        vehicle_id: string;
-        nickname: string;
-        spend_sen: number;
-        txn_count: number;
-        km: number;
-      }>();
+      .bind(this.scope.userId)
+      .all<{ vehicle_id: string; nickname: string; garage_id: string }>();
 
-    return res.results.map((r) => ({
-      vehicleId: r.vehicle_id,
-      nickname: r.nickname,
-      spendSen: r.spend_sen,
-      distanceKm: r.km,
-      // Integer sen per km, so the money path stays free of floats end to end.
-      senPerKm: r.km > 0 ? Math.round(r.spend_sen / r.km) : null,
-      txnCount: r.txn_count,
-      confident: r.km > 0 && r.txn_count >= CONFIDENT_TXNS,
-    }));
+    if (listed.results.length === 0) return [];
+
+    const totals = await this.raw.batch<{
+      fill_count: number;
+      measured_count: number;
+      segment_km: number;
+      segment_litres_milli: number;
+    }>(
+      listed.results.map((v) =>
+        // vehicle, garage -- the only two binds fuelSegmentSql takes, and the
+        // garage is the one the membership join above proved, off the row.
+        this.raw.prepare(CONSUMPTION_SQL).bind(v.vehicle_id, v.garage_id),
+      ),
+    );
+
+    return listed.results.map((v, i) => {
+      const r = totals[i]?.results[0];
+      const km = r?.segment_km ?? 0;
+      const litres = r?.segment_litres_milli ?? 0;
+      const lPer100 = km > 0 ? ((litres / 1000) * 100) / km : null;
+      return {
+        vehicleId: v.vehicle_id,
+        nickname: v.nickname,
+        fillCount: r?.fill_count ?? 0,
+        measuredCount: r?.measured_count ?? 0,
+        segmentDistanceKm: km,
+        avgLPer100km: lPer100,
+        avgKmPerLitre: lPer100 !== null && lPer100 > 0 ? 100 / lPer100 : null,
+      };
+    });
   }
+
 }

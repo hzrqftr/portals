@@ -79,7 +79,7 @@ export function registerRoutes(app: Hono<AppContext>): void {
   app.get("/api/vehicles", async (c) => c.json(await c.get("repos").vehicles.list()));
 
   /**
-   * The fuel drill-down behind a row of the cost-per-kilometre card.
+   * The fuel drill-down behind a row of the fuel consumption card.
    *
    * Same path Odometry serves, different Worker and a richer payload: this one
    * carries the money, which `fuel_fills` deliberately cannot (migration 0013).
@@ -89,15 +89,12 @@ export function registerRoutes(app: Hono<AppContext>): void {
    * open is not that screen -- three vehicles' whole fill histories on every
    * dashboard load would be the opposite of the point.
    *
-   * TODAY IS COMPUTED HERE, FROM THE CALLER'S TIMEZONE, like every other route
-   * that has a window. Invariant 5.
+   * It takes no "today": since cost per km was removed (2026-09-19) nothing on
+   * it has a date window. Fills are shown whole-history.
    */
-  app.get("/api/vehicles/:id/fuel", async (c) => {
-    const scope = c.get("scope");
-    return c.json(
-      await c.get("repos").vehicleFuel.load(c.req.param("id"), todayIn(scope.timezone)),
-    );
-  });
+  app.get("/api/vehicles/:id/fuel", async (c) =>
+    c.json(await c.get("repos").vehicleFuel.load(c.req.param("id"))),
+  );
 
   // --- the ledger ---
 
@@ -129,8 +126,8 @@ export function registerRoutes(app: Hono<AppContext>): void {
    *
    * Everything the landing page needs -- the monthly series with its running
    * total, the focused month against its own recent normal, what the recurring
-   * rules have already committed, how stale the figures are, and cost per km
-   * -- arrives as one payload. Odometry's spec says the same thing about its
+   * rules have already committed, how stale the figures are, and fuel
+   * consumption per vehicle -- arrives as one payload. Odometry's spec says the same thing about its
    * own dashboard and for the same reason: five requests to paint one screen
    * is five round trips on a phone on mobile data.
    *

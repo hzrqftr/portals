@@ -4,17 +4,16 @@ import {
   type FuelSegmentRaw,
   type FuelSegmentRow,
 } from "@portals/core/worker";
-import { addMonths, type CalendarDate } from "@portals/core";
 import { LedgerScopedRepo } from "./base";
 
 /**
- * The fuel drill-down behind a row of the cost-per-kilometre card.
+ * The fuel drill-down behind a row of the fuel consumption card.
  *
  * ===========================================================================
  * THE SECOND CROSS-PORTAL READ IN THIS PORTAL, AND WHY IT NEEDS TWO GUARDS
  * ===========================================================================
  *
- * Cost per km was the first. This one reads further into Odometry -- every
+ * The consumption card is the other. This one reads further into Odometry -- every
  * fill for a vehicle, with the litres a garage co-member is entitled to see --
  * and joins Coinbox's own money to it, which they are NOT. So the two guards
  * are not belt and braces; they answer two different questions, and each has
@@ -34,12 +33,6 @@ import { LedgerScopedRepo } from "./base";
  * here is derived by joining this ledger's own transactions to the fill, which
  * is why Odometry can never show one and this can.
  */
-
-/** Months of ledger history behind the spend breakdown. */
-const SPEND_MONTHS = 12;
-
-/** Minimum span before two readings are called a rate. Odometry's floor. */
-const USAGE_MIN_DAYS = 14;
 
 /** A fill, plus what it cost -- null when the money is not this ledger's. */
 export interface FuelFillWithCost extends FuelSegmentRow {
@@ -67,36 +60,15 @@ export interface FuelTotals {
   avgKmPerLitre: number | null;
   /** Spend on fills that are this ledger's, all time. */
   fuelSpendSen: number;
-  /** Fuel-only cost per km over closed segments. NOT the card's figure. */
-  fuelSenPerKm: number | null;
   /** Averaged over litres, so a big fill counts for more than a splash. */
   avgSenPerLitre: number | null;
   latestSenPerLitre: number | null;
-}
-
-export interface SpendSlice {
-  label: string;
-  amountSen: number;
-  txnCount: number;
-  /** True for the slice derived from fills rather than from a category. */
-  isFuel: boolean;
-}
-
-export interface UsageSummary {
-  readingCount: number;
-  firstReadingOn: string | null;
-  lastReadingOn: string | null;
-  distanceKm: number;
-  kmPerDay: number | null;
 }
 
 export interface VehicleFuel {
   vehicleId: string;
   fills: FuelFillWithCost[];
   totals: FuelTotals;
-  /** Last 12 months, matching the card. Sums to the card's spend figure. */
-  spend: { months: number; totalSen: number; slices: SpendSlice[] };
-  usage: UsageSummary;
 }
 
 /**
@@ -144,17 +116,15 @@ SELECT COUNT(*)                                               AS fill_count,
 `;
 
 export class VehicleFuelRepo extends LedgerScopedRepo {
-  async load(vehicleId: string, today: CalendarDate): Promise<VehicleFuel> {
+  async load(vehicleId: string): Promise<VehicleFuel> {
     // GUARD 1. Throws NotFound -- never Forbidden, which would confirm the id
     // exists somewhere. The garage id it returns is the one this query proved
     // the caller into, and it is what every statement below binds.
     const { garageId } = await this.assertUsableVehicle(vehicleId);
 
-    const [fills, totals, spend, usage] = await Promise.all([
+    const [fills, totals] = await Promise.all([
       this.fills(vehicleId, garageId),
       this.totals(vehicleId, garageId),
-      this.spend(vehicleId, today),
-      this.usage(vehicleId, garageId),
     ]);
 
     // The newest priced fill, for "what it costs at the pump lately". Taken
@@ -166,7 +136,7 @@ export class VehicleFuelRepo extends LedgerScopedRepo {
         ? Math.round(latest.amountSen / (latest.litresMilli / 1000))
         : null;
 
-    return { vehicleId, fills, totals, spend, usage };
+    return { vehicleId, fills, totals };
   }
 
   private async fills(vehicleId: string, garageId: string): Promise<FuelFillWithCost[]> {
@@ -212,9 +182,6 @@ export class VehicleFuelRepo extends LedgerScopedRepo {
       avgLPer100km,
       avgKmPerLitre: avgLPer100km !== null && avgLPer100km > 0 ? 100 / avgLPer100km : null,
       fuelSpendSen: spend,
-      // Integer sen per km, so the money path stays free of floats -- the same
-      // way the card computes its own figure.
-      fuelSenPerKm: km > 0 && spend > 0 ? Math.round(spend / km) : null,
       // Weighted by litres, not the mean of the per-fill prices: a 45-litre
       // fill and a 5-litre splash are not two equal observations of the price.
       avgSenPerLitre: pricedLitres > 0 ? Math.round(spend / (pricedLitres / 1000)) : null,
@@ -222,115 +189,4 @@ export class VehicleFuelRepo extends LedgerScopedRepo {
     };
   }
 
-  /**
-   * The last 12 months of out-spend on this vehicle, sliced.
-   *
-   * The window and the predicates match `DashboardRepo.vehicleCosts` exactly --
-   * same 12 months, same `direction = 'out'`, same ledger -- so these slices
-   * SUM TO THE CARD'S FIGURE. Two numbers on one screen that are meant to be
-   * the same number must be computed the same way, or the modal quietly
-   * contradicts the row that opened it. A test asserts the sum.
-   *
-   * The fuel slice comes from the presence of a FILL, not from a category.
-   * There is no `fuel` category and adding one would split five years of
-   * history -- every fuel row the owner has is Transportation, alongside tolls
-   * and servicing. The fill is the only thing that actually knows.
-   */
-  private async spend(
-    vehicleId: string,
-    today: CalendarDate,
-  ): Promise<{ months: number; totalSen: number; slices: SpendSlice[] }> {
-    const since = addMonths(today, -SPEND_MONTHS);
-
-    const res = await this.raw
-      .prepare(
-        `SELECT CASE WHEN ff.id IS NOT NULL THEN 1 ELSE 0 END AS is_fuel,
-                COALESCE(c.name, 'Uncategorised')             AS label,
-                SUM(t.amount_sen)                             AS amount_sen,
-                COUNT(*)                                      AS txn_count
-           FROM transactions t
-           LEFT JOIN categories c  ON c.id = t.category_id
-           -- At most one fill per transaction: uq_fuel_txn is a partial unique
-           -- index on transaction_id, so this join cannot multiply rows and
-           -- inflate the total.
-           LEFT JOIN fuel_fills ff ON ff.transaction_id = t.id
-          WHERE t.ledger_id = ?
-            AND t.vehicle_id = ?
-            AND t.direction = 'out'
-            AND t.occurred_on >= ?
-          GROUP BY is_fuel, label
-          ORDER BY amount_sen DESC`,
-      )
-      .bind(this.ledgerId, vehicleId, since)
-      .all<{ is_fuel: number; label: string; amount_sen: number; txn_count: number }>();
-
-    const slices = res.results.map((r) => ({
-      // A fuel slice drops its category name: labelling it "Transportation"
-      // beside a "Transportation" slice of tolls reads as a duplicate rather
-      // than as a split of one category into its two halves.
-      label: r.is_fuel === 1 ? "Fuel" : r.label,
-      amountSen: r.amount_sen,
-      txnCount: r.txn_count,
-      isFuel: r.is_fuel === 1,
-    }));
-
-    return {
-      months: SPEND_MONTHS,
-      totalSen: slices.reduce((sum, s) => sum + s.amountSen, 0),
-      slices,
-    };
-  }
-
-  /**
-   * Distance and how hard the car is worked.
-   *
-   * Reads raw `odometer_readings`, NOT `v_odometer_clean`, because that is what
-   * `vehicleCosts` reads and this figure sits beside that one. The view drops
-   * readings that run backwards; the card does not. Being consistent with the
-   * number next to it matters more here than being right on its own -- the
-   * inconsistency is real, pre-existing, and written into docs/status.md rather
-   * than half-fixed in one of the two places.
-   */
-  private async usage(vehicleId: string, garageId: string): Promise<UsageSummary> {
-    const r = await this.raw
-      .prepare(
-        `SELECT COUNT(*)           AS reading_count,
-                MIN(o.reading_km)  AS min_km,
-                MAX(o.reading_km)  AS max_km,
-                MIN(o.recorded_on) AS first_on,
-                MAX(o.recorded_on) AS last_on
-           FROM odometer_readings o
-          WHERE o.vehicle_id = ? AND o.garage_id = ?`,
-      )
-      .bind(vehicleId, garageId)
-      .first<{
-        reading_count: number;
-        min_km: number | null;
-        max_km: number | null;
-        first_on: string | null;
-        last_on: string | null;
-      }>();
-
-    const count = r?.reading_count ?? 0;
-    const distanceKm = count > 0 ? (r?.max_km ?? 0) - (r?.min_km ?? 0) : 0;
-
-    // Two readings a fortnight apart before this is called a rate -- the same
-    // floor Odometry's usage rate uses. One reading, or two on the same day, is
-    // not a rate however tempting the division looks.
-    let kmPerDay: number | null = null;
-    if (count >= 2 && r?.first_on && r.last_on) {
-      const days =
-        (Date.parse(`${r.last_on}T00:00:00Z`) - Date.parse(`${r.first_on}T00:00:00Z`)) /
-        86_400_000;
-      if (days >= USAGE_MIN_DAYS) kmPerDay = distanceKm / days;
-    }
-
-    return {
-      readingCount: count,
-      firstReadingOn: r?.first_on ?? null,
-      lastReadingOn: r?.last_on ?? null,
-      distanceKm,
-      kmPerDay,
-    };
-  }
 }

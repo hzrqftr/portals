@@ -327,18 +327,28 @@ Five things that will look like bugs and are not:
   `@shared/recurrence`. It loops over RULES, which are a handful, not over
   transactions.
 
-### The cross-portal READS -- there are two, and both carry two guards
+### The cross-portal READS -- there are two
 
-**Cost per kilometre** (`DashboardRepo.vehicleCosts`) and the **fuel
-drill-down** behind it (`VehicleFuelRepo`, `GET /api/vehicles/:id/fuel`). The
-spend is this ledger's, the distance and the litres are Odometry's.
+**Fuel consumption** (`DashboardRepo.consumption`, the Home card) and the
+**fuel drill-down** behind it (`VehicleFuelRepo`, `GET /api/vehicles/:id/fuel`).
+The litres are Odometry's; the drill-down also carries this ledger's money.
 
-Each carries two independent guards, and `tests/isolation.test.ts` breaks each
-one separately, because `transactions.vehicle_id` deliberately has no foreign
-key and can therefore outlive the caller's access to that vehicle:
+**Cost per kilometre was removed on 2026-09-19** (owner decision: consumption
+is the figure that gets read). It divided 12 months of spend by the raw
+odometer range, so one mistyped reading silently understated it. Consumption
+is measured between full-tank fills and has no such dependency. Do not bring
+the card back without solving that first.
 
-1. **A `garage_members` join for the caller** -- inline on the cost-per-km
-   query, via `assertUsableVehicle()` on the drill-down, which returns the
+The consumption card has ONE guard, because it carries no money: vehicles are
+listed through **a `garage_members` join for the caller**, and every figure is
+the same garage-scoped fuel data Odometry already shows a co-member. A
+co-member therefore SEES a shared car's consumption, on purpose.
+
+The drill-down has two independent guards, and `tests/isolation.test.ts`
+breaks each separately, because `transactions.vehicle_id` deliberately has no
+foreign key and can outlive the caller's access to that vehicle:
+
+1. **`assertUsableVehicle()`** -- a `garage_members` join that returns the
    garage id off the vehicle row in the same statement that authorised it.
 2. **The `ledger_id` predicate on every money join.**
 
@@ -347,14 +357,15 @@ co-member is **entitled to the litres** -- Odometry already shows them. What
 they must never get is the ringgit. So this is the one endpoint in either
 portal where the two halves of a single physical event, the fuel and what it
 cost, are served together and have to come apart along the tenant boundary.
-A co-member gets `amountSen: null` on every fill and an empty spend
-breakdown, and the money predicate lives in the JOIN's `ON` clause rather than
-a `WHERE` -- in a `WHERE` it becomes an inner join and hides their fills
-entirely instead of merely unpricing them.
+A co-member gets `amountSen: null` on every fill and no price per litre, and
+the money predicate lives in the JOIN's `ON` clause rather than a `WHERE` -- in
+a `WHERE` it becomes an inner join and hides their fills entirely instead of
+merely unpricing them.
 
-**The drill-down's spend breakdown sums to the card's figure**, by using the
-same window and the same predicates. A test asserts it. Two numbers on one
-screen that are meant to be the same number can only stay equal on purpose.
+**The card's consumption equals the drill-down's headline**, because both run
+the shared `fuelSegmentSql` with the same sums. A test asserts it. Two numbers
+on one screen path that are meant to be the same number can only stay equal on
+purpose.
 
 ## Style
 

@@ -56,6 +56,32 @@ where even `SELECT 1` failed, and worked immediately from a normal
 
 ---
 
+## Cost per km removed; fuel consumption is the card — 2026-09-19
+
+**Owner decision:** cost per km is not a figure that gets read; fuel
+consumption is the only analytics that is. So the Coinbox Home card now lists
+each vehicle's average **L/100km and km/L**, full tank to full tank, and its
+row opens the fuel sheet trimmed to consumption, price per litre, the trend
+chart and the fill table.
+
+This also closes the former "Next" item about `vehicleCosts` dividing by RAW
+odometer readings: the figure that had that flaw is gone, and consumption never
+had it -- it is measured between full-tank fills via the shared
+`fuelSegmentSql`, not from the odometer range.
+
+- **The card lists every vehicle the caller can reach in a garage that has a
+  fill**, not vehicles with ledger spend. It carries no money, so a garage
+  co-member sees a shared car's consumption -- the same litres Odometry already
+  shows them -- and still no price. `tests/isolation.test.ts` asserts both, and
+  removing the `garage_members` join from the card's query fails it (checked).
+- **The payload key changed** from `vehicles` to `consumption`, and the fuel
+  route no longer takes a "today" -- nothing on it has a date window now.
+- **Seen in a browser, locally:** City at 7.9 L/100km over 4 tanks, 2,092 km;
+  the sheet opens with no cost tiles, no spend panel and no km line.
+- **No migration.**
+
+---
+
 ## Renewals, renewal documents and the grant — 2026-09-19, DEPLOYED
 
 The top of "Next" since the API was written, now with a screen. Three things
@@ -1304,7 +1330,7 @@ something that looks wrong, trust the code.
 | Off-Cloudflare backup copies | — | Every backup is in the account it protects. One downloaded file a month closes it |
 | ~~Home dashboard~~ | §10 | **BUILT AND DEPLOYED 2026-08-31.** The surplus/deficit table as a chart, a month drill-down, and cost per km. See below |
 | ~~Cross-portal navigation~~ | §7.4 | **BUILT 2026-09-05.** Each header links to the other portal. Shown unconditionally -- see below |
-| ~~Fuel consumption analytics~~ | §10.5 | **BUILT AND DEPLOYED 2026-09-08**, a drill-down off the cost-per-km card. No migration. Not yet seen in a browser |
+| ~~Fuel consumption analytics~~ | §10.5 | **BUILT AND DEPLOYED 2026-09-08**, a drill-down off what is now the fuel consumption card (cost per km removed 2026-09-19). No migration |
 
 ---
 
@@ -1407,7 +1433,7 @@ What landed:
 | Every query behind it | `worker/data/dashboard.ts` |
 | The year chart | `client/components/YearChart.tsx` |
 | The month drill-down | `client/components/MonthBreakdown.tsx` |
-| Tiles, Coming up, cost per km | `StatTiles.tsx`, `DashboardPanels.tsx` |
+| Tiles, Coming up, fuel consumption | `StatTiles.tsx`, `DashboardPanels.tsx` |
 | Arithmetic tests | `tests/dashboard.test.ts` (13) |
 | Isolation | 3 new cases in `tests/isolation.test.ts` |
 
@@ -1430,9 +1456,11 @@ Two decisions worth knowing before changing anything here:
 - **The trailing "normal" divides by three, always**, which agrees with the
   RM 0.00 rows being load-bearing: absent months count as zero rather than
   being dropped, so the divisor never becomes "months with entries".
-- **Cost per km is the only cross-portal READ in Coinbox.** Two independent
-  guards, both tested separately. `transactions.vehicle_id` has no foreign key
-  by design, so a vehicle id can outlive the caller's access to it.
+- **The fuel consumption card and its drill-down are Coinbox's cross-portal
+  READS** (cost per km, which this line used to name, was removed 2026-09-19).
+  The card has one guard, a `garage_members` join, since it carries no money;
+  the drill-down has two, tested separately. `transactions.vehicle_id` has no
+  foreign key by design, so a vehicle id can outlive the caller's access to it.
 
 Still open on this page, and deliberately not built:
 
@@ -1446,15 +1474,6 @@ Still open on this page, and deliberately not built:
 **Backup alerting.** A failed nightly run writes to the log and tells nobody.
 `observability` is on so the evidence persists, but real alerting needs an
 email provider (fleet spec §12). The obvious weakness of what is built.
-
-**Coinbox — `vehicleCosts` divides by RAW odometer readings.** Every km figure
-in Odometry reads `v_odometer_clean`, which drops readings that run backwards;
-the cost-per-km card does not, and as of 2026-09-08 the fuel drill-down follows
-it deliberately so the two agree on screen. A single mistyped high reading
-therefore inflates `MAX − MIN` and silently understates RM/km in both places,
-with nothing able to contradict it. Switching to the view would move figures the
-owner already reads, so it needs a before/after count against real data rather
-than a one-line change.
 
 **Off-Cloudflare backup copies.** Every backup sits in R2, in the same account
 as the database. That covers deletion and corruption, not account loss.

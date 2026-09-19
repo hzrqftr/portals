@@ -247,7 +247,7 @@ describe("cross-tenant isolation: separate people", () => {
     expect(bob.body.focus.netSen).toBe(0);
     expect(bob.body.committed.netSen).toBe(0);
     expect(bob.body.committed.upcoming).toEqual([]);
-    expect(bob.body.vehicles).toEqual([]);
+    expect(bob.body.consumption).toEqual([]);
     expect(bob.body.lastEntryOn).toBeNull();
   });
 
@@ -283,7 +283,7 @@ describe("cross-tenant isolation: separate people", () => {
     });
     expect(bob.body.committed.netSen).toBe(0);
     expect(bob.body.committed.upcoming).toEqual([]);
-    expect(bob.body.vehicles).toEqual([]);
+    expect(bob.body.consumption).toEqual([]);
     expect(bob.body.lastEntryOn).toBeNull();
   });
 
@@ -389,59 +389,59 @@ describe("cross-user isolation: co-members of one garage", () => {
   });
 
   /**
-   * THE ONLY CROSS-PORTAL READ IN THIS PORTAL.
+   * THE FUEL CONSUMPTION CARD (replaced cost per km, 2026-09-19).
    *
-   * Cost per kilometre divides Coinbox spend by Odometry distance, so it is
-   * the one query that touches the other portal's tables. Carol shares the
-   * garage, so she can legitimately SEE the car -- and the money spent on it
-   * is still Alice's. A dashboard that grouped by vehicle without the ledger
-   * predicate would hand Carol a per-vehicle total of Alice's fuel bills, and
-   * every other test in this file would still pass.
+   * It lists vehicles through `garage_members` for the caller and carries no
+   * money. So the co-member case now has a POSITIVE half: Carol shares the
+   * garage and Odometry already shows her this car's fills, so she sees the
+   * same consumption here -- and still none of what Alice paid for the fuel.
    */
-  it("never shows a co-member the garage owner's spend on a shared vehicle", async () => {
+  it("shows a co-member a shared car's consumption and never the price", async () => {
     const vehicleId = await giveVehicle(ALICE, "SHARED_WAJA");
+    for (const [on, km] of [
+      ["2026-08-01", 50_000],
+      ["2026-08-15", 50_500],
+    ] as const) {
+      const res = await as(ALICE)("/api/transactions", {
+        method: "POST",
+        json: {
+          occurredOn: on,
+          item: ALICE_ITEM,
+          categoryId: "cat_transportation",
+          vehicleId,
+          amountSen: 99_999,
+          direction: "out",
+          fuel: { odometerKm: km, litresMilli: 40_000, isFullTank: true },
+        },
+      });
+      expect(res.status).toBe(201);
+    }
 
-    const alice = await as(ALICE)("/api/transactions", {
-      method: "POST",
-      json: {
-        occurredOn: "2026-08-28",
-        item: ALICE_ITEM,
-        categoryId: "cat_transportation",
-        vehicleId,
-        amountSen: 99_999,
-        direction: "out",
-      },
-    });
-    expect(alice.status).toBe(201);
-
-    // Alice sees her own figure for the car she paid for.
     const hers = await as(ALICE)("/api/dashboard");
-    expect(hers.body.vehicles.map((v: { vehicleId: string }) => v.vehicleId)).toContain(
-      vehicleId,
-    );
-
-    // Carol sees the car in /api/vehicles and no money against it here.
     const carol = await as(CAROL)("/api/dashboard");
     expect(carol.status).toBe(200);
-    expect(carol.body.vehicles).toEqual([]);
-    expect(carol.text).not.toContain("99999");
+
+    // The physical half is the garage's, and 40 L over 500 km is 8 L/100km.
+    const mine = hers.body.consumption.find((v: { vehicleId: string }) => v.vehicleId === vehicleId);
+    const shared = carol.body.consumption.find(
+      (v: { vehicleId: string }) => v.vehicleId === vehicleId,
+    );
+    expect(mine.avgLPer100km).toBeCloseTo(8, 6);
+    expect(shared.avgLPer100km).toBeCloseTo(8, 6);
+
+    // The money half: never.
+    expect(carol.text, "Alice's amount leaked to a co-member").not.toContain("99999");
     expect(carol.text).not.toContain(ALICE_ITEM);
   });
 
   /**
-   * The SECOND guard on the cost-per-km query, which the test above does not
-   * reach: with the ledger predicate intact, Carol gets nothing whether or not
-   * the garage join is there.
-   *
-   * `transactions.vehicle_id` deliberately carries NO foreign key, so that
-   * deleting a garage cannot cascade into financial history. The cost is that
-   * a vehicle_id can outlive the caller's access to that vehicle. Losing the
-   * garage join would then keep reporting a car's nickname and mileage to
-   * someone who can no longer open it in Odometry.
+   * The card's one guard, proven from both sides: a stranger never sees a
+   * vehicle, and a co-member stops seeing it the moment access is revoked --
+   * even though their own fill-up transaction survives, on purpose, because
+   * `transactions.vehicle_id` carries no foreign key.
    */
-  it("stops reporting a vehicle once the caller loses garage access to it", async () => {
+  it("never lists a vehicle the caller cannot reach in a garage", async () => {
     const vehicleId = await giveVehicle(ALICE, "SHARED_WAJA");
-
     const created = await as(CAROL)("/api/transactions", {
       method: "POST",
       json: {
@@ -451,24 +451,26 @@ describe("cross-user isolation: co-members of one garage", () => {
         vehicleId,
         amountSen: 5_000,
         direction: "out",
+        fuel: { odometerKm: 60_000, litresMilli: 30_000, isFullTank: true },
       },
     });
     expect(created.status).toBe(201);
 
-    // While she is in the garage, it is hers to see.
+    // Bob shares no garage with anyone: nothing, and no nickname.
+    const bob = await as(BOB)("/api/dashboard");
+    expect(bob.body.consumption).toEqual([]);
+    expect(bob.text).not.toContain("SHARED_WAJA");
+
     const before = await as(CAROL)("/api/dashboard");
-    expect(before.body.vehicles.map((v: { vehicleId: string }) => v.vehicleId)).toContain(
+    expect(before.body.consumption.map((v: { vehicleId: string }) => v.vehicleId)).toContain(
       vehicleId,
     );
 
-    // Access revoked. The spend row survives on purpose -- the money was real,
-    // and `transactions.vehicle_id` carries no foreign key precisely so that
-    // losing a garage cannot reach into financial history.
     await removeFromGarageOf(ALICE, CAROL);
 
     const after = await as(CAROL)("/api/dashboard");
     expect(after.status).toBe(200);
-    expect(after.body.vehicles).toEqual([]);
+    expect(after.body.consumption).toEqual([]);
     expect(after.text).not.toContain("SHARED_WAJA");
   });
 
@@ -521,9 +523,6 @@ describe("cross-user isolation: co-members of one garage", () => {
     expect(carol.body.totals.fuelSpendSen).toBe(0);
     expect(carol.body.totals.avgSenPerLitre).toBeNull();
     expect(carol.body.totals.latestSenPerLitre).toBeNull();
-    expect(carol.body.totals.fuelSenPerKm).toBeNull();
-    expect(carol.body.spend.totalSen).toBe(0);
-    expect(carol.body.spend.slices).toEqual([]);
     expect(carol.text, "Alice's amount leaked to a co-member").not.toContain("99999");
     expect(carol.text).not.toContain(ALICE_ITEM);
   });

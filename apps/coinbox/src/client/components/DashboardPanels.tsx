@@ -1,19 +1,10 @@
 import { formatSen } from "@portals/core";
-import type { Dashboard, UpcomingPosting, VehicleCost } from "../api/hooks";
+import type { Dashboard, UpcomingPosting, VehicleConsumption } from "../api/hooks";
 
 /**
- * The two side panels: what the rules will post next, and what the fleet costs
- * per kilometre.
+ * The two side panels: what the rules will post next, and how much fuel each
+ * vehicle burns.
  */
-
-/** RM per km, from integer sen per km. Two decimals, like every other figure. */
-function perKm(senPerKm: number): string {
-  return formatSen(senPerKm);
-}
-
-function entries(n: number): string {
-  return `${n} ${n === 1 ? "entry" : "entries"}`;
-}
 
 export function ComingUp({ committed }: { committed: Dashboard["committed"] }) {
   return (
@@ -71,96 +62,95 @@ function Row({ posting }: { posting: UpcomingPosting }) {
 }
 
 /**
- * Cost per kilometre — the one figure neither portal can produce on its own.
+ * Fuel consumption per vehicle, full tank to full tank.
  *
- * The spend is this ledger's and the distance is Odometry's. Two honesty
- * requirements come with that, and both are load-bearing rather than polish:
+ * Replaced the cost-per-kilometre card on 2026-09-19: consumption is the
+ * figure the owner reads. It carries no money, so it is the same number
+ * Odometry's Fuel tab shows; the price per litre and what each fill cost stay
+ * on the drill-down, behind the ledger predicate.
  *
- * - Tolls, parking and road tax are deliberately not attributed to a vehicle,
- *   so this is the cost of FUELLING AND SERVICING a vehicle, not the cost of
- *   getting about. Presenting it as the latter would overstate what dropping
- *   a car would save.
- * - A vehicle with a handful of entries, or with no odometer movement to
- *   divide by, gets its figure shown and flagged rather than hidden. Same
- *   stance as Odometry's low-confidence usage rate.
+ * A vehicle with fills but no closed segment yet is listed and says so, rather
+ * than being hidden -- one full tank is not a measurement, and an empty card
+ * would read as "nothing logged".
  */
-export function VehicleCosts({
+export function FuelConsumption({
   vehicles,
   onSelect,
 }: {
-  vehicles: VehicleCost[];
-  onSelect: (vehicle: VehicleCost) => void;
+  vehicles: VehicleConsumption[];
+  onSelect: (vehicle: VehicleConsumption) => void;
 }) {
   return (
     <div className="rounded-xl border border-edge bg-surface p-5">
-      <h2 className="font-semibold text-ink">Cost per kilometre</h2>
+      <h2 className="font-semibold text-ink">Fuel consumption</h2>
       <p className="mt-1 text-sm text-ink-muted">
-        Ledger spend against distance from Odometry, over the last 12 months.
+        Measured from one full tank to the next, across every fill-up.
       </p>
 
       {vehicles.length === 0 ? (
         <p className="mt-5 text-sm text-ink-muted">
-          No spending attributed to a vehicle yet. Pick one on an entry and it
+          No fill-ups recorded yet. Log a fuel entry against a vehicle and it
           appears here.
         </p>
       ) : (
         <ul className="mt-4 flex flex-col gap-2">
-          {vehicles.map((v) => (
-            <li
-              key={v.vehicleId}
-              // `relative` anchors the stretched overlay below. The same
-              // pattern as Odometry's vehicle tiles and the recurring cards:
-              // the WHOLE row is the hit area, not just the nickname. When
-              // only the title was clickable on the recurring page, the
-              // amount, the date and the dead space all did nothing, and it
-              // read as broken rather than as unclickable.
-              className="relative flex items-center justify-between gap-3 rounded-xl bg-inset p-4 transition hover:bg-edge/50 focus-within:ring-2 focus-within:ring-ink-muted"
-            >
-              {/* min-w-[8rem] is a floor, not a preference: at 375px a bare
-                  min-w-0 title collapses to one word instead of wrapping. */}
-              <div className="min-w-[8rem] flex-1">
-                <button
-                  type="button"
-                  onClick={() => onSelect(v)}
-                  aria-label={`${v.nickname}: fuel and spending detail`}
-                  // Transparent and stretched. It carries the click for the
-                  // whole row without painting over anything.
-                  className="absolute inset-0 rounded-xl focus:outline-none"
-                />
-                <span
-                  className={
-                    "block truncate text-sm font-medium " +
-                    (v.confident ? "text-ink" : "text-ink-muted")
-                  }
-                >
-                  {v.nickname}
-                </span>
-                <span className="mt-0.5 block text-xs tabular-nums text-ink-faint">
-                  {v.senPerKm === null
-                    ? `${entries(v.txnCount)} · no odometer movement`
-                    : v.confident
-                      ? `${entries(v.txnCount)} · ${v.distanceKm.toLocaleString("en-MY")} km`
-                      : `${entries(v.txnCount)} — too few to trust`}
-                </span>
-              </div>
-              <span
-                className={
-                  "shrink-0 text-xl font-semibold tabular-nums " +
-                  (v.confident ? "text-ink" : "text-ink-faint")
-                }
+          {vehicles.map((v) => {
+            const measured = v.avgLPer100km !== null;
+            return (
+              <li
+                key={v.vehicleId}
+                // `relative` anchors the stretched overlay below, so the WHOLE
+                // row is the hit area rather than just the nickname.
+                className="relative flex items-center justify-between gap-3 rounded-xl bg-inset p-4 transition hover:bg-edge/50 focus-within:ring-2 focus-within:ring-ink-muted"
               >
-                {v.senPerKm === null ? "—" : perKm(v.senPerKm)}
-              </span>
-            </li>
-          ))}
+                {/* min-w-[8rem] is a floor: at 375px a bare min-w-0 title
+                    collapses to one word instead of wrapping. */}
+                <div className="min-w-[8rem] flex-1">
+                  <button
+                    type="button"
+                    onClick={() => onSelect(v)}
+                    aria-label={`${v.nickname}: fuel detail`}
+                    className="absolute inset-0 rounded-xl focus:outline-none"
+                  />
+                  <span className="block truncate text-sm font-medium text-ink">
+                    {v.nickname}
+                  </span>
+                  <span className="mt-0.5 block text-xs tabular-nums text-ink-faint">
+                    {measured
+                      ? `${tanks(v.measuredCount)} · ${v.segmentDistanceKm.toLocaleString("en-MY")} km`
+                      : `${fills(v.fillCount)} · needs a second full tank`}
+                  </span>
+                </div>
+                <span className="shrink-0 text-right tabular-nums">
+                  <span
+                    className={
+                      "block text-xl font-semibold " + (measured ? "text-ink" : "text-ink-faint")
+                    }
+                  >
+                    {measured ? v.avgLPer100km!.toFixed(1) : "—"}
+                    {measured && (
+                      <span className="ml-1 text-sm font-normal text-ink-muted">L/100km</span>
+                    )}
+                  </span>
+                  {measured && v.avgKmPerLitre !== null && (
+                    <span className="block text-xs text-ink-faint">
+                      {v.avgKmPerLitre.toFixed(1)} km/L
+                    </span>
+                  )}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       )}
-
-      <p className="mt-4 text-xs text-ink-faint">
-        Fuel and servicing only — tolls and parking are not attributed to a
-        vehicle, so this is not the full cost of driving.
-        {vehicles.length > 0 && " Pick one for its consumption and spend."}
-      </p>
     </div>
   );
+}
+
+function tanks(n: number): string {
+  return `${n} ${n === 1 ? "tank" : "tanks"}`;
+}
+
+function fills(n: number): string {
+  return `${n} ${n === 1 ? "fill" : "fills"}`;
 }

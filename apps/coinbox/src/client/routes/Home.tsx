@@ -4,10 +4,10 @@ import { AppHeader, Page, SectionTitle } from "../components/Layout";
 import { StatTiles, monthLabel, monthName, STALE_DAYS } from "../components/StatTiles";
 import { YearChart } from "../components/YearChart";
 import { MonthSpend } from "../components/MonthSpend";
-import { ComingUp, VehicleCosts } from "../components/DashboardPanels";
+import { ComingUp, FuelConsumption } from "../components/DashboardPanels";
 import { TransactionSheet } from "../components/TransactionSheet";
 import { VehicleFuelSheet } from "../components/VehicleFuelSheet";
-import { useDashboard, useMe, type VehicleCost } from "../api/hooks";
+import { useDashboard, useMe, type VehicleConsumption } from "../api/hooks";
 
 /**
  * The landing page.
@@ -26,10 +26,9 @@ export default function Home() {
   const me = useMe();
   const [month, setMonth] = useState<string | undefined>(undefined);
   const [adding, setAdding] = useState(false);
-  // The clicked ROW, not just its id: the sheet shows the card's own cost-per-km
-  // figure beside its fuel-only one, and passing the row is what makes it
-  // impossible for the two to disagree.
-  const [fuelFor, setFuelFor] = useState<VehicleCost | null>(null);
+  // The clicked row: the sheet takes its nickname for the heading while the
+  // fill history loads.
+  const [fuelFor, setFuelFor] = useState<VehicleConsumption | null>(null);
 
   const dashboard = useDashboard(month);
 
@@ -133,7 +132,7 @@ export default function Home() {
               <ComingUp committed={data.committed} />
             </div>
 
-            <VehicleCosts vehicles={data.vehicles} onSelect={setFuelFor} />
+            <FuelConsumption vehicles={data.consumption} onSelect={setFuelFor} />
           </div>
         ) : null}
       </Page>

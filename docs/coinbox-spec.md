@@ -556,7 +556,8 @@ this week?** Everything else is a report, not a dashboard.
 | Days since the last **typed** entry | "Can I believe the three figures above?" |
 | The year, as diverging columns + a running total | The shape a table of twelve numbers cannot show |
 | What moved, vs each category's own normal | "Why was this month unlike the others?" |
-| Cost per km, per vehicle | The one figure neither portal can produce alone |
+| ~~Cost per km, per vehicle~~ | **Removed 2026-09-19** (owner decision) -- replaced by fuel consumption per vehicle, see 10.5 |
+| Fuel consumption, per vehicle | "Is this car drinking more than it did?" |
 
 ### 10.3 Deliberately absent
 
@@ -605,9 +606,17 @@ months. That is a projection from declared rules, not a guess.
 
 ### 10.5 The fuel drill-down
 
-Built 2026-09-08. Each row of the cost-per-km card opens a sheet, rather than
-navigating: the card answers "which car costs most per km", and the question
-that follows is always "why", which is a second screen and not a second page.
+Built 2026-09-08, reshaped 2026-09-19. Each row of the **fuel consumption**
+card opens a sheet, rather than navigating.
+
+**Cost per km was removed on 2026-09-19, card and sheet tiles both.** The owner
+reads consumption and not cost per km, and cost per km had a real flaw: it
+divided spend by the RAW odometer range (`MAX - MIN`), so one mistyped high
+reading silently understated it. Consumption is measured between full-tank
+fills and does not depend on that range. Removed with it: the fuel-per-km tile,
+the 12-month spend breakdown that reconciled with the card, and the
+km-recorded line. What remains is consumption, price per litre, the trend chart
+and the fill table.
 
 **Lazy, not part of the dashboard payload.** 10.1's one-round-trip argument is
 about painting one screen; a drill-down nobody may open is not that screen, and
@@ -619,21 +628,9 @@ or two segments, and a segment straddling a month boundary belongs to neither
 cleanly -- so the x-axis is fills in odometer order, and the trend is carried
 by a trailing mean of the last three tanks rather than by monthly buckets.
 
-**All fills, not the card's 12 months.** Capture began 2026-09-03. Truncating a
+**All fills.** Capture began 2026-09-03. Truncating a
 series that young to a window loses data for no gain, and the window can be
 added when there is more than a year of it.
-
-**Two cost-per-km figures appear, and they are different numbers on purpose.**
-The card's is twelve months of fuel *and servicing* over the distance in that
-window. The sheet's own is *fuel only*, over the distance of closed segments,
-across every fill. Each is labelled with its window and its scope, and the
-card's is not recomputed -- it arrives as the very row the reader clicked, so
-the two cannot disagree even in principle. The 12-month spend breakdown DOES
-reconcile with it, by construction and by test.
-
-**The fuel slice comes from the fill, not from a category.** There is no `fuel`
-category and adding one would split five years of history; the fill is the only
-thing that knows which Transportation rows were fuel.
 
 **Price per litre is drawn on its own plot, not overlaid.** L/100km and RM/L are
 different units, and one pair of axes carrying both could be scaled to make them

@@ -377,7 +377,7 @@ describe("an empty ledger", () => {
     expect(res.body.focus.momDeltaSen).toBeNull();
     expect(res.body.focus.trailingOutAvgSen).toBeNull();
     expect(res.body.focus.categorySpend).toEqual([]);
-    expect(res.body.vehicles).toEqual([]);
+    expect(res.body.consumption).toEqual([]);
     expect(res.body.lastEntryOn).toBeNull();
   });
 

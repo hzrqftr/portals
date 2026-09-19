@@ -5,36 +5,27 @@ import { ConsumptionChart } from "./ConsumptionChart";
 import {
   useVehicleFuel,
   type FuelFill,
-  type SpendSlice,
-  type UsageSummary,
-  type VehicleCost,
+  type VehicleConsumption,
 } from "../api/hooks";
 
 /**
- * The drill-down behind a row of the cost-per-kilometre card.
+ * The drill-down behind a row of the fuel consumption card.
  *
- * ===========================================================================
- * TWO COST-PER-KM FIGURES APPEAR HERE, AND THEY ARE NOT THE SAME NUMBER
- * ===========================================================================
+ * Consumption, the price paid at the pump, the trend, and every fill. The
+ * cost-per-km tiles, the 12-month spend breakdown and the distance line were
+ * removed on 2026-09-19 with the card they reconciled against: the owner reads
+ * consumption, and those were the figures that leaned on the raw odometer
+ * range rather than on full-tank segments.
  *
- * The card's figure is TWELVE MONTHS of every kind of spend on the vehicle --
- * fuel, servicing, tyres -- over the distance covered in that window. The one
- * this sheet computes is FUEL ONLY, over the distance of closed segments,
- * across every fill ever recorded. They answer different questions and will
- * always differ, so each is labelled with its window and its scope rather than
- * left to look like a discrepancy.
- *
- * The card's figure is not recomputed here. It arrives as the very `VehicleCost`
- * row the reader clicked, so the two cannot disagree even in principle.
- *
- * The 12-month spend breakdown DOES reconcile with that row, deliberately, and
- * a test asserts the sum -- see VehicleFuelRepo.spend().
+ * The prices here are this ledger's own, joined behind `t.ledger_id = ?` on
+ * the server -- a garage co-member opening the same vehicle sees the litres
+ * and no ringgit.
  */
 export function VehicleFuelSheet({
   vehicle,
   onClose,
 }: {
-  vehicle: VehicleCost;
+  vehicle: VehicleConsumption;
   onClose: () => void;
 }) {
   const fuel = useVehicleFuel(vehicle.vehicleId);
@@ -63,17 +54,9 @@ export function VehicleFuelSheet({
 
       {data && (
         <div className="mt-5 flex flex-col gap-4">
-          <Tiles data={data} vehicle={vehicle} />
-
-          <UsageLine usage={data.usage} />
+          <Tiles data={data} />
 
           <ConsumptionChart fills={data.fills} />
-
-          <SpendPanel
-            slices={data.spend.slices}
-            totalSen={data.spend.totalSen}
-            months={data.spend.months}
-          />
 
           {data.fills.length > 0 && <FillTable fills={data.fills} />}
 
@@ -85,34 +68,6 @@ export function VehicleFuelSheet({
         </div>
       )}
     </Sheet>
-  );
-}
-
-/**
- * How much driving stands behind the figures above.
- *
- * Distance comes from raw odometer readings, the same source the card divides
- * by, so the two agree. It is NOT `v_odometer_clean`, which is what every
- * Odometry figure uses -- the difference is recorded in docs/status.md rather
- * than half-fixed in one of the two places.
- */
-function UsageLine({ usage }: { usage: UsageSummary }) {
-  const parts: string[] = [];
-  if (usage.readingCount === 0) {
-    parts.push("No odometer readings yet");
-  } else {
-    parts.push(`${usage.distanceKm.toLocaleString("en-MY")} km recorded`);
-    // Null until two readings span a fortnight. A rate off less than that is a
-    // guess dressed as a measurement, so it says so rather than dividing.
-    parts.push(
-      usage.kmPerDay === null
-        ? "not enough history for a daily rate"
-        : `${usage.kmPerDay.toFixed(0)} km/day`,
-    );
-    if (usage.lastReadingOn) parts.push(`last read ${usage.lastReadingOn}`);
-  }
-  return (
-    <p className="text-xs text-ink-faint">{parts.join(" · ")}</p>
   );
 }
 
@@ -143,13 +98,7 @@ function Tile({
   );
 }
 
-function Tiles({
-  data,
-  vehicle,
-}: {
-  data: NonNullable<ReturnType<typeof useVehicleFuel>["data"]>;
-  vehicle: VehicleCost;
-}) {
+function Tiles({ data }: { data: NonNullable<ReturnType<typeof useVehicleFuel>["data"]> }) {
   const t = data.totals;
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -176,93 +125,6 @@ function Tiles({
             : `Latest · ${formatSen(t.avgSenPerLitre)} average`
         }
       />
-      <Tile
-        label="Fuel per km"
-        value={t.fuelSenPerKm === null ? "—" : formatSen(t.fuelSenPerKm)}
-        note={`Fuel only, ${t.measuredCount === 0 ? "no measured distance" : "all fills"}`}
-      />
-      <Tile
-        label="Cost per km"
-        value={vehicle.senPerKm === null ? "—" : formatSen(vehicle.senPerKm)}
-        note="Fuel and servicing, last 12 months — as on the card"
-      />
-    </div>
-  );
-}
-
-/**
- * Where the vehicle's money went, over the same 12 months as the card.
- *
- * A stacked bar rather than a pie: the reader is comparing parts against a
- * whole they already know the size of, and the total is stated in words
- * alongside. There is a 2px gap between segments so two adjacent slices of
- * similar length do not read as one.
- */
-function SpendPanel({
-  slices,
-  totalSen,
-  months,
-}: {
-  slices: SpendSlice[];
-  totalSen: number;
-  months: number;
-}) {
-  return (
-    <div className="rounded-xl border border-edge bg-surface p-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-semibold text-ink">Spend</h3>
-        <span className="text-sm tabular-nums text-ink-muted">
-          {formatSen(totalSen)} over {months} months
-        </span>
-      </div>
-
-      {slices.length === 0 ? (
-        <p className="mt-4 text-sm text-ink-muted">
-          Nothing attributed to this vehicle in the last {months} months.
-        </p>
-      ) : (
-        <>
-          <div className="mt-4 flex h-3 w-full gap-0.5 overflow-hidden rounded-full">
-            {slices.map((s) => (
-              <span
-                key={s.label}
-                aria-hidden
-                className={s.isFuel ? "bg-ink" : "bg-ink-faint"}
-                style={{ width: `${(s.amountSen / totalSen) * 100}%` }}
-              />
-            ))}
-          </div>
-
-          <ul className="mt-4 flex flex-col gap-2">
-            {slices.map((s) => (
-              <li key={s.label} className="flex items-center justify-between gap-3 text-sm">
-                <span className="flex min-w-0 items-center gap-2">
-                  <span
-                    aria-hidden
-                    className={
-                      "h-2.5 w-2.5 shrink-0 rounded-sm " +
-                      (s.isFuel ? "bg-ink" : "bg-ink-faint")
-                    }
-                  />
-                  <span className="truncate text-ink">{s.label}</span>
-                  <span className="shrink-0 text-xs text-ink-faint">
-                    {s.txnCount} {s.txnCount === 1 ? "entry" : "entries"}
-                  </span>
-                </span>
-                <span className="shrink-0 tabular-nums text-ink">
-                  {formatSen(s.amountSen)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      <p className="mt-4 text-xs text-ink-faint">
-        The fuel slice comes from entries marked as a fill-up, not from a
-        category &mdash; there is no fuel category, and every fuel entry here is
-        Transportation.
-      </p>
     </div>
   );
 }

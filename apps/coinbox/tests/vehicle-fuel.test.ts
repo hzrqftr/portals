@@ -67,7 +67,6 @@ describe("segments", () => {
     // car that uses no fuel.
     expect(totals.measuredCount).toBe(0);
     expect(totals.avgLPer100km).toBeNull();
-    expect(totals.fuelSenPerKm).toBeNull();
   });
 
   it("measures full tank to full tank", async () => {
@@ -128,7 +127,6 @@ describe("segments", () => {
     const zero = fills.find((f: { distanceKm: number | null }) => f.distanceKm === 0);
     expect(zero.lPer100km).toBeNull();
     expect(totals.avgLPer100km).toBeNull();
-    expect(Number.isFinite(totals.fuelSenPerKm ?? 0)).toBe(true);
   });
 });
 
@@ -179,87 +177,43 @@ describe("averages", () => {
   });
 });
 
-describe("the spend breakdown reconciles with the card", () => {
+describe("the card agrees with the drill-down", () => {
   /**
-   * The modal opens from a row of the cost-per-kilometre card, so its total
-   * and that row's figure are meant to be the same number. Computed twice by
-   * two queries, they can only stay equal on purpose.
+   * The card opens the sheet, so its figure and the sheet's headline are meant
+   * to be the same number. They come from two queries over the same shared
+   * segment SQL, and can only stay equal on purpose.
    */
-  it("sums to the dashboard's spend figure for the same vehicle", async () => {
+  it("reports the same consumption the sheet does", async () => {
     const vehicleId = await seed();
-    await fill(vehicleId, "2026-09-01", 10_000, 40, 8_000);
-    await fill(vehicleId, "2026-09-08", 10_500, 40, 8_500);
+    await fill(vehicleId, "2026-08-01", 10_000, 40, 8_000);
+    await fill(vehicleId, "2026-08-10", 10_200, 20, 4_000, false);
+    await fill(vehicleId, "2026-08-20", 10_600, 25, 5_000);
 
-    // Non-fuel spend on the same car, which must land in its own slice.
-    await as(ALICE)("/api/transactions", {
-      method: "POST",
-      json: {
-        occurredOn: "2026-09-03",
-        item: "Tyres",
-        categoryId: "cat_transportation",
-        vehicleId,
-        amountSen: 45_000,
-        direction: "out",
-      },
-    });
-    // Money IN against the vehicle: real, but not a cost of running it. The
-    // card excludes it, so the breakdown must too.
-    await as(ALICE)("/api/transactions", {
-      method: "POST",
-      json: {
-        occurredOn: "2026-09-04",
-        item: "Insurance payout",
-        categoryId: "cat_transportation",
-        vehicleId,
-        amountSen: 20_000,
-        direction: "in",
-      },
-    });
-
-    const { spend } = await load(vehicleId);
+    const { totals } = await load(vehicleId);
     const dash = await as(ALICE)("/api/dashboard");
-    const card = dash.body.vehicles.find(
+    const row = dash.body.consumption.find(
       (v: { vehicleId: string }) => v.vehicleId === vehicleId,
     );
 
-    expect(spend.totalSen).toBe(card.spendSen);
-    expect(spend.totalSen).toBe(8_000 + 8_500 + 45_000);
-
-    const fuelSlice = spend.slices.find((s: { isFuel: boolean }) => s.isFuel);
-    expect(fuelSlice.label).toBe("Fuel");
-    expect(fuelSlice.amountSen).toBe(16_500);
-    expect(fuelSlice.txnCount).toBe(2);
-
-    // The tyres keep their category name and stay out of the fuel slice.
-    const other = spend.slices.find((s: { isFuel: boolean }) => !s.isFuel);
-    expect(other.amountSen).toBe(45_000);
-    expect(other.label).not.toBe("Fuel");
-  });
-});
-
-describe("usage", () => {
-  it("refuses to call two readings a fortnight apart less than that a rate", async () => {
-    const vehicleId = await seed();
-    await fill(vehicleId, "2026-09-01", 10_000, 40, 8_000);
-    await fill(vehicleId, "2026-09-08", 10_700, 40, 8_000);
-
-    const { usage } = await load(vehicleId);
-
-    expect(usage.distanceKm).toBe(700);
-    // Seven days apart. A rate off that is a guess dressed as a measurement.
-    expect(usage.kmPerDay).toBeNull();
+    // The partial fill's 20 L counts toward the 600 km segment: 45 L / 600 km.
+    expect(totals.avgLPer100km).toBeCloseTo(7.5, 6);
+    expect(row.avgLPer100km).toBeCloseTo(totals.avgLPer100km, 9);
+    expect(row.measuredCount).toBe(totals.measuredCount);
+    expect(row.segmentDistanceKm).toBe(600);
+    expect(row.fillCount).toBe(3);
   });
 
-  it("projects a rate once the readings span long enough", async () => {
+  it("lists a car with one full tank, but gives it no figure yet", async () => {
     const vehicleId = await seed();
     await fill(vehicleId, "2026-08-01", 10_000, 40, 8_000);
-    await fill(vehicleId, "2026-09-01", 10_620, 40, 8_000);
 
-    const { usage } = await load(vehicleId);
-
-    expect(usage.readingCount).toBe(2);
-    expect(usage.distanceKm).toBe(620);
-    expect(usage.kmPerDay).toBeCloseTo(20, 6); // 620 km over 31 days
+    const dash = await as(ALICE)("/api/dashboard");
+    const row = dash.body.consumption.find(
+      (v: { vehicleId: string }) => v.vehicleId === vehicleId,
+    );
+    expect(row.fillCount).toBe(1);
+    expect(row.measuredCount).toBe(0);
+    expect(row.avgLPer100km).toBeNull();
   });
 });
 
@@ -278,16 +232,14 @@ describe("a vehicle with no fills at all", () => {
       },
     });
 
-    const { fills, totals, spend, usage } = await load(vehicleId);
+    const { fills, totals } = await load(vehicleId);
 
     expect(fills).toEqual([]);
     expect(totals.fillCount).toBe(0);
     expect(totals.avgLPer100km).toBeNull();
     expect(totals.latestSenPerLitre).toBeNull();
-    // The spend panel still has something to say, which is why the row stays
-    // clickable for a car with no fill-ups logged.
-    expect(spend.totalSen).toBe(500);
-    expect(usage.readingCount).toBe(0);
-    expect(usage.distanceKm).toBe(0);
+    // And the card leaves it off entirely: a parking fee is not a fill.
+    const dash = await as(ALICE)("/api/dashboard");
+    expect(dash.body.consumption).toEqual([]);
   });
 });
