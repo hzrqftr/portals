@@ -210,7 +210,7 @@ function WarrantyBadge({ until, today }: { until: string; today: string }) {
     <span
       className={
         "mt-1 inline-flex rounded-full px-2 py-0.5 text-xs " +
-        (expired ? "bg-inset text-ink-faint" : "bg-sky-950 text-sky-300")
+        (expired ? "bg-inset text-ink-faint" : "bg-status-info-bg text-status-info-fg")
       }
     >
       {expired ? `Warranty ended ${until}` : `Under warranty until ${until}`}

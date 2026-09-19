@@ -271,8 +271,11 @@ apps/
 packages/core/
   src/
     money.ts dates.ts zod.ts      # isomorphic
+    fuel.ts                       # isomorphic too: litres, L/100km, sen/litre
     worker/auth.ts                # THE only Access caller, both portals
+    worker/backup.ts              # the one legitimate unscoped reader
     worker/{errors,repo,types}.ts
+    worker/{attachments,fuel,odometer}.ts
     schema/                       # users + user_settings ONLY
     client/                       # api, Sheet, form, layout
   tailwind-preset.js              # the shared palette

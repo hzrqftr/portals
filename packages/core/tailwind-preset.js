@@ -38,6 +38,22 @@ export default {
           "ok-fg": "#6EE7B7",
           "unknown-bg": "#1F1F23",
           "unknown-fg": "#A1A1AA",
+
+          /**
+           * Informational, NOT a health reading. Used for a fact that is
+           * simply true right now -- "under warranty until ..." -- which is
+           * deliberately not the same blue-vs-green distinction as `ok`.
+           *
+           * `ok` already means "this vehicle's maintenance is fine" on
+           * StatusPill, and the two render near each other in the service
+           * history. Reusing `ok` here would collapse "nothing is due" and
+           * "the part is still covered" into one colour.
+           *
+           * These are Tailwind's sky-950/sky-300, which is what this badge
+           * used literally before the palette had a name for them.
+           */
+          "info-bg": "#082F49",
+          "info-fg": "#7DD3FC",
         },
       },
     },
