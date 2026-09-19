@@ -7,12 +7,27 @@ build; this file says how much of it exists.
 
 ---
 
-## Both portals deployed — 2026-09-19, the upgraded libraries
+## Deployed — 2026-09-19, twice
 
 | Worker | Version | Carries |
 |---|---|---|
 | `fleet-portal` | `fc5a7b04-3ce3-45ca-b35c-5f58196020b1` | Drizzle 0.45, React Router 7, the ServiceSheet split |
 | `coinbox` | `568535ba-bb2e-478e-b3c4-9c3fb52c287c` | Drizzle 0.45, React Router 7, the TransactionTable split |
+| `fleet-portal` | `26fbef6a-3811-477b-967d-0d4bc70977f8` | the save-confirmation fix, later the same day |
+
+**The second deploy was Odometry alone**, and that was checked rather than
+assumed: `git diff --name-only <deployed tree>..HEAD -- packages/core
+apps/coinbox` came back empty, so the rule that a shared-package change means
+both portals did not apply. Four files, all under `apps/odometry`.
+
+Verified live without writing anything to production: the served bundle is
+`index-Dw5KA-xL.js`, matching what was uploaded, and fetching it from the
+signed-in page confirms it carries all three new strings -- "no maintenance
+clock changed", "Also recorded, on no schedule", and the
+start-tracking hint. Both portals still 302 to Access.
+
+Production `service_items` is now **8** rather than 7. That is the TPS split
+recorded above, not a stray write.
 
 Both portals went out because `packages/core` changed, which is the same
 reason the deploy script runs the WHOLE workspace's tests rather than one
