@@ -15,9 +15,9 @@ same code, remote migrations are fully applied, and the only branch is `main`.
 
 | | |
 |---|---|
-| Last commit that changed CODE | `ddb4bb8` (in-app file viewer) -- everything after it is documentation |
+| Last commit that changed CODE | `29fabd9` (viewer zoom-out and modal) -- everything after it is documentation |
 | Deployed code vs `main` | identical; a docs-only commit moves `main` and ships nothing |
-| `fleet-portal` | version `ad6a6d85-9225-429b-a07d-62f5a748edde` |
+| `fleet-portal` | version `7d7dba37-e81c-4556-8480-f12a545640a4` |
 | `coinbox` | version `12267973-a130-4457-a810-7294d4fdad3b` |
 | Remote migrations | all 18 applied; nothing pending |
 | Production schema | 26 tables, 6 views, 62 seeded part types |
@@ -56,7 +56,7 @@ where even `SELECT 1` failed, and worked immediately from a normal
 
 ---
 
-## File viewer: zoom out, and a modal instead of full screen — 2026-09-19
+## File viewer: zoom out, and a modal instead of full screen — 2026-09-19, DEPLOYED
 
 Owner feedback after using it: the browser's own PDF viewer can zoom OUT past
 fit, and full screen was too much. So:
@@ -71,6 +71,9 @@ fit, and full screen was too much. So:
   sample: 896x774 modal on a 1920 px window, 50% shows the whole page centred,
   a click inside stays open, a click outside closes and unlocks the page, 375
   px is full screen with no sideways scroll.
+- **Deployed** as `29fabd9`, `fleet-portal` version
+  `7d7dba37-e81c-4556-8480-f12a545640a4`. Checked live, read-only: the Waja
+  grant opens in an 896x774 modal and zooms out to 50%, whole page visible.
 
 ---
 
