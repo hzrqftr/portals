@@ -61,6 +61,10 @@ someone opens it. Checked locally: Details on open, Grant shows the card and
 the PDF opens in the viewer, the two switchers keep separate selections, and
 375 px has no sideways scroll. No server change.
 
+**Deployed** as `fcb21ff`, `fleet-portal` version
+`5ff34dfd-1a2a-44ed-b77f-b55171581690`. Checked live, read-only: the Waja page
+opens on Details and Maintenance, and Grant shows the card with its file.
+
 ---
 
 ## Docs split into status and history; loose ends tied — 2026-09-19

@@ -23,13 +23,13 @@ branch is `main`.
 
 | | |
 |---|---|
-| Last deployed code | `29fabd9` (file viewer zoom-out and modal). The only code change after it removes four unused imports, with no behaviour change, and was not redeployed |
-| `fleet-portal` (Odometry) | version `7d7dba37-e81c-4556-8480-f12a545640a4` |
+| Last deployed code | `fcb21ff` (vehicle page Details \| Grant tabs). Odometry carries everything on `main`; Coinbox lacks only three unused-import removals, which change no behaviour |
+| `fleet-portal` (Odometry) | version `5ff34dfd-1a2a-44ed-b77f-b55171581690` |
 | `coinbox` | version `12267973-a130-4457-a810-7294d4fdad3b` |
 | Remote migrations | all 18 applied (`0001`-`0018`); nothing pending |
 | Production schema | 26 tables (including `d1_migrations`, excluding `sqlite_%`/`_cf_%`), 6 views, 62 global part types |
 | Production data, 2026-09-19 | 3 vehicles, 7 service records, 3 receipts, 3 grant files, 0 renewals, 12 fuel fills, 4,509 transactions, 9 recurring rules |
-| `npm test` | isolation lint over 172 files, then 193 Coinbox + 179 Odometry tests |
+| `npm test` | isolation lint over 173 files, then 193 Coinbox + 179 Odometry tests |
 
 **That table is a snapshot and this file ages.** These commands confirm the
 whole of it in under a minute. Run them before trusting any figure above:
