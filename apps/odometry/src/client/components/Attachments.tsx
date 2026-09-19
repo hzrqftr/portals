@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   attachmentUrl,
   useAttachments,
@@ -8,6 +8,8 @@ import {
   type Attachment,
   type AttachmentTarget,
 } from "../api/hooks";
+import { PendingRow, SavedRow } from "./AttachmentRows";
+import { FileViewer, type ViewerItem } from "./viewer/FileViewer";
 
 /**
  * Files on a service visit, a renewal, or the vehicle's grant.
@@ -23,6 +25,10 @@ import {
  * PDF is the primary path on purpose: the owner scans paper with a phone,
  * which produces a PDF. Images are the fallback, and `accept` is ordered to
  * say so.
+ *
+ * Every file, saved or pending, opens in the in-app viewer (viewer/), with
+ * previous/next across this list. This component is the ONLY uploader in
+ * either portal, so wiring the viewer here puts it everywhere files attach.
  */
 export function Attachments({
   target,
@@ -71,6 +77,22 @@ export function Attachments({
   const existing = attachments.data ?? [];
   const held = pending ?? [];
   const busy = upload.isPending || remove.isPending;
+  const [viewing, setViewing] = useState<number | null>(null);
+
+  // Pending files have no server URL yet, so the viewer reads them from local
+  // blob: URLs. Revoked whenever the pending list changes or this unmounts --
+  // each one pins the file's bytes in memory until it is.
+  const heldUrls = useMemo(() => held.map((f) => URL.createObjectURL(f)), [held]);
+  useEffect(() => () => heldUrls.forEach((u) => URL.revokeObjectURL(u)), [heldUrls]);
+
+  const items: ViewerItem[] = [
+    ...existing.map((f) => ({
+      url: attachmentUrl(target!, f.id),
+      filename: f.filename,
+      contentType: f.contentType,
+    })),
+    ...held.map((f, i) => ({ url: heldUrls[i]!, filename: f.name, contentType: f.type })),
+  ];
 
   return (
     <div className="mt-4">
@@ -82,12 +104,13 @@ export function Attachments({
 
       {(existing.length > 0 || held.length > 0) && (
         <ul className="mt-2 space-y-2">
-          {existing.map((file) => (
+          {existing.map((file, i) => (
             <SavedRow
               key={file.id}
               file={file}
               href={attachmentUrl(target!, file.id)}
               busy={busy}
+              onOpen={() => setViewing(i)}
               onRemove={() => {
                 setError(null);
                 remove.mutate(file.id, {
@@ -100,6 +123,7 @@ export function Attachments({
             <PendingRow
               key={`${file.name}-${i}`}
               file={file}
+              onOpen={() => setViewing(existing.length + i)}
               onRemove={() => onPendingChange?.(held.filter((_, j) => j !== i))}
             />
           ))}
@@ -126,67 +150,11 @@ export function Attachments({
       </button>
 
       {error && <p className="mt-2 text-sm text-status-overdue-fg">{error}</p>}
+
+      {viewing !== null && items.length > 0 && (
+        <FileViewer items={items} start={viewing} onClose={() => setViewing(null)} />
+      )}
     </div>
-  );
-}
-
-function SavedRow({
-  file,
-  href,
-  busy,
-  onRemove,
-}: {
-  file: Attachment;
-  href: string;
-  busy: boolean;
-  onRemove: () => void;
-}) {
-  return (
-    <li className="flex items-center gap-3 rounded-xl border border-edge bg-inset p-2">
-      <Thumb contentType={file.contentType} href={href} />
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        className="min-w-0 flex-1 text-sm text-ink hover:underline"
-      >
-        <span className="block truncate">{file.filename}</span>
-        <span className="block text-xs text-ink-faint">{formatBytes(file.sizeBytes)}</span>
-      </a>
-      <button
-        type="button"
-        onClick={onRemove}
-        disabled={busy}
-        aria-label={`Remove ${file.filename}`}
-        className="shrink-0 rounded-lg px-2 py-1 text-sm text-ink-faint hover:text-status-overdue-fg disabled:opacity-40"
-      >
-        Remove
-      </button>
-    </li>
-  );
-}
-
-function PendingRow({ file, onRemove }: { file: File; onRemove: () => void }) {
-  return (
-    <li className="flex items-center gap-3 rounded-xl border border-dashed border-edge bg-inset p-2">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface text-xs text-ink-faint">
-        {file.name.toLowerCase().endsWith(".pdf") ? "PDF" : "IMG"}
-      </div>
-      <div className="min-w-0 flex-1 text-sm">
-        <span className="block truncate text-ink">{file.name}</span>
-        <span className="block text-xs text-ink-faint">
-          {formatBytes(file.size)} · attaches when you save
-        </span>
-      </div>
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label={`Remove ${file.name}`}
-        className="shrink-0 rounded-lg px-2 py-1 text-sm text-ink-faint hover:text-status-overdue-fg"
-      >
-        Remove
-      </button>
-    </li>
   );
 }
 
@@ -210,38 +178,4 @@ export function ServiceAttachments({
       onPendingChange={onPendingChange}
     />
   );
-}
-
-/**
- * A preview for images, a label for everything else.
- *
- * HEIC is deliberately in the label group: browsers accept the upload but will
- * not render it in an <img>, so previewing it would show a broken image rather
- * than nothing. In practice iOS converts HEIC to JPEG on upload, so this is a
- * rare path -- but a broken thumbnail reads as a corrupt file, which it is not.
- */
-function Thumb({ contentType, href }: { contentType: string; href: string }) {
-  const previewable =
-    contentType === "image/jpeg" || contentType === "image/png" || contentType === "image/webp";
-
-  if (previewable) {
-    return (
-      <img
-        src={href}
-        alt=""
-        className="h-10 w-10 shrink-0 rounded-lg border border-edge object-cover"
-      />
-    );
-  }
-  return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface text-xs text-ink-faint">
-      {contentType === "application/pdf" ? "PDF" : "IMG"}
-    </div>
-  );
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

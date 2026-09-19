@@ -56,6 +56,30 @@ where even `SELECT 1` failed, and worked immediately from a normal
 
 ---
 
+## In-app file viewer — 2026-09-19
+
+Every attached file -- service receipts, renewal documents, the grant, and
+files still pending in the log-service form -- now opens in a full-screen
+viewer instead of a new tab. Images fit to the screen with zoom and panning;
+PDFs are drawn by PDF.js with every page, identically on desktop, Android and
+iPhone. Previous/next moves across the files of that record, and there is a
+download button and an "open in a new tab" fallback for anything that cannot
+be previewed (HEIC outside Safari).
+
+- One uploader component (`Attachments.tsx`), so one wiring point covers all
+  of them. Rows moved to `AttachmentRows.tsx`; the viewer is in
+  `components/viewer/`. No server change, no migration.
+- PDF.js is its own chunk (~150 KB gzipped) plus a worker asset, loaded only
+  when a PDF is opened. The main bundle grew ~9 KB.
+- **Seen in a browser, locally:** a PNG and a 2-page PDF uploaded to a service
+  record, zoomed, paged, moved between; a pending photo previewed from inside
+  the log-service form, where clicks and Escape closed only the viewer and the
+  typed workshop name survived; at 375px no sideways scroll. The test found and
+  fixed two bugs -- pages at zero width, and a page lock the viewer could leave
+  behind. Test files deleted afterwards. See `apps/odometry/CLAUDE.md`.
+
+---
+
 ## Cost per km removed; fuel consumption is the card — 2026-09-19, DEPLOYED
 
 **Owner decision:** cost per km is not a figure that gets read; fuel

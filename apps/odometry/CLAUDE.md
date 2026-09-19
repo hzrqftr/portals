@@ -197,6 +197,26 @@ Three rules that are invisible when broken:
 
 These files are outside both backup nets. See `docs/backups.md`.
 
+### The in-app viewer (`src/client/components/viewer/`)
+
+Every file in `Attachments` -- saved or still pending in a form -- opens in
+`FileViewer`: images, and PDFs drawn by **PDF.js** (owner decision,
+2026-09-19; the browser's own viewer shows nothing inside a page on Android).
+Three rules that are invisible when broken:
+
+- **Canvas only for PDFs.** No text layer, no annotation layer, so nothing in an
+  uploaded PDF can become a link or a form on this origin. PDF.js is the legacy
+  build (old iPhones), lazily imported, with its worker as a separate asset.
+- **It must not close the Sheet underneath it.** Escape is stopped in a
+  capture-phase `window` listener, and clicks are stopped at the viewer's root
+  because React bubbles portal events to the React parent -- the Sheet's scrim.
+- **It only undoes a page lock it applied.** Inside a Sheet the Sheet owns
+  the lock; restoring a recorded lock once froze the page after the Sheet
+  closed first. Found in testing.
+
+Test it with the tab visible: a hidden tab runs no `IntersectionObserver` or
+`ResizeObserver` callbacks, so PDF pages stay blank and look broken.
+
 ## Domain traps
 
 - **Odometer readings can be entered out of order.** Discard readings that
