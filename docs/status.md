@@ -68,7 +68,56 @@ Cells were deliberately NOT clicked on production: `CellInput` commits on
 blur, so opening an editor and clicking away is a write path, and a no-op
 write is still a write worth not making by accident.
 
-### A record that is now worth revisiting
+### That record was revised — 2026-09-19, on production
+
+Done at the owner's request, through the edit UI rather than SQL so it went
+through Zod, the repository and invariant 6's absolute-to-interval conversion
+rather than around them.
+
+| Line | Before | After |
+|---|---|---|
+| Fuel filter | RM 76.00 | RM 76.00, note **"incl. RM 28 O-ring"** |
+| Rear brake pads | RM 28.00 | unchanged |
+| Throttle body clean | RM 320.00 | **RM 175.00**, note "Includes the valve adjustment." |
+| Throttle position sensor | — | **RM 145.00**, no schedule |
+| **Total** | **RM 424.00** | **RM 424.00** |
+
+The total was the check: 76 + 28 + 175 + 145 balances to the original
+RM 424.00, and it was confirmed in the sheet's own running total **before**
+saving -- which is `deriveTotals`, extracted earlier the same day, doing its
+job on production.
+
+The visit note was a to-do ("Update throttle body clean as it includes TPS
+replacement and adjustment valve fix"), now discharged. It was replaced with
+provenance instead, because the app now shows four lines where the PDF shows
+three and that difference should not puzzle anyone later: *"The workshop
+billed one RM 320 line for the throttle body; RM 145 of that was the TPS,
+split onto its own line here. Receipt MS.pdf is the original three-line bill."*
+
+Verified in the database afterwards, not just on screen:
+
+- Amounts stored as INTEGER sen -- 17500, 14500, 7600, 2800, summing to 42400.
+- **`interval_km_override` is NULL on the TPS line and no
+  `maintenance_intervals` row was created for `pt_tps`.** A sensor is replaced
+  when it fails, not on a schedule, and "not seeded" must not become "has an
+  interval" by accident. The other three lines kept theirs (20,000 / 25,000 /
+  20,000 km).
+- The receipt survived the edit: `MS.pdf`, 2,523,691 bytes, still linked.
+- The record's odometer reading is still linked at 91,960 km, `source =
+  'service'`, so the three copies of that number stay in step.
+- `PRAGMA foreign_key_check` clean.
+
+**A wording bug the TPS exposed.** The save confirmation lists every part on
+the visit under *"Clocks now set by this visit"*, including the Throttle
+position sensor -- which sets no clock at all. `SavedConfirmation` is handed
+`items.map(i => i.partName)`, so "parts on the visit" and "clocks set" have
+always been the same list. That was harmless until 2026-09-11, because every
+part type in the catalogue had an interval; **`pt_tps` is the first with
+none**, and it is the first part that can appear in that list while resetting
+nothing. Not fixed -- it is a copy-and-filter change, not a one-liner, and
+worth doing deliberately.
+
+### The original observation, for context
 
 The 2026-09-10 RS150R repair carries a RM 320 line called **"Throttle body
 clean"** and a VISIT-level note reading "Update throttle body clean as it
