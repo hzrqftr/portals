@@ -7,6 +7,65 @@ build; this file says how much of it exists.
 
 ---
 
+## Both portals deployed — 2026-09-19, the upgraded libraries
+
+| Worker | Version | Carries |
+|---|---|---|
+| `fleet-portal` | `fc5a7b04-3ce3-45ca-b35c-5f58196020b1` | Drizzle 0.45, React Router 7, the ServiceSheet split |
+| `coinbox` | `568535ba-bb2e-478e-b3c4-9c3fb52c287c` | Drizzle 0.45, React Router 7, the TransactionTable split |
+
+Both portals went out because `packages/core` changed, which is the same
+reason the deploy script runs the WHOLE workspace's tests rather than one
+app's.
+
+**No migration ran.** `wrangler d1 migrations list --remote` reported nothing
+to apply before either deploy, so the one irreversible step in the sequence
+was a no-op this time. The first attempt at that check **errored** and a plain
+retry succeeded -- the same transient recorded on 2026-09-08. Retry before
+believing wrangler has lost its login.
+
+Verified after, not assumed:
+
+- **Production row counts identical either side**: 4,506 transactions, 3
+  vehicles, 7 service records, 7 service items, 19 odometer readings, 11 fuel
+  fills, 65 part types, 9 recurring rules. `PRAGMA foreign_key_check` clean
+  over 9,280 rows read.
+- **Both crons survived**: `0 18 * * *` on fleet-portal, `0 17 * * *` on
+  coinbox, printed by the deploy itself.
+- **All bindings intact**: fleet-portal still has `DB`, `BACKUPS`, `DOCS` and
+  `ASSETS`; coinbox has `DB` and `ASSETS`. A dropped `DOCS` would have been
+  silent until the next receipt upload.
+- **Access still protects both** -- `/` and `/api/*` return 302 on each. The
+  redirect for fleet-portal carries audience `8589de21f29cca...`, matching its
+  own `ACCESS_AUD` and not Coinbox's, which is the separation that keeps a
+  token minted for one portal from opening the other.
+
+### Two things to check yourself
+
+- **Sign in to each portal once.** Everything above was verified from outside
+  Access; a coding session cannot sign in, so the first authenticated page
+  load on the new code is still unobserved. The local equivalents were clicked
+  through thoroughly -- see the browser section below -- so this is
+  confirmation rather than exploration.
+- **Tonight's 18:00 UTC backup is the first run on Drizzle 0.45.** The backup
+  reader is the one unscoped query in the system and it sits outside
+  `BaseScopedRepo`, so it did not benefit from the isolation suites that
+  covered everything else. `apps/odometry/tests/backup.test.ts` runs the full
+  restore round trip on every `npm test` and passed, so this is a low
+  expectation rather than a worry -- but tomorrow morning, check
+  `fleet/2026-09-19.json` exists in R2 and its log line reports a sensible row
+  count. Remember the filename is the UTC date, so it reads a day behind.
+
+### A note on part types, in case the number looks wrong
+
+Production shows **65** part types where this file says 62. Both are right:
+62 are global seed rows (`garage_id IS NULL`) and **3 are custom rows created
+through the "+ Add a custom part" panel** that shipped on 2026-09-11. The
+escape hatch is being used, which is worth knowing before anyone reads 65 as a
+seeding bug.
+
+---
+
 ## Housekeeping pass — 2026-09-19
 
 A session spent on the repo itself rather than on features, before the next one
