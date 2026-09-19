@@ -174,14 +174,60 @@ skipped tests, no committed build output; git objects total under 1 MB.
   Phase 4 work five hundred lines below the entry describing them running
   nightly. Corrected, along with three stale test counts.
 
-### Still not seen in a browser
+### SEEN IN A BROWSER -- the standing "never looked at" gap is closed
 
-The Chrome extension was not connected in this session either, so the two
-component splits have been typechecked, built, covered by 343 passing tests and
-smoke-tested through the dev servers' APIs -- but not looked at. They are pure
-refactors with no behaviour change, so the risk is cosmetic rather than
-functional. **Worth opening the log-service sheet and the ledger table once**,
-which is the same outstanding check the 2026-09-08 drill-down entry asks for.
+The Chrome extension connected on a later attempt in the same session, so for
+the first time since 2026-09-08 this work was actually looked at rather than
+reasoned about. Both portals, on the upgraded libraries, against the real local
+database.
+
+Verified by clicking:
+
+- **Odometry dashboard** -- three vehicles, wordmark, palette, status pills.
+- **`/vehicles/:id`** -- `useParams` resolves under React Router 7; the right
+  vehicle loads.
+- **The refactored `ServiceSheet`, in EDIT mode on a real record**, which is
+  the richest test of the split. `serviceDraft` seeded every field correctly
+  (2026-08-28, 91,250 km, type Other, Bengkel Motor Luth); `ServicePartsSection`
+  rendered the spark-plug line with its brand, quantity, warranty and the
+  **`note` field from migration 0017**; `deriveTotals` printed Parts RM 30.00 +
+  Labour RM 18.00 = **Total RM 48.00, matching the stored record exactly**,
+  with "Next service at 101,250 km" derived. The part catalogue included
+  **Throttle position sensor** (0016) and the **"+ Add a custom part…"** escape
+  hatch wired up on 2026-09-11.
+- **The BackButton's `history.state.idx` dependency**, which needed a test
+  that could tell the two outcomes apart -- from `/vehicles/:id` both a working
+  `navigate(-1)` and the broken `navigate("/")` fallback would look the same.
+  Going one level deeper (`/` -> `/vehicles/:id` -> `/settings`) separates
+  them, and Back landed on **the vehicle page, not the dashboard**. v7 still
+  writes `idx`.
+- **The refactored `TransactionTable`** -- all eight columns, the `in` row
+  green and the rest ink, the vehicle column populated only on Transportation.
+  Clicking the Item cell opened exactly one inline editor with the right value;
+  Escape closed it without writing, and the table came back **pixel-identical**,
+  which is the whole point of CONTENT and EDITOR being metrically matched.
+- **The Coinbox dashboard** -- stat tiles, staleness banner, and `YearChart`
+  drawing correctly, which incidentally confirms the hand-rolled SVG really did
+  not need the `recharts` that was removed.
+
+### A browser-automation trap, for whoever drives Chrome next
+
+**`Page.captureScreenshot` times out while the page is perfectly healthy.** It
+happened repeatedly, always after a click that moves focus into a control, and
+it recovers after a navigation. `read_page` and `find` kept answering instantly
+and reflected every state change throughout, which is how it was clear the app
+was fine and the screenshot pipeline was not.
+
+Do not read a screenshot timeout as a hung app or an infinite render loop --
+that was the first hypothesis here and it was wrong. **Check `read_page`
+before believing it**, and fall back to the accessibility tree, which is
+better evidence for structural checks anyway: it is what showed the totals, the
+seeded fields and the single open editor above.
+
+One tab did get wedged badly enough that a fresh tab was the fix. These portals
+call `showPicker()` deliberately (`PartPicker`, `CellSelect`) so one click opens
+a native list, and a native popup is the one thing that reliably stops Chrome
+producing frames.
 
 ---
 
