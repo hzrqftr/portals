@@ -16,7 +16,13 @@ import { ServiceAttachments } from "./ServiceAttachments";
 import { ServicePartsSection } from "./ServicePartsSection";
 import { SavedConfirmation, Total } from "./ServiceSaved";
 import { ServiceVisitFields } from "./ServiceVisitFields";
-import { canSaveService, deriveTotals, makeDefaultNextDueKm, toItemDrafts } from "./serviceTotals";
+import {
+  canSaveService,
+  deriveTotals,
+  makeDefaultNextDueKm,
+  partsSettingASchedule,
+  toItemDrafts,
+} from "./serviceTotals";
 
 /**
  * Log a service, or correct one already logged. Spec 8.4 -- "the
@@ -74,7 +80,11 @@ export function ServiceSheet({
 
   // The sheet's phase rather than the form's content, so it stays out of the
   // draft: null while editing, the part names once the save has come back.
-  const [saved, setSaved] = useState<string[] | null>(null);
+  //
+  // Two lists, not one. `scheduled` is the subset that actually put a part on
+  // a schedule, and the confirmation needs both to tell "no parts at all" from
+  // "parts, none of them tracked" -- see SavedConfirmation.
+  const [saved, setSaved] = useState<{ parts: string[]; scheduled: string[] } | null>(null);
 
   // Also the sheet's phase rather than the form's content: opening the panel
   // changes nothing about the visit being logged, and closing it must not.
@@ -177,7 +187,10 @@ export function ServiceSheet({
               `The service was saved, but ${failed.length === 1 ? "this receipt" : "these receipts"} did not upload: ${failed.join(", ")}. Add ${failed.length === 1 ? "it" : "them"} from the service in the history list.`,
             );
           }
-          setSaved(items.map((i) => i.partName));
+          setSaved({
+            parts: items.map((i) => i.partName),
+            scheduled: partsSettingASchedule(items, odo, defaultNextDueKm),
+          });
         },
       },
     );
@@ -189,7 +202,8 @@ export function ServiceSheet({
     <Sheet title={heading} onClose={onClose} wide>
       {saved ? (
         <SavedConfirmation
-          parts={saved}
+          parts={saved.parts}
+          scheduled={saved.scheduled}
           editing={editing}
           attachmentWarning={attachmentWarning}
           onClose={onClose}

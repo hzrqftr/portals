@@ -10,14 +10,31 @@ import { formatSen } from "@portals/core";
  * plainly matters more than saying "two": a visit logged without line items
  * resets nothing by design, and the owner needs to see that now rather than
  * discover it as a stale due date months later.
+ *
+ * THREE CASES, NOT TWO, and the third is why this was rewritten.
+ *
+ * Until 2026-09-19 this listed every part on the visit under "Clocks reset",
+ * because `parts` and "parts that set a schedule" were the same list for as
+ * long as every part type in the catalogue carried an interval. `pt_tps`
+ * (migration 0016) is the first that does not -- a sensor is replaced when it
+ * fails, not on a schedule -- so it was announced as resetting a clock it
+ * never touched. Caught on production, correcting a real record.
+ *
+ * `scheduled` therefore comes from `partsSettingASchedule`, which reads the
+ * output of the same function that builds the request. The screen cannot
+ * claim a clock the API was not asked to set.
  */
 export function SavedConfirmation({
   parts,
+  scheduled,
   editing,
   attachmentWarning,
   onClose,
 }: {
+  /** Every part on the visit. Only distinguishes "some" from "none". */
   parts: string[];
+  /** The subset that actually put a part on a schedule. */
+  scheduled: string[];
   editing: boolean;
   /**
    * Set when the record saved but a receipt did not upload. Shown rather than
@@ -27,6 +44,8 @@ export function SavedConfirmation({
   attachmentWarning?: string | null;
   onClose: () => void;
 }) {
+  const unscheduled = parts.filter((p) => !scheduled.includes(p));
+
   return (
     <div>
       <h2 className="text-lg font-semibold">{editing ? "Service updated" : "Service saved"}</h2>
@@ -40,16 +59,41 @@ export function SavedConfirmation({
           No parts are listed on this visit, so it resets no maintenance clock. Add the
           parts to the record if it included replacements.
         </p>
-      ) : (
+      ) : scheduled.length === 0 ? (
+        // Parts WERE recorded; none of them is on a schedule. Saying "no parts
+        // are listed" here would be plainly false, and saying "clocks reset"
+        // above an empty list would be worse.
         <>
           <p className="mt-2 text-sm text-ink-muted">
-            {editing ? "Clocks now set by this visit:" : "Clocks reset:"}
+            Recorded, but no maintenance clock changed &mdash; nothing on this visit is
+            tracked on a schedule:
           </p>
           <ul className="mt-1 list-inside list-disc text-sm text-ink-muted">
             {parts.map((p) => (
               <li key={p}>{p}</li>
             ))}
           </ul>
+          <p className="mt-3 text-xs text-ink-faint">
+            Give one an interval on the Maintenance tab if you want it tracked.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="mt-2 text-sm text-ink-muted">
+            {editing ? "Clocks now set by this visit:" : "Clocks reset:"}
+          </p>
+          <ul className="mt-1 list-inside list-disc text-sm text-ink-muted">
+            {scheduled.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+          {unscheduled.length > 0 && (
+            // Named rather than omitted: a part that vanishes from this screen
+            // reads as a part that failed to save.
+            <p className="mt-2 text-xs text-ink-faint">
+              Also recorded, on no schedule: {unscheduled.join(", ")}.
+            </p>
+          )}
           {editing && (
             // The one consequence of an edit that looks like a bug. Invariant
             // 6: the last service sets the vehicle's interval, and there is no

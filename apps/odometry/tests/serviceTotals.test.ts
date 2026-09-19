@@ -3,6 +3,7 @@ import {
   canSaveService,
   deriveTotals,
   makeDefaultNextDueKm,
+  partsSettingASchedule,
   toItemDrafts,
 } from "../src/client/components/serviceTotals";
 import type { ItemDraft } from "../src/client/components/ServiceItemRow";
@@ -213,5 +214,66 @@ describe("toItemDrafts", () => {
     const [unpriced] = toItemDrafts([item({ unitCost: "" })], 50_000, NO_DEFAULT);
     expect(priced?.unitCost).toBe(24550);
     expect(unpriced).not.toHaveProperty("unitCost");
+  });
+});
+
+describe("partsSettingASchedule", () => {
+  it("omits a part that sets no schedule, which is the bug this exists for", () => {
+    // pt_tps has no interval: a sensor is replaced when it fails. Before
+    // 2026-09-19 the save confirmation listed every part on the visit under
+    // "Clocks now set by this visit", so this one was announced as resetting
+    // a clock it never touched. Seen on a real production record.
+    const names = partsSettingASchedule(
+      [
+        item({ key: "a", partTypeId: "pt_oil", partName: "Engine oil", nextDueKm: "60000" }),
+        item({ key: "b", partTypeId: "pt_tps", partName: "Throttle position sensor" }),
+      ],
+      50_000,
+      (id) => (id === "pt_oil" ? 60_000 : null),
+    );
+    expect(names).toEqual(["Engine oil"]);
+  });
+
+  it("includes a part left at its pre-filled default, which DOES set a schedule", () => {
+    // Leaving the field alone is an answer, and the interval is still sent --
+    // so the clock really does move and the confirmation must say so.
+    const names = partsSettingASchedule(
+      [item({ partName: "Engine oil", nextDueKm: "" })],
+      50_000,
+      () => 58_000,
+    );
+    expect(names).toEqual(["Engine oil"]);
+  });
+
+  it("returns nothing when no part on the visit is tracked", () => {
+    const names = partsSettingASchedule(
+      [
+        item({ key: "a", partTypeId: "pt_tps", partName: "Throttle position sensor" }),
+        item({ key: "b", partTypeId: "pt_wash", partName: "Wash" }),
+      ],
+      50_000,
+      NO_DEFAULT,
+    );
+    expect(names).toEqual([]);
+  });
+
+  it("agrees exactly with what toItemDrafts sends, by construction", () => {
+    // The whole point: the screen cannot claim a clock the API was not asked
+    // to set. If these two ever disagree, one of them is lying to the owner.
+    const items = [
+      item({ key: "a", partTypeId: "pt_oil", partName: "Engine oil", nextDueKm: "60000" }),
+      item({ key: "b", partTypeId: "pt_tps", partName: "Throttle position sensor" }),
+      item({ key: "c", partTypeId: "pt_plugs", partName: "Spark plugs", nextDueKm: "40000" }),
+    ];
+    const resolve = (id: string) => (id === "pt_oil" ? 60_000 : null);
+
+    const drafts = toItemDrafts(items, 50_000, resolve);
+    const sentNames = items
+      .filter((_, i) => drafts[i]?.intervalKmOverride !== undefined)
+      .map((i) => i.partName);
+
+    expect(partsSettingASchedule(items, 50_000, resolve)).toEqual(sentNames);
+    // Spark plugs at 40,000 is behind the 50,000 odometer, so nothing is sent.
+    expect(sentNames).toEqual(["Engine oil"]);
   });
 });

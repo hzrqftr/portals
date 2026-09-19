@@ -100,6 +100,34 @@ export function canSaveService(odo: number | null, badItem: boolean): boolean {
  * Sending it every time is what keeps one number in charge: the line item and
  * the vehicle's setting cannot drift apart if each service writes both.
  */
+/**
+ * Which parts this visit actually puts on a schedule, by name.
+ *
+ * DERIVED FROM toItemDrafts RATHER THAN FROM THE ITEM LIST, deliberately: the
+ * save confirmation tells the owner which maintenance clocks moved, and the
+ * only honest source for that is the same function that decides what gets
+ * sent. Listing `items` instead — which is what this did until 2026-09-19 —
+ * cannot go wrong while every part type carries an interval, and silently
+ * starts lying the moment one does not.
+ *
+ * `pt_tps` (migration 0016) is the first such part: a sensor is replaced when
+ * it fails, not on a schedule. It appeared under "Clocks now set by this
+ * visit" having set no clock at all, which was noticed only because a real
+ * service record was corrected on production.
+ */
+export function partsSettingASchedule(
+  items: ItemDraft[],
+  odo: number,
+  defaultNextDueKm: (partTypeId: string) => number | null,
+): string[] {
+  const drafts = toItemDrafts(items, odo, defaultNextDueKm);
+  const names: string[] = [];
+  items.forEach((item, i) => {
+    if (drafts[i]?.intervalKmOverride !== undefined) names.push(item.partName);
+  });
+  return names;
+}
+
 export function toItemDrafts(
   items: ItemDraft[],
   odo: number,

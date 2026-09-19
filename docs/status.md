@@ -107,15 +107,40 @@ Verified in the database afterwards, not just on screen:
   'service'`, so the three copies of that number stay in step.
 - `PRAGMA foreign_key_check` clean.
 
-**A wording bug the TPS exposed.** The save confirmation lists every part on
-the visit under *"Clocks now set by this visit"*, including the Throttle
-position sensor -- which sets no clock at all. `SavedConfirmation` is handed
-`items.map(i => i.partName)`, so "parts on the visit" and "clocks set" have
-always been the same list. That was harmless until 2026-09-11, because every
-part type in the catalogue had an interval; **`pt_tps` is the first with
-none**, and it is the first part that can appear in that list while resetting
-nothing. Not fixed -- it is a copy-and-filter change, not a one-liner, and
-worth doing deliberately.
+**A wording bug the TPS exposed, since fixed.** The save confirmation listed
+every part on the visit under *"Clocks now set by this visit"*, including the
+Throttle position sensor -- which sets no clock at all. `SavedConfirmation`
+was handed `items.map(i => i.partName)`, so "parts on the visit" and "clocks
+set" were the same list. Harmless while every part type in the catalogue had
+an interval; **`pt_tps` is the first with none**, so it is the first part that
+can appear in that list while resetting nothing.
+
+The fix is `partsSettingASchedule()` in `serviceTotals.ts`, and the shape of
+it is the point: **it reads the output of `toItemDrafts`**, the same function
+that builds the request, rather than the item list. The screen cannot claim a
+clock the API was not asked to set, and a future change to what gets sent
+moves both together. A test asserts the two agree by construction.
+
+The confirmation now has THREE cases rather than two, because "no parts at
+all" and "parts, none of them tracked" are different things and the old code
+could only say the first:
+
+| Visit | What it says |
+|---|---|
+| No line items | "No parts are listed on this visit, so it resets no maintenance clock." |
+| Parts, none scheduled | "Recorded, but no maintenance clock changed -- nothing on this visit is tracked on a schedule", then the list, then how to start tracking one |
+| Some scheduled | "Clocks reset:" with only those, plus "Also recorded, on no schedule: ..." naming the rest |
+
+The last line matters: a part that simply vanished from this screen would read
+as a part that failed to save.
+
+Seen working rather than assumed -- a spark-plug-plus-TPS visit logged against
+the local database rendered "Clocks reset: Spark plugs" above "Also recorded,
+on no schedule: Throttle position sensor", and the test record was then
+removed. The four new tests were watched failing first, by restoring the old
+`items.map(...)` behaviour: three failed, the first reporting
+`[ 'Engine oil', 'Throttle position sensor' ]` where `[ 'Engine oil' ]` was
+expected.
 
 ### The original observation, for context
 
