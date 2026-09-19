@@ -72,7 +72,7 @@ export function ScheduleRowEditor({
         {reset && (
           <button
             onClick={() => onChange({ ...cells, intervalKm: reset.km, intervalMonths: reset.months })}
-            className="text-xs text-ink-faint underline"
+            className="text-left text-xs text-ink-faint underline"
           >
             {tracked ? "Reset to" : "Use"} {formatInterval(row.default_km, row.default_months)}
           </button>

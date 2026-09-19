@@ -49,17 +49,36 @@ Compute from `last service + interval rule`. There is no "next service
 mileage" column and there must never be one. If you find yourself wanting to
 cache a due date, cache it in a view.
 
-**One interval per part, and the last service sets it.** The schedule lives in
-exactly one place, `maintenance_intervals`. A service that specifies an
-interval writes it there, so "the interval keyed in at the last service" and
-"the vehicle's interval" are the same fact, not two facts that can disagree.
+**One interval per part, and the OWNER sets it (since 2026-09-20).** The
+schedule lives in exactly one place, `maintenance_intervals`, and is edited on
+the vehicle's **Schedule tab** (`GET`/`PUT /api/vehicles/:id/schedule`,
+`ScheduleRepo`). Logging a service does **not** change it. Each new line on
+the log-service form says whether the part was replaced early or late against
+the schedule (`scheduleCheck.ts`), and the schedule changes only if the owner
+presses "Change to ..." there -- which is the one case the client sends
+`intervalKmOverride`/`intervalMonthsOverride`, and the one case
+`ServiceRepo` writes the schedule.
+
+Before 2026-09-20 every line sent its current interval, so every service
+rewrote the schedule whether anyone meant it to or not, and the owner could
+not tell what the schedule was or why it had moved. **Do not reintroduce a
+pre-filled interval on the service form.** An edit of a saved service never
+resends one either: items are rewritten on update, so a resent figure would
+silently put the schedule back to what it was at that visit.
 
 `v_maintenance_due` computes `due_km = baseline odometer +
-maintenance_intervals.interval_km`. The user types an absolute figure because
-that is what the workshop sticker says; the client subtracts the service
-odometer before sending, so the API never receives a due point at all. The test
-for whether something is a due date: correct the service odometer, and see
-whether the number moves. It must.
+maintenance_intervals.interval_km`, so the API never receives a due point at
+all. The test for whether something is a due date: correct the service
+odometer, and see whether the number moves. It must.
+
+**`maker_intervals` (migration 0019) is a reference, not a schedule.** It holds
+the manufacturer's figure beside the owner's, so the Schedule tab can flag an
+interval LONGER than the maker recommends. No view reads it and nothing is
+ever due from it. It is its own table because `maintenance_intervals`' CHECK
+needs an interval of the owner's, and an untracked part can still have a
+known maker figure. It is never seeded from `part_type_defaults` -- those are
+generic figures, and a delta against an invented maker number is worse than
+none.
 
 **That test is now executable, and runs.** A service can be corrected after the
 fact (migration `0014`), and `tests/serviceEdit.test.ts` asserts exactly this:
@@ -70,13 +89,15 @@ by `service_records.odometer_reading_id` and the helpers in
 `packages/core/src/worker/odometer.ts`.
 
 One consequence looks like a bug and is not: **removing a line item does not
-revert the vehicle's interval.** The last service sets the schedule and nothing
-stores what it was before, so there is no previous value to restore. The
-maintenance tab's inline editor is where an interval is changed.
+revert the vehicle's interval** when that visit changed it. Nothing stores
+what the schedule was before, so there is no previous value to restore. The
+Schedule tab is where an interval is changed back.
 
-**`service_items.interval_km_override` is history, not a schedule.** It records
-what the interval was at that service. Nothing computes from it — the view does
-not join it. Do not reintroduce it into the due-point calculation.
+**`service_items.interval_km_override` is history, not a schedule.** It
+records that this visit changed the schedule, and to what (older visits, from
+before 2026-09-20, carry one on every tracked part). Nothing computes from it
+— the view does not join it. Do not reintroduce it into the due-point
+calculation.
 
 Migration 0004 made it a genuine override that outranked the vehicle's setting
 for one cycle, to support "come back in 5,000 this time, then back to normal".
@@ -86,10 +107,13 @@ the save looked like it had silently failed. If per-cycle scheduling is ever
 wanted again, it needs a UI that shows both numbers and says which is in charge
 — not a silent `COALESCE`.
 
-**Which parts a vehicle has, and at what interval, comes from
-`part_type_defaults`** — keyed by `(part_type_id, vehicle_type)`. A part with no
-row for a vehicle type does not apply to it at all: a motorbike is never
-offered a cabin filter. Intervals live there rather than on `part_types`
+**Which parts a vehicle STARTS with, and at what interval, comes from
+`part_type_defaults`** — keyed by `(part_type_id, vehicle_type)` and copied
+into `maintenance_intervals` when the vehicle is added; the Schedule tab lists
+every part with a row for the vehicle's type (fuel filtered live) and offers
+the default as "reset". A part with no row for a vehicle type does not apply
+to it at all: a motorbike is never offered a cabin filter, and `PUT
+/schedule` refuses one. `vehicleType` cannot be PATCHed for the same reason. Intervals live there rather than on `part_types`
 because they differ by type — engine oil is 10,000 km on a car and 3,000 on a
 bike — and duplicating the part type would split the brand history and service
 records for one real-world thing.

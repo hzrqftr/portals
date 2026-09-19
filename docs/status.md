@@ -18,8 +18,12 @@ Do not append narrative to this file; that is how it grew to 1,600 lines.
 
 ## Start here
 
-**Everything on `main` is deployed.** There is no work in flight and the only
-branch is `main`.
+**Everything on `main` is deployed.** One branch is in flight:
+`worktree-maintenance-schedule` -- the schedule revamp (a Schedule tab, the
+maker reference, services no longer rewriting the schedule). It carries
+migration **`0019_maker_intervals`**, not yet applied remotely, so a deploy of
+it runs that migration first (the deploy script's order does this). See
+`docs/history.md`, 2026-09-20.
 
 | | |
 |---|---|
@@ -73,10 +77,11 @@ in the app's `CLAUDE.md`, the spec section, or `docs/history.md`.
 |---|---|
 | Dashboard: attention list (maintenance **and** renewals), vehicle cards, stale-odometer warning, one-tap odometer | spec §8.1, §8.5; `worker/data/dashboard.ts` |
 | Vehicles: add (intervals seeded by type and fuel), edit details, cars and motorbikes | §8.3; migration `0008` for bikes |
-| Vehicle page: a **Details \| Grant** switcher at the top (Details on open), and **Maintenance \| Service history \| Renewals \| Fuel** below, pinned under the header. Both use `TabBar.tsx` | `routes/VehicleDetail.tsx` |
+| Vehicle page: a **Details \| Grant** switcher at the top (Details on open), and **Maintenance \| Schedule \| Service history \| Renewals \| Fuel** below, pinned under the header. Both use `TabBar.tsx` | `routes/VehicleDetail.tsx` |
 | Grant (geran) on each vehicle, on its own tab: chassis/engine no., registration date, colour, plus the grant file. **Owner name, IC and address are never fields** | `GrantCard.tsx`; migration `0018` |
-| Maintenance: parts grouped by category, overdue pinned, search, inline interval editing, track/untrack | §8.2; invariants 6-7; migrations `0005`, `0007`, `0009` |
-| Log a service: line items, labour as its own cost, per-item note, custom part types, confirmation of which clocks reset | §8.4; migrations `0006`, `0016`, `0017` |
+| Maintenance: tracked parts grouped by category, overdue pinned, search. Status only -- the schedule is edited on the Schedule tab | §8.2; invariants 6-7; migrations `0005`, `0007`, `0009` |
+| Schedule tab: every part that fits, owner's months/km beside the maker's, "longer than the maker" flag, reset to default, track/untrack, parts left over from a fuel change. **Branch, not deployed** | §8.2; invariant 6; migration `0019`; `ScheduleTable.tsx`, `data/schedule.ts` |
+| Log a service: line items, labour as its own cost, per-item note, custom part types, confirmation of which clocks reset. **Branch:** early/late notice per line; the schedule changes only on "Change to ..." | §8.4; migrations `0006`, `0016`, `0017`; `scheduleCheck.ts` |
 | Correct or delete a logged service (odometer reading and cached odometer kept in step) | migration `0014`; `tests/serviceEdit.test.ts` |
 | Renewals tab: road tax and insurance cards (setup prompt when missing), renew = new row, correct words only, delete a mistaken row, history | §4.6, §6.3; invariant 8; `RenewalsPanel.tsx` |
 | Files on service records, renewals and the grant: PDF/JPEG/PNG/WebP/HEIC, type sniffed from bytes, stored in `portals-docs` | migrations `0015`, `0018`; one `AttachmentRepo`, three owners |
@@ -132,6 +137,13 @@ Ranked. The owner decides the order; this is the recommendation.
    deferred.
 6. **Coinbox year chart: ghost columns for future months**, showing what the
    recurring rules already commit. Optional; needs no new table.
+7. **After the schedule revamp ships:** fill the maker columns for the Waja,
+   City and RS150R from the three manuals (owner's Desktop PDFs) -- by hand on
+   the Schedule tab, or a reviewed SQL file; production writes need the
+   owner's go-ahead. Then decide on **Inspect vs Replace**: every manual has
+   both, often on different cycles for one part (Waja brake fluid: inspect
+   10k, replace 40k), and the app tracks Replace only. Deliberately left out
+   of the revamp (owner, 2026-09-20).
 
 **Deferred by design:** budgets and the cost forecast (fleet Phase 2),
 multi-user invitations and roles (Phase 3), reminder emails (Phase 4).

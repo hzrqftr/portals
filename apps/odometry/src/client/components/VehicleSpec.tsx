@@ -84,8 +84,8 @@ export function VehicleSpec({
       <p className="mt-3 text-xs text-ink-faint">
         Type and fuel decide which parts this vehicle tracks by default, and on what
         schedule &mdash; a bike counts engine oil in thousands of km, not tens of
-        thousands. Which parts it actually tracks &mdash; a chain rather than a CVT belt,
-        say &mdash; is set per part in the Maintenance tab.
+        thousands. Which parts it actually tracks, and how often &mdash; a chain rather
+        than a CVT belt, say &mdash; is set on the Schedule tab.
       </p>
     </div>
   );

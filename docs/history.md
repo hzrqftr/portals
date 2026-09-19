@@ -19,6 +19,7 @@ their reasoning survives.
 
 ## Contents
 
+- The schedule is the owner's: a Schedule tab, the maker reference — 2026-09-20, BRANCH
 - Vehicle page: Details | Grant tabs — 2026-09-20
 - Docs split into status and history; loose ends tied — 2026-09-19
 - File viewer: zoom out, and a modal instead of full screen — 2026-09-19, DEPLOYED
@@ -44,6 +45,64 @@ their reasoning survives.
 - The Home dashboard is built and live — 2026-08-31
 - Snapshot: the old "Start here" section, as it stood on 2026-09-19
 - Snapshot: the old "Next" and "Picking this up on another machine" sections, as they stood on 2026-09-19
+
+---
+
+## The schedule is the owner's: a Schedule tab, the maker reference — 2026-09-20
+
+**Why.** The owner asked where each vehicle's schedule comes from, and the
+answer was three places pulling against each other: seeded from generic
+defaults when the vehicle is added, edited one part at a time inside the part
+sheet, and **rewritten by every logged service** -- the form pre-filled "Next
+due at" from the current interval and always sent it, so each visit wrote the
+schedule whether anyone meant it to or not. The owner found that impossible to
+reason about and asked for: one table per vehicle (parts down the side, months
+and km across) that is theirs to set and change at any time, and services that
+*report* an early or late replacement instead of silently adjusting.
+
+**Decisions (owner, via questions before planning):** a manufacturer column as
+a reference with a flag when the owner's figure is longer; new vehicles still
+start from the generic defaults, editable; an off-schedule service shows a
+notice plus an explicit "Change to ..." button; Inspect-vs-Replace (which all
+three manuals on the owner's Desktop use) left out of this revamp.
+
+**What changed.**
+- `maintenance_intervals` already was the table the owner described, and
+  `v_maintenance_due` is untouched. New: `GET`/`PUT /api/vehicles/:id/schedule`
+  (`ScheduleRepo`), one query for the whole table and one atomic batch for a
+  save. It replaces `PATCH /api/vehicles/:id/intervals/:pid`, which is gone.
+- Migration **0019** adds `maker_intervals`: a side table rather than columns,
+  because `maintenance_intervals`' CHECK needs the owner's own interval and a
+  part the owner does not track can still have a maker figure. Starts empty;
+  never seeded from the generic defaults.
+- The service form lost "Next due at". `scheduleCheck.ts` says early / late /
+  on schedule, whichever clock comes first, with a tolerance of a tenth of the
+  interval or one month so near-misses are not noise. "Change to ..." offers
+  only the clock that decided it: offering "6,000 km **or 2 months**" for an
+  early oil change would have invented a two-month time clock -- caught by a
+  test while writing this.
+- Editing a saved service never sends a schedule change. Items are rewritten
+  on update, so re-sending the figure a visit once adopted would put the
+  schedule back to it, silently, months later. The tradeoff: editing such a
+  visit drops its "schedule set on this visit" note from history.
+- Two gaps from the review closed: the schedule lists parts still tracked
+  after a fuel change (flagged, clearable), and `vehicleType` can no longer be
+  PATCHed (the form already hid it; the server now agrees).
+- The schedule query uses **numbered** parameters (`?1`...`?4`), a first in
+  this repo: vehicle, garage, type and fuel each appear several times, and
+  bare `?` would make each a positional bind -- the trap in the root CLAUDE.md.
+
+**Verified.** 19 new API tests (`tests/schedule.test.ts`), schedule check and
+table-edit tests, the service-form tests rewritten for "nothing sent unless
+adopted"; the isolation suite covers the new GET and PUT, and was **seen to
+fail** (`BOB_SPARE_PART leaked from GET .../schedule`) with the part-type
+predicate widened, then restored. `npm test`: lint over 180 files, 193 Coinbox
++ 208 Odometry. In Chrome against a copy of the local database: edited and
+saved the Waja's schedule, saw the maker flag, logged an early oil change and
+got "Early by 3,000 km", adopted 5,000 km and saw the schedule move while an
+ordinary service left it alone; 375 px has no sideways scroll.
+
+**Not deployed.** Branch `worktree-maintenance-schedule`.
 
 ---
 

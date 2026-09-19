@@ -493,7 +493,9 @@ DELETE /api/garages/:id/members/:userId → owner only
 
 ### 8.2 Vehicle detail
 
-Sections: Overview (specs, inline odometer edit, usage rate with confidence indicator), Maintenance (intervals with last done, next due, status, inline editing — **grouped by part category, with overdue and due-soon items pinned above the groups** so attention is never hidden inside a collapsed section), Service history (reverse chronological, expandable to line items), Renewals (active per type with countdown, plus history), Costs (run rate, spend by category, 12-month trend).
+Sections: Overview (specs, inline odometer edit, usage rate with confidence indicator), Maintenance (tracked parts with last done, next due, status — **grouped by part category, with overdue and due-soon items pinned above the groups** so attention is never hidden inside a collapsed section), Schedule, Service history (reverse chronological, expandable to line items), Renewals (active per type with countdown, plus history), Costs (run rate, spend by category, 12-month trend).
+
+**Schedule** (2026-09-20) is the vehicle's maintenance schedule as one table: every part that fits the vehicle's type and fuel, then the owner's **months** and **km** (whichever comes first), then the **manufacturer's** months and km beside them as a reference. A blank pair means the part is not tracked. A figure longer than the maker's is flagged. Edits are gathered and saved together. This is the only place the schedule is set, apart from the explicit choice on a logged service (§8.4); the maker columns are never a clock.
 
 ### 8.3 Add vehicle
 
@@ -502,6 +504,8 @@ Only `nickname` required. On save: create vehicle, seed intervals from `part_typ
 ### 8.4 Log service
 
 The highest-friction flow, needing the most care. Vehicle → date (default today) → odometer (prefilled, validated ≥ current) → workshop → line items. The part type picker **pins the vehicle's overdue and due-soon items to the top**, with the remaining part types grouped by category. Brand and spec autocomplete from the garage's own history. Labour is entered as its own figure, since it is a real cost that is not a line item — the owner frequently buys the parts and pays a workshop for the fitting alone. The grand total is **shown, not typed**: it is parts + labour, computed, so no two figures on the form can disagree. On save, confirm which clocks were reset.
+
+**Logging a service does not change the schedule** (2026-09-20). Each line compares the replacement with the schedule — "Early by 4,000 km — schedule is 10,000 km", or late, or nothing when it is within a tenth of the interval — and offers **Change to …**, pre-filled with the interval the part actually ran to on the clock that decided it. Only that button changes the schedule. A part not on the schedule offers **Add to schedule**. Correcting a saved service never changes the schedule.
 
 ### 8.5 Quick odometer update
 
