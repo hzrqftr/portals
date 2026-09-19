@@ -19,7 +19,10 @@ against the local database: 648 rows reconciling exactly. It is idempotent —
 re-running inserts nothing — and it aborts rather than reporting success if the
 totals disagree.
 
-**The portal is live.** 4,421 transactions in production, the full ledger UI,
+**The portal is live and in daily use** -- 4,505 transactions as of 2026-09-19,
+the most recent dated the day before. **Do not treat that figure as current**;
+it grows every week and both crons add to it unattended. Count it, do not read
+it. The full ledger UI,
 recurring entries with a nightly cron (2026-08-29), and the Home dashboard
 (2026-08-31). Every read endpoint is in `readEndpoints` in
 `tests/isolation.test.ts` — the moment another one lands, it goes there too.

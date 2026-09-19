@@ -1,7 +1,7 @@
 # Coinbox — Technical Specification
 
 **Version:** 0.2
-**Status:** Live. 4,421 transactions in production; recurring entries built 2026-08-29; Home dashboard built and deployed 2026-08-31 (§10)
+**Status:** Live and in daily use. 4,505 transactions as of 2026-09-19 (a count, not a constant -- it grows weekly); recurring entries built 2026-08-29; Home dashboard built and deployed 2026-08-31 (§10)
 **Target:** Replace a Google Form + Sheet expense log
 
 ---

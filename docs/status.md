@@ -3,7 +3,114 @@
 Where the project actually is, and what to pick up next. The specs say what to
 build; this file says how much of it exists.
 
-**Last updated:** 2026-09-08 (the fuel drill-down, then the breadcrumb row)
+**Last updated:** 2026-09-19 (housekeeping: dependencies, two component splits, docs resynced)
+
+---
+
+## Housekeeping pass — 2026-09-19
+
+A session spent on the repo itself rather than on features, before the next one
+starts. Nothing here changes what any page renders.
+
+**Dependencies.** `recharts` was declared in Odometry and imported nowhere --
+Coinbox's charts are hand-rolled SVG and Odometry has none. Removing it took 35
+transitive packages (the whole d3 tree, lodash, victory-vendor) and 367 lines of
+lockfile. The shipped bundle is unchanged, because an unused import was already
+tree-shaken; this is install surface, not payload. `hono` went 4.13.3 -> 4.13.8
+inside its existing `^4.6.0` range, clearing three advisories -- the relevant
+one being unbounded dot-notation nesting in `parseBody()`, now in the request
+path for receipt upload.
+
+**Two advisories are left open, deliberately, and both were checked for
+reachability rather than taken at face value:**
+
+- `drizzle-orm` 0.36.4, rated high, SQL injection via unescaped identifiers.
+  **Not reachable here.** There is no `sql.identifier`, `sql.raw` or
+  `.dynamic()` anywhere in either portal, and `backup.ts` -- the one place that
+  builds SQL from table names -- does its own `quoteIdent` on names read from
+  `sqlite_master`, never through Drizzle.
+- `react-router-dom` 6.30.6, moderate, open redirect via a backslash in a
+  `to=`. **Not reachable here.** Every `to=` in either portal is a literal or
+  an internal path built from ids; nothing routes to a user-supplied target.
+
+Both fixes are version jumps (0.36 -> 0.45, and a v7 major) and belong in their
+own session with the isolation suites run against them, not on a feature branch.
+
+**The palette gained `status.info-bg/fg`.** The warranty badge in
+`ServiceHistory` was the last raw Tailwind colour in either portal
+(`bg-sky-950 text-sky-300`). It is now a named token set to those exact values,
+so the compiled CSS is byte-identical -- verified as `rgb(8 47 73)` and
+`rgb(125 211 252)`. It is deliberately NOT `status.ok`: that green already means
+"maintenance is fine" on `StatusPill` and the two render near each other, so
+reusing it would collapse "nothing is due" and "the part is still covered" into
+one colour. The preset's rule is that a raw colour means the palette is missing
+a token, not that the nearest token should absorb it.
+
+**Two components were split, and the logic that came out of them is now
+tested.** `ServiceSheet` was 335 lines of code in one component and
+`TransactionTable` 407, against a guide of roughly 200. Both came apart at the
+seam between arithmetic that can be silently wrong and markup that can only be
+ugly:
+
+| New file | What it owns |
+|---|---|
+| `odometry/.../serviceTotals.ts` | Totals, the soonest due figure, and the absolute-to-interval conversion (invariant 6) |
+| `odometry/.../ServicePartsSection.tsx` | The line items and the two ways to add one |
+| `odometry/.../ServiceVisitFields.tsx` | Date, odometer, type, workshop |
+| `coinbox/.../transactionEdits.ts` | What a committed cell edit actually writes |
+| `coinbox/.../transactionCells.tsx` | `CellInput`/`CellSelect` and the metric pairs that stop a click moving the layout |
+| `coinbox/.../TransactionRow.tsx` | One row in either state |
+
+`ServiceSheet` is now 228 lines of code, `TransactionTable` 99. `TransactionRow`
+is 222 and left alone: it is seven near-identical cell blocks, and splitting it
+further would fragment one readable structure into several.
+
+31 new tests came with it, all on the extracted logic, which was previously
+reachable only by rendering a sheet. Both suites were **seen to fail** first --
+`toItemDrafts` was made to send the due point instead of the interval (two
+failures), and `buildPatch` was made to stop clearing the vehicle on a category
+move (one failure). Both restored.
+
+One honest result from that exercise: removing the explicit blank-amount guard
+in `buildPatch` failed **nothing**, because `parseSen("")` returns null and the
+next line rejects it. The guard states the intent and stays, but it is
+belt-and-braces rather than the thing holding that rule up.
+
+**Repo hygiene.** Four fully merged branches deleted, local and on origin
+(`fuel-consumption-capture`, `workspace-split`, `worktree-coinbox-dashboard`,
+`worktree-wrap-up-docs`); only `main` remains. An empty `.claude/worktrees`
+left over from the worktree episode removed. The tenant-isolation lint was
+re-verified by breaking it on purpose -- `env.DB` added to a Coinbox route
+handler, watched fail, restored.
+
+**Also checked and found already correct**, so nobody needs to look again
+soon: every `GET` endpoint in both portals is in its isolation suite (15
+Odometry, 10 Coinbox, none missing); the published backup runbook matches
+`docs/backups.md` including the receipts section; remote migrations are fully
+applied; `tsconfig` and Tailwind configs are properly factored; no TODOs, no
+skipped tests, no committed build output; git objects total under 1 MB.
+
+### Two documents were out of step with the code
+
+- **`docs/setup-checklist.md` never mentioned Coinbox.** It was written for the
+  single-portal era and would have left someone rebuilding from scratch with no
+  ledger, no second Access application and no R2 buckets. It also told you to
+  run `npm run deploy`, **which does not exist** -- there is no root deploy
+  script, only `npm run deploy -w <app>` -- and to check `PRAGMA foreign_keys`
+  with a bare `wrangler d1 execute`, which without `--persist-to .wrangler/state`
+  talks to a different, empty local database. Rewritten to cover both portals.
+- **This file contradicted itself about backups**, listing them as deferred
+  Phase 4 work five hundred lines below the entry describing them running
+  nightly. Corrected, along with three stale test counts.
+
+### Still not seen in a browser
+
+The Chrome extension was not connected in this session either, so the two
+component splits have been typechecked, built, covered by 343 passing tests and
+smoke-tested through the dev servers' APIs -- but not looked at. They are pure
+refactors with no behaviour change, so the risk is cosmetic rather than
+functional. **Worth opening the log-service sheet and the ledger table once**,
+which is the same outstanding check the 2026-09-08 drill-down entry asks for.
 
 ---
 
@@ -521,9 +628,16 @@ throughout.
 for a migration that only adds a table and an index. `ledgers` is empty until
 someone signs in to Coinbox and the bootstrap runs.
 
-Production schema: 15 tables, 4 views, 61 seeded part types across 11
-categories, 83 part-type defaults, foreign keys enforced. Local adds
-`ledgers` (16 tables).
+Production schema, **re-measured 2026-09-19**: 24 tables, 6 views, **62**
+seeded part types across 11 categories, foreign keys enforced. The table count
+excludes SQLite's and Cloudflare's own (`sqlite_%`, `_cf_%`) but includes
+`d1_migrations`; counting everything gives 26, which is where other figures in
+this file differ rather than disagreeing.
+
+The line this replaces read "15 tables, 4 views, 61 seeded part types" and was
+simply old -- migrations 0010 through 0017 had landed since. Part types went to
+62 with `pt_tps` in 0016. Exactly the ageing the paragraph below warns about,
+found by counting rather than by reading.
 
 Data currently in production, **measured 2026-09-05, not assumed**: one user,
 one garage, three vehicles (Waja and City, both `vehicle_type = 'car'`, and an
@@ -652,8 +766,54 @@ Verified against the deployed app, not just the test suite.
   first R2 binding when it wants this.
 
   **Receipts are outside both backup nets** — see `docs/backups.md`.
+- **A line item can carry its own note, and the catalogue gained a sensor**
+  (2026-09-11, migrations 0016 and 0017). Both came off one real RS150R
+  receipt the portal could not fully record.
+
+  A throttle position sensor at RM 145 had no matching part type -- nothing in
+  the 61-row catalogue was a sensor -- so 41% of the bill could only go into
+  the labour field, where a replaced component leaves no trace in parts
+  history. `pt_tps` is seeded globally with **no interval and
+  `seed_by_default` 0**: a sensor is replaced when it fails, not on a schedule,
+  and the two stay distinct (invariant 6) so the part still has a figure to
+  offer the day someone does start tracking it.
+
+  Its `part_type_defaults` rows are mandatory rather than thorough:
+  `PartTypeRepo.list` INNER JOINs that table, so a part type with no row for a
+  vehicle type is invisible to it -- which looks exactly like the INSERT having
+  silently failed.
+
+  An O-ring at RM 28 belongs with the fuel filter it was fitted to, but folding
+  it into that line's unit cost hid why the line read RM 76 instead of RM 48.
+  `service_items.note` is a nullable ADD COLUMN, so `line_total_cost` (VIRTUAL,
+  generated) is untouched and no view rebuild was needed.
+
+  The same commit **wired up the custom-part escape hatch**, which had existed
+  server-side and been called by nothing: `POST /api/part-types`,
+  `partTypeInput` and `PartTypeRepo.create` were all written when the part-type
+  repo was, and `useCreatePartType` had zero importers -- the catalogue was
+  closed in practice. `PartPicker` now offers "+ Add a custom part" in an
+  inline panel rather than a second Sheet over a half-filled service.
+
+  The isolation suite seeds a marker into a line item's note. No endpoint was
+  added, but `note` is new free text coming back from
+  `GET /api/vehicles/:id/services`, and the broad sweep is the only thing that
+  would notice it leaking.
+- **The log-service date field, fixed twice on a phone** (2026-09-10). The date
+  and odometer overlapped at narrow widths; stacking them fixed that but left a
+  short fixed-length value in a full-bleed control, which reads as a mistake.
+  The date is now capped at `13rem` below `sm` and shares a row again from `sm`
+  up.
+
+  `DATE_INPUT` also gained `block`, and that is a fix rather than tidying: an
+  input is inline-block by default and `INPUT` relies on `w-full` to fill its
+  line, so the moment a max-width made one narrower than its line, the label
+  flowed up beside it and the date grew a side label while every other field
+  kept its label on top. **Caught by looking at the render** -- the
+  measurements said 208px and no overlap, and were no help at all.
 - Every Phase 1 API endpoint
-- 73 tests: tenant isolation, derived logic, and the Access JWT fallback
+- 149 tests: tenant isolation, derived logic, service correction, attachments,
+  the backup round trip, the Access JWT fallback, and the log-service arithmetic
 
 ---
 
@@ -669,13 +829,15 @@ the endpoints exist and are covered by the isolation suite.
 | Add-vehicle baseline prompt | §8.3 | Spec says prompt for baselines after saving; it currently saves and dismisses, which is how all three vehicles ended up with no odometer |
 | Inline odometer edit, usage rate | §8.2 | The Details panel now shows the spec, but the odometer can only be changed from the dashboard (or now by correcting the service that recorded it), and the usage rate with its confidence indicator is not surfaced anywhere |
 | ~~Editing a service after saving~~ | §8.4 | **BUILT 2026-09-05**, migration `0014`. See below |
-| Custom part types in the UI | — | `POST /api/part-types` exists and is isolation-tested, but nothing calls it yet; the 61 seeded types cover the common cases |
+| Custom part types in the UI | — | `POST /api/part-types` exists and is isolation-tested, but nothing calls it yet. **Partly superseded on 2026-09-11**: `PartPicker` now has an inline "+ Add a custom part" panel, so the endpoint is wired up. The 62 seeded types cover the common cases |
 | Per-vehicle service templates | §8.4 | `service_templates.vehicle_id` exists and is always NULL; templates are garage-wide for now, which also means one "Minor service" template is shared between a car and a bike |
 | Changing a vehicle's type | — | Read-only once created, deliberately: switching it would not re-seed or un-seed anything, so a control that appeared to turn a car into a bike while leaving forty car parts behind would be lying. Delete-and-recreate for now |
 | `Sheet`'s close button (both portals) | — | `packages/core/src/client/Sheet.tsx` floats its X in a zero-height row, so every caller must remember `pr-9` to stay clear of it, and must render its own `<h2>` because `title` is only an aria-label. Three of five callers remember; **`OdometerSheet` and `ServiceSheet` are correct only because their headings are short** — a longer vehicle nickname reproduces the collision Coinbox hit on 2026-08-28, and `ServiceSheet`'s heading grew by two characters on 2026-09-05 ("Edit service — " vs "Log service — "), which narrows that margin without closing it. Reviewed and deliberately deferred: the real fix is `Sheet` rendering the title itself, which touches five files and needs judgement in `ServiceSheet` (its saved-state screen) and `PartDetailSheet` (its pill header) |
 
-Deferred by design: Budgets (§8.6) is Phase 2, multi-user is Phase 3, backups
-and reminders are Phase 4.
+Deferred by design: Budgets (§8.6) is Phase 2 and multi-user is Phase 3.
+Reminders are Phase 4. **Backups were Phase 4 and are now built** -- running
+nightly since 2026-08-28; see the entry above and `docs/backups.md`. What is
+still outstanding from that phase is alerting when a run fails.
 
 ### Coinbox
 
@@ -889,7 +1051,7 @@ npx wrangler login        # needs a real terminal; opens a browser
 npm run db:apply:local    # shared local D1, safe to re-run
 npm run dev -w odometry   # http://localhost:5174
 npm run dev -w coinbox    # http://localhost:5173 -- both can run at once
-npm test                  # lint + 103 Odometry + 163 Coinbox tests
+npm test                  # lint + 149 Odometry + 194 Coinbox tests
 ```
 
 This path is verified, not assumed: it was run end to end from a scratch clone
