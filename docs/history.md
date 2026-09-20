@@ -19,7 +19,7 @@ their reasoning survives.
 
 ## Contents
 
-- The schedule is the owner's: a Schedule tab, the maker reference — 2026-09-20, BRANCH
+- The schedule is the owner's: a Schedule tab, the maker reference — 2026-09-20, DEPLOYED
 - Vehicle page: Details | Grant tabs — 2026-09-20
 - Docs split into status and history; loose ends tied — 2026-09-19
 - File viewer: zoom out, and a modal instead of full screen — 2026-09-19, DEPLOYED
@@ -102,7 +102,18 @@ saved the Waja's schedule, saw the maker flag, logged an early oil change and
 got "Early by 3,000 km", adopted 5,000 km and saw the schedule move while an
 ordinary service left it alone; 375 px has no sideways scroll.
 
-**Not deployed.** Branch `worktree-maintenance-schedule`.
+**Deployed** as `e93d4a7`, `fleet-portal` version
+`310b71a5-3158-4bb0-9cd6-5eb1ac59642a`. Migration `0019` ran against production
+first, as the deploy script orders it. Before and after, read-only: 3 vehicles,
+98 intervals, 8 service items (4 carrying an interval from the old behaviour)
+-- unchanged either side, 27 tables where there were 26, the new one empty, and
+`PRAGMA foreign_key_check` clean. Checked live: the Waja's Schedule tab lists
+52 parts, 40 of them tracked, every maker cell empty, and no sideways scroll.
+Coinbox was NOT redeployed -- the revamp touched no code of its own and none of
+`packages/core`, so its Worker still matches `main`.
+
+**Every maker cell in production is empty** until the three manuals are typed
+in; the column is a reference the owner fills, never seeded (see Next, item 7).
 
 ---
 

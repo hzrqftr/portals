@@ -18,22 +18,18 @@ Do not append narrative to this file; that is how it grew to 1,600 lines.
 
 ## Start here
 
-**Everything on `main` is deployed.** One branch is in flight:
-`worktree-maintenance-schedule` -- the schedule revamp (a Schedule tab, the
-maker reference, services no longer rewriting the schedule). It carries
-migration **`0019_maker_intervals`**, not yet applied remotely, so a deploy of
-it runs that migration first (the deploy script's order does this). See
-`docs/history.md`, 2026-09-20.
+**Everything on `main` is deployed.** There is no work in flight and the only
+branch is `main`.
 
 | | |
 |---|---|
-| Last deployed code | `fcb21ff` (vehicle page Details \| Grant tabs). Both Workers carry everything on `main` |
-| `fleet-portal` (Odometry) | version `5ff34dfd-1a2a-44ed-b77f-b55171581690` |
+| Last deployed code | `e93d4a7` (the schedule revamp). Both Workers carry everything on `main` -- Coinbox's code was untouched by it, so it was not redeployed |
+| `fleet-portal` (Odometry) | version `310b71a5-3158-4bb0-9cd6-5eb1ac59642a` |
 | `coinbox` | version `b88aa53b-16b6-40e7-a735-eed32c3fadf4` |
-| Remote migrations | all 18 applied (`0001`-`0018`); nothing pending |
-| Production schema | 26 tables (including `d1_migrations`, excluding `sqlite_%`/`_cf_%`), 6 views, 62 global part types |
-| Production data, 2026-09-19 | 3 vehicles, 7 service records, 3 receipts, 3 grant files, 0 renewals, 12 fuel fills, 4,509 transactions, 9 recurring rules |
-| `npm test` | isolation lint over 173 files, then 193 Coinbox + 179 Odometry tests |
+| Remote migrations | all 19 applied (`0001`-`0019`); nothing pending |
+| Production schema | 27 tables (including `d1_migrations`, excluding `sqlite_%`/`_cf_%`), 6 views, 62 global part types |
+| Production data, 2026-09-20 | 3 vehicles, 7 service records, 98 intervals, 0 maker intervals, 3 receipts, 3 grant files, 0 renewals, 12 fuel fills |
+| `npm test` | isolation lint over 180 files, then 193 Coinbox + 208 Odometry tests |
 
 **That table is a snapshot and this file ages.** These commands confirm the
 whole of it in under a minute. Run them before trusting any figure above:
@@ -80,8 +76,8 @@ in the app's `CLAUDE.md`, the spec section, or `docs/history.md`.
 | Vehicle page: a **Details \| Grant** switcher at the top (Details on open), and **Maintenance \| Schedule \| Service history \| Renewals \| Fuel** below, pinned under the header. Both use `TabBar.tsx` | `routes/VehicleDetail.tsx` |
 | Grant (geran) on each vehicle, on its own tab: chassis/engine no., registration date, colour, plus the grant file. **Owner name, IC and address are never fields** | `GrantCard.tsx`; migration `0018` |
 | Maintenance: tracked parts grouped by category, overdue pinned, search. Status only -- the schedule is edited on the Schedule tab | §8.2; invariants 6-7; migrations `0005`, `0007`, `0009` |
-| Schedule tab: every part that fits, owner's months/km beside the maker's, "longer than the maker" flag, reset to default, track/untrack, parts left over from a fuel change. **Branch, not deployed** | §8.2; invariant 6; migration `0019`; `ScheduleTable.tsx`, `data/schedule.ts` |
-| Log a service: line items, labour as its own cost, per-item note, custom part types, confirmation of which clocks reset. **Branch:** early/late notice per line; the schedule changes only on "Change to ..." | §8.4; migrations `0006`, `0016`, `0017`; `scheduleCheck.ts` |
+| Schedule tab: every part that fits, owner's months/km beside the maker's, "longer than the maker" flag, reset to default, track/untrack, parts left over from a fuel change | §8.2; invariant 6; migration `0019`; `ScheduleTable.tsx`, `data/schedule.ts` |
+| Log a service: line items, labour as its own cost, per-item note, custom part types, confirmation of which clocks reset, early/late notice per line -- the schedule changes only on "Change to ..." | §8.4; migrations `0006`, `0016`, `0017`; `scheduleCheck.ts` |
 | Correct or delete a logged service (odometer reading and cached odometer kept in step) | migration `0014`; `tests/serviceEdit.test.ts` |
 | Renewals tab: road tax and insurance cards (setup prompt when missing), renew = new row, correct words only, delete a mistaken row, history | §4.6, §6.3; invariant 8; `RenewalsPanel.tsx` |
 | Files on service records, renewals and the grant: PDF/JPEG/PNG/WebP/HEIC, type sniffed from bytes, stored in `portals-docs` | migrations `0015`, `0018`; one `AttachmentRepo`, three owners |
@@ -137,10 +133,11 @@ Ranked. The owner decides the order; this is the recommendation.
    deferred.
 6. **Coinbox year chart: ghost columns for future months**, showing what the
    recurring rules already commit. Optional; needs no new table.
-7. **After the schedule revamp ships:** fill the maker columns for the Waja,
-   City and RS150R from the three manuals (owner's Desktop PDFs) -- by hand on
-   the Schedule tab, or a reviewed SQL file; production writes need the
-   owner's go-ahead. Then decide on **Inspect vs Replace**: every manual has
+7. **Fill the maker columns** for the Waja, City and RS150R from the three
+   manuals (owner's Desktop PDFs) -- by hand on the Schedule tab, or a
+   reviewed SQL file; production writes need the owner's go-ahead.
+   `maker_intervals` is live and empty, so every maker cell reads "--" until
+   this is done. Then decide on **Inspect vs Replace**: every manual has
    both, often on different cycles for one part (Waja brake fluid: inspect
    10k, replace 40k), and the app tracks Replace only. Deliberately left out
    of the revamp (owner, 2026-09-20).
