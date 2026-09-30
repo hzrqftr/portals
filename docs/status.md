@@ -18,8 +18,7 @@ Do not append narrative to this file; that is how it grew to 1,600 lines.
 
 ## Start here
 
-**Everything on `main` is deployed.** One step outstanding: the **Family fund
-history import** into production (Next, item 0).
+**Everything on `main` is deployed.** There is no work in flight.
 
 | | |
 |---|---|
@@ -96,7 +95,7 @@ in the app's `CLAUDE.md`, the spec section, or `docs/history.md`.
 | Home dashboard: year chart with running total, month breakdown by category, coming up (next 30 days), staleness | §10 |
 | Fuel consumption card: each vehicle's average L/100km and km/L; opens a drill-down with price per litre, trend chart and every fill | §10.5; money only behind the ledger predicate |
 | Cross-portal links in each header | §7 decision 4 |
-| **Family fund** (deployed 2026-09-30; history not yet imported): pot, contribution grid, spending list, bank check; the owner's share auto-linked to the recurring entry; workbook history imported | §11; migration `0020`; `data/fund.ts`, `routes/Fund.tsx`, `scripts/import-fund.mjs` |
+| **Family fund** (deployed and imported 2026-09-30; pot RM 3,165.41): pot, contribution grid, spending list, bank check; the owner's share auto-linked to the recurring entry; workbook history imported | §11; migration `0020`; `data/fund.ts`, `routes/Fund.tsx`, `scripts/import-fund.mjs` |
 
 ### Both
 
@@ -111,11 +110,6 @@ tree. See the root `CLAUDE.md`.
 
 Ranked. The owner decides the order; this is the recommendation.
 
-0. **Import the Family fund history into production** (owner approves it as its
-   own step; code and `0020` are live): `node scripts/import-fund.mjs fund.csv
-   --bank-check=YYYY-MM-DD:RM --remote --i-mean-it`. Regenerate `fund.csv` with
-   `py -3.12 scripts/fund-xlsx-to-csv.py`. The importer re-checks that no typed
-   "Family fund" row shares a month with a posting.
 1. **Backup failure alerting.** A failed nightly run writes to the log and
    tells nobody. It needs an email provider chosen by the owner (fleet spec
    §12) -- ask before building.
@@ -181,11 +175,12 @@ not a cleanup. The reasoning is in the linked place.
 These are the live ones. Resolved traps are in `docs/history.md`. Permanent
 ones are in the root and app `CLAUDE.md` files.
 
-- **Until the fund is imported in production, the owner's monthly "Family
-  fund" postings are NOT linked to the pot.** The importer's link step picks up
-  every posting made before it runs, so nothing is lost -- but do not add fund
-  members by hand in production first, or the link step will stop on a
-  conflict.
+- **Do not re-run `scripts/import-fund.mjs` against production.** It was run
+  once, 2026-09-30, and the owner has since corrected an imported row (Kdik's
+  September RM 200 became an agreed skip), so its reconciliation would now
+  abort -- loudly, which is the safe direction. From here the app is the only
+  way in. The owner's share now links itself on every posting of the "Family
+  fund" recurring entry.
 - **Two crons, and their order matters.** Coinbox posts recurring entries at
   17:00 UTC; fleet-portal backs up at 18:00 UTC, so the night's posts are in
   that night's dump. A newly deployed cron takes ~15 minutes to start firing.

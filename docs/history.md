@@ -19,7 +19,7 @@ their reasoning survives.
 
 ## Contents
 
-- The Family fund, built and verified locally — 2026-09-30, NOT DEPLOYED
+- The Family fund — 2026-09-30, DEPLOYED AND IMPORTED
 - The schedule is the owner's: a Schedule tab, the maker reference — 2026-09-20, DEPLOYED
 - Vehicle page: Details | Grant tabs — 2026-09-20
 - Docs split into status and history; loose ends tied — 2026-09-19
@@ -40,7 +40,7 @@ their reasoning survives.
 - Snapshot: "Blocked on the owner", as it stood on 2026-09-19
 - Snapshot: "Traps in the current state", as it stood on 2026-09-19
 
-## The Family fund, built and verified locally — 2026-09-30, NOT DEPLOYED
+## The Family fund — 2026-09-30, DEPLOYED AND IMPORTED
 
 The owner's `Family Fund.xlsx` -- a sibling pot, RM 200 a month each -- became
 a Coinbox module on branch `family-fund`. Design and decisions are
@@ -102,6 +102,18 @@ the title down, and a flex row stretches its children to its own height -- the
 button was squashed to its padding. `items-start` restores a 32x32 box; the
 ring is now `focus-visible` only, so keyboard users see it and mouse clicks do
 not leave it behind. Width unchanged, so every caller's `pr-9` still clears it.
+
+**Deployed** as Coinbox `bcfbe4c7` (`main` `bc3734f`); `0020` was the only
+pending migration and added five empty tables. Both portals still 302 to
+Access, `/fund` and `/api/fund` included. **Imported** on the owner's go-ahead:
+every figure reconciled on production exactly as locally, and the link step
+found no typed August "Family fund" row -- the first production confirmation
+of the owner's 28 Aug deletion. The owner's one local correction (Kdik skips
+September: workbook line 150's RM 200 replaced by a RM 0.00 skip) was then
+applied as a single guarded delete-and-insert, the same effect as the Skip
+button. Production then matched the local copy on pot (RM 3,165.41), entry
+count, member totals, the Aug-Sep rows and links, and the bank check (RM 26.65
+ahead -- dividends); foreign key check clean.
 - Snapshot: "Live system" notes, as they stood on 2026-09-19
 - Snapshot: "What works" -- feature notes with their reasoning, up to 2026-09-11
 - Snapshot: "What is not built" gap tables, as they stood on 2026-09-19
