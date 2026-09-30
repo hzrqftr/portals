@@ -26,9 +26,10 @@ Do not append narrative to this file; that is how it grew to 1,600 lines.
 | `fleet-portal` (Odometry) | version `310b71a5-3158-4bb0-9cd6-5eb1ac59642a` |
 | `coinbox` | version `bcfbe4c7-187d-4e77-a6f5-199b5f26deeb` (2026-09-30) |
 | Remote migrations | all 20 applied (`0001`-`0020`); nothing pending |
-| Production schema | 27 tables (including `d1_migrations`, excluding `sqlite_%`/`_cf_%`), 6 views, 62 global part types |
+| Production schema | 32 tables (including `d1_migrations`, excluding `sqlite_%`/`_cf_%`), 6 views, 62 global part types |
 | Production data, 2026-09-20 | 3 vehicles, 7 service records, 98 intervals, 0 maker intervals, 3 receipts, 3 grant files, 0 renewals, 12 fuel fills |
-| `npm test` | isolation lint over 180 files, then 193 Coinbox + 208 Odometry tests |
+| Family fund, 2026-09-30 | 3 members, 150 entries, 1 bank check; pot RM 3,165.41, bank RM 26.65 ahead |
+| `npm test` | isolation lint over 194 files, then 242 Coinbox + 208 Odometry tests |
 
 **That table is a snapshot and this file ages.** These commands confirm the
 whole of it in under a minute. Run them before trusting any figure above:
@@ -215,6 +216,11 @@ cd portals
 npm ci                    # not `npm install` -- the lockfile is committed
 npx wrangler login        # needs a real terminal; opens a browser
 npm run db:apply:local    # shared local D1, safe to re-run
+# Optional -- real data locally, which is how changes are verified before
+# production (root CLAUDE.md, "Working with the owner"). Read-only on prod:
+#   npx wrangler r2 object get portals-backup/fleet/<yesterday>.json --file=b.json --remote
+#   node scripts/restore.mjs b.json        # REPLACES the local D1's contents
+# Keep b.json out of the repo: it is the whole ledger.
 npm run dev -w odometry   # http://localhost:5174
 npm run dev -w coinbox    # http://localhost:5173 -- both can run at once
 npm test                  # lint + both suites

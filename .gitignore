@@ -7,3 +7,14 @@ dist/
 
 # Personal Claude Code settings (permission rules), never committed.
 .claude/settings.local.json
+
+# Owner financial data, used by scripts but NEVER committed. Root-anchored so
+# they cannot catch real project files (package.json, tsconfig.json, ...).
+#   b.json / backup*.json  -- a production backup pulled from R2 (the whole ledger)
+#   *.csv                  -- Sheet/fund imports and scripts/export-csv.mjs output
+#   *.xlsx                 -- the owner's workbooks
+/b.json
+/backup*.json
+/*.csv
+/*.xlsx
+/csv/

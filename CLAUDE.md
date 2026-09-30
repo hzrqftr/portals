@@ -75,6 +75,12 @@ Cloudflare Workers, D1, Drizzle, or Hono.** This changes how you should work:
   behaviour instead.
 - Flag anything that needs a Cloudflare or Google dashboard action, since you
   cannot do those. Give exact click paths.
+- **Local first; production last, and only on the owner's word.** Build and
+  verify against the local D1 -- restored from a nightly backup when real data
+  matters (`node scripts/restore.mjs`) -- and stop to report before anything
+  writes to production: remote migrations, deploys, `--remote` scripts. Each
+  production write is its own go-ahead. Reading production (a backup, a
+  migrations list) is fine.
 
 ## Stack
 
