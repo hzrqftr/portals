@@ -18,16 +18,15 @@ Do not append narrative to this file; that is how it grew to 1,600 lines.
 
 ## Start here
 
-**Everything on `main` is deployed.** Work in flight: the **Family fund**, on
-branch `family-fund`, built and verified locally, **not deployed** -- see the
-first trap below.
+**Everything on `main` is deployed.** One step outstanding: the **Family fund
+history import** into production (Next, item 0).
 
 | | |
 |---|---|
-| Last deployed code | `e93d4a7` (the schedule revamp). Both Workers carry everything on `main` -- Coinbox's code was untouched by it, so it was not redeployed |
+| Last deployed code | `bc3734f` (the Family fund), Coinbox only. Odometry's code is unchanged since `e93d4a7`; the shared-chrome fixes in `packages/core` reach it on its next deploy |
 | `fleet-portal` (Odometry) | version `310b71a5-3158-4bb0-9cd6-5eb1ac59642a` |
-| `coinbox` | version `b88aa53b-16b6-40e7-a735-eed32c3fadf4` |
-| Remote migrations | all 19 applied (`0001`-`0019`); nothing pending |
+| `coinbox` | version `bcfbe4c7-187d-4e77-a6f5-199b5f26deeb` (2026-09-30) |
+| Remote migrations | all 20 applied (`0001`-`0020`); nothing pending |
 | Production schema | 27 tables (including `d1_migrations`, excluding `sqlite_%`/`_cf_%`), 6 views, 62 global part types |
 | Production data, 2026-09-20 | 3 vehicles, 7 service records, 98 intervals, 0 maker intervals, 3 receipts, 3 grant files, 0 renewals, 12 fuel fills |
 | `npm test` | isolation lint over 180 files, then 193 Coinbox + 208 Odometry tests |
@@ -97,7 +96,7 @@ in the app's `CLAUDE.md`, the spec section, or `docs/history.md`.
 | Home dashboard: year chart with running total, month breakdown by category, coming up (next 30 days), staleness | §10 |
 | Fuel consumption card: each vehicle's average L/100km and km/L; opens a drill-down with price per litre, trend chart and every fill | §10.5; money only behind the ledger predicate |
 | Cross-portal links in each header | §7 decision 4 |
-| **Family fund** (branch `family-fund`, not deployed): pot, contribution grid, spending list, bank check; the owner's share auto-linked to the recurring entry; workbook history imported | §11; migration `0020`; `data/fund.ts`, `routes/Fund.tsx`, `scripts/import-fund.mjs` |
+| **Family fund** (deployed 2026-09-30; history not yet imported): pot, contribution grid, spending list, bank check; the owner's share auto-linked to the recurring entry; workbook history imported | §11; migration `0020`; `data/fund.ts`, `routes/Fund.tsx`, `scripts/import-fund.mjs` |
 
 ### Both
 
@@ -112,9 +111,8 @@ tree. See the root `CLAUDE.md`.
 
 Ranked. The owner decides the order; this is the recommendation.
 
-0. **Ship the Family fund** (owner says "deploy"): merge `family-fund`,
-   `npm run deploy -w coinbox` (applies `0020` remotely), row counts before and
-   after, then -- separately approved -- `node scripts/import-fund.mjs fund.csv
+0. **Import the Family fund history into production** (owner approves it as its
+   own step; code and `0020` are live): `node scripts/import-fund.mjs fund.csv
    --bank-check=YYYY-MM-DD:RM --remote --i-mean-it`. Regenerate `fund.csv` with
    `py -3.12 scripts/fund-xlsx-to-csv.py`. The importer re-checks that no typed
    "Family fund" row shares a month with a posting.
@@ -183,11 +181,6 @@ not a cleanup. The reasoning is in the linked place.
 These are the live ones. Resolved traps are in `docs/history.md`. Permanent
 ones are in the root and app `CLAUDE.md` files.
 
-- **Migration `0020` is applied LOCALLY ONLY** (2026-09-30), on branch
-  `family-fund`. Deploying any Coinbox code from that branch without
-  `npm run deploy` (which migrates first) is a live 500 on `/api/fund` -- and,
-  worse, on the nightly recurring run, which now reads `fund_members`.
-  `npx wrangler d1 migrations list fleet --remote -c wrangler.jsonc` is the check.
 - **Until the fund is imported in production, the owner's monthly "Family
   fund" postings are NOT linked to the pot.** The importer's link step picks up
   every posting made before it runs, so nothing is lost -- but do not add fund
