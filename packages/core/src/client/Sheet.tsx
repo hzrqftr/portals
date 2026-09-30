@@ -88,12 +88,20 @@ export function Sheet({
           sticky, not absolute: these panels scroll, and an absolute button
           scrolls away with the content it is meant to dismiss. Zero height
           keeps it out of the flow so it does not push the title down.
+
+          items-start is load-bearing: a flex row stretches its children to its
+          own height by default, and this row's height is ZERO -- so the button
+          was squashed to its padding while the icon overflowed it, and its
+          focus ring drew a flat pill across the top of the X.
+
+          focus-visible, not focus: the ring is for keyboard users finding the
+          control, not a mark left behind by every mouse click.
         */}
-        <div className="sticky top-0 z-10 flex h-0 justify-end">
+        <div className="sticky top-0 z-10 flex h-0 items-start justify-end">
           <button
             onClick={onClose}
             aria-label="Close"
-            className="-mr-1 -mt-1 rounded-lg p-1.5 text-ink-faint transition hover:bg-inset hover:text-ink focus:outline-none focus:ring-2 focus:ring-ink-muted"
+            className="-mr-1 -mt-1 shrink-0 rounded-lg p-1.5 text-ink-faint transition hover:bg-inset hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-ink-muted"
           >
             <svg
               viewBox="0 0 20 20"

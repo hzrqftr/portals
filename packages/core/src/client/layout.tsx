@@ -150,7 +150,16 @@ export function AppHeader({
           </>
         )}
         {nav.length > 0 && (
-          <nav aria-label="Sections" className="ml-2 flex min-w-0 shrink items-center gap-0.5">
+          <nav
+            aria-label="Sections"
+            // overflow-x-auto: the links are shrink-0, so once they outgrow the
+            // bar they must go SOMEWHERE. Without this they painted over the
+            // portal link beside them -- Coinbox's fourth section (Fund) did
+            // exactly that at 375px. Now the strip scrolls sideways within its
+            // own space instead; wider screens never reach this.
+            className="ml-2 flex min-w-0 shrink items-center gap-0.5 overflow-x-auto"
+            style={{ scrollbarWidth: "none" }}
+          >
             {nav.map((n) => (
               <NavLink
                 key={n.href}
@@ -170,7 +179,8 @@ export function AppHeader({
             ))}
           </nav>
         )}
-        <div className="ml-auto flex items-center gap-4">
+        {/* shrink-0: the nav gives way first; the way to the other portal stays whole. */}
+        <div className="ml-auto flex shrink-0 items-center gap-4">
           {portals.map((p) => (
             <a key={p.href} href={p.href} className="text-sm text-ink-muted hover:text-ink">
               {p.name}

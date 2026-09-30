@@ -2,6 +2,7 @@ import { asc, desc, eq, lte, sql } from "drizzle-orm";
 import { NotFoundError, ValidationError } from "@portals/core/worker";
 import { nowIso, todayIn, type CalendarDate } from "@portals/core";
 import { LedgerScopedRepo } from "./base";
+import { linkedContribution } from "./fund";
 import { recurringRules, recurringPostings, categories } from "../schema";
 import { dueOccurrences, type Schedule } from "@shared/recurrence";
 import type { RecurringCreate, RecurringPatch } from "@shared/zod";
@@ -258,6 +259,19 @@ export class RecurringRepo extends LedgerScopedRepo {
     const txnId = crypto.randomUUID();
     const at = nowIso();
 
+    // When this rule pays a Family fund member's share, the pot records the
+    // same payment in the SAME batch -- typed once, never out of step, and
+    // rolled back with the transaction if the claim below collides. Null for
+    // every rule that pays nobody's share. See data/fund.ts.
+    const contribution = await linkedContribution(
+      this.raw,
+      this.ledgerId,
+      rule,
+      occurredOn,
+      txnId,
+      at,
+    );
+
     try {
       // The money, then the claim, in ONE atomic batch.
       //
@@ -301,6 +315,9 @@ export class RecurringRepo extends LedgerScopedRepo {
             at,
             at,
           ),
+        // After the transaction it references, for the same foreign-key
+        // reason the claim is.
+        ...(contribution ? [contribution] : []),
         this.raw
           .prepare(
             `INSERT INTO recurring_postings (rule_id, occurred_on, transaction_id, posted_at)

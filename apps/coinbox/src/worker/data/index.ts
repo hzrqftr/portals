@@ -5,6 +5,7 @@ import { CategoryRepo, VehicleRepo } from "./categories";
 import { RecurringRepo } from "./recurring";
 import { DashboardRepo } from "./dashboard";
 import { VehicleFuelRepo } from "./vehicleFuel";
+import { FundRepo } from "./fund";
 
 /**
  * Repository factory. Route handlers receive these already scoped and never
@@ -22,6 +23,8 @@ export interface Repos {
   recurring: RecurringRepo;
   dashboard: DashboardRepo;
   vehicleFuel: VehicleFuelRepo;
+  /** The Family fund: a separate book, owned by this ledger. */
+  fund: FundRepo;
 }
 
 export function makeRepos(env: Env, scope: Scope): Repos {
@@ -33,5 +36,6 @@ export function makeRepos(env: Env, scope: Scope): Repos {
     recurring: new RecurringRepo(db, raw, scope),
     dashboard: new DashboardRepo(db, raw, scope),
     vehicleFuel: new VehicleFuelRepo(db, raw, scope),
+    fund: new FundRepo(db, raw, scope),
   };
 }

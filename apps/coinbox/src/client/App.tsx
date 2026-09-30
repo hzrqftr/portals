@@ -2,9 +2,10 @@ import { Routes, Route } from "react-router-dom";
 import Home from "./routes/Home";
 import Ledger from "./routes/Ledger";
 import Recurring from "./routes/Recurring";
+import Fund from "./routes/Fund";
 
 /**
- * Three top-level sections. Deep links work on a hard refresh because
+ * Four top-level sections. Deep links work on a hard refresh because
  * wrangler.jsonc sets `not_found_handling: "single-page-application"`.
  */
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
       <Route path="/" element={<Home />} />
       <Route path="/ledger" element={<Ledger />} />
       <Route path="/recurring" element={<Recurring />} />
+      <Route path="/fund" element={<Fund />} />
     </Routes>
   );
 }

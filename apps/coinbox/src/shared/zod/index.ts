@@ -173,3 +173,122 @@ export type RecurringCreate = z.infer<typeof recurringCreate>;
 export const recurringPatch = recurringCreate.partial().strict();
 
 export type RecurringPatch = z.infer<typeof recurringPatch>;
+
+// ------------------------------------------------------------ family fund
+//
+// docs/coinbox-spec.md §11. A separate book from the ledger above: nothing
+// here produces a transaction.
+
+/** A calendar month, 'YYYY-MM'. What a contribution pays FOR. */
+export const yearMonth = z
+  .string()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Expected a month as YYYY-MM");
+
+/**
+ * Recording money into or out of the pot.
+ *
+ * With `memberId` and `forMonth` it is a CONTRIBUTION; without both, anything
+ * else (spending, a refunded deposit). The two travel together, and the
+ * database enforces the same pairing -- this refinement only makes the answer
+ * a readable 422 instead of a constraint error.
+ *
+ * `amountSen` 0 on a contribution is an AGREED SKIP, not a slip: the month is
+ * accounted for rather than missing. Blank-versus-zero is the form's job, as
+ * it is for the ledger's RM 0.00 water bills.
+ *
+ * `item` is optional only for contributions, where the server writes
+ * "From <member>". `transactionId` is absent, and `.strict()` makes sending it
+ * a 422: only the recurring run links a contribution to the personal ledger,
+ * so a client able to set it could claim a ledger entry as a contribution.
+ */
+export const fundEntryCreate = z
+  .object({
+    occurredOn: calendarDate,
+    item: z.string().trim().min(1).max(120).optional(),
+    description: z.string().trim().max(500).nullish(),
+    amountSen: sen,
+    direction,
+    memberId: z.string().min(1).nullish(),
+    forMonth: yearMonth.nullish(),
+    /**
+     * Replace this member's hand-entered contributions for `forMonth` rather
+     * than adding to them. A month holds one STATE -- paid or skipped -- so
+     * marking a paid month skipped (or paying a skipped one) must not leave both
+     * rows standing. Delete and insert happen in one batch on the server.
+     * Refused while the month holds a contribution posted from the ledger.
+     */
+    replaceMonth: z.boolean().optional(),
+  })
+  .strict();
+
+export const fundEntryCreateBody = fundEntryCreate
+  .refine((v) => !v.replaceMonth || !!v.memberId, {
+    message: "Only a contribution replaces a month",
+    path: ["replaceMonth"],
+  })
+  .refine((v) => !!v.memberId === !!v.forMonth, {
+    message: "A contribution needs both a member and the month it pays for",
+    path: ["forMonth"],
+  })
+  .refine((v) => !v.memberId || v.direction === "in", {
+    message: "A contribution is money into the pot",
+    path: ["direction"],
+  })
+  .refine((v) => !!v.memberId || !!v.item, {
+    message: "Say what the money was for",
+    path: ["item"],
+  });
+
+export type FundEntryCreate = z.infer<typeof fundEntryCreate>;
+
+/**
+ * Editing an entry. `memberId` is absent -- moving a payment to another
+ * sibling is a delete and a re-entry, not a quiet reassignment -- and so is
+ * `transactionId`, for the reason above.
+ */
+export const fundEntryPatch = z
+  .object({
+    occurredOn: calendarDate,
+    item: z.string().trim().min(1).max(120),
+    description: z.string().trim().max(500).nullish(),
+    amountSen: sen,
+    direction,
+    forMonth: yearMonth,
+  })
+  .partial()
+  .strict();
+
+export type FundEntryPatch = z.infer<typeof fundEntryPatch>;
+
+/**
+ * A member of the fund: a name, not a user. `defaultSen` only pre-fills the
+ * entry sheet -- nothing is computed from it, so changing an agreed amount
+ * never rewrites a past month.
+ */
+export const fundMemberCreate = z
+  .object({
+    name: z.string().trim().min(1).max(60),
+    defaultSen: sen,
+    /** The personal-ledger rule that pays this member's share, if any. */
+    recurringRuleId: z.string().min(1).nullish(),
+  })
+  .strict();
+
+export type FundMemberCreate = z.infer<typeof fundMemberCreate>;
+
+export const fundMemberPatch = fundMemberCreate
+  .extend({ isActive: z.boolean() })
+  .partial()
+  .strict();
+
+export type FundMemberPatch = z.infer<typeof fundMemberPatch>;
+
+/** What the bank says, typed in by the owner. Compared, never applied. */
+export const fundCheckCreate = z
+  .object({
+    checkedOn: calendarDate,
+    balanceSen: sen,
+  })
+  .strict();
+
+export type FundCheckCreate = z.infer<typeof fundCheckCreate>;

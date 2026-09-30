@@ -8,6 +8,11 @@ import {
   recurringCreate,
   recurringPatch,
   direction,
+  fundEntryCreateBody,
+  fundEntryPatch,
+  fundMemberCreate,
+  fundMemberPatch,
+  fundCheckCreate,
 } from "@shared/zod";
 
 /**
@@ -218,7 +223,82 @@ export function registerRoutes(app: Hono<AppContext>): void {
     await c.get("repos").recurring.remove(c.req.param("id"));
     return c.body(null, 204);
   });
+
+  // --- the Family fund (docs/coinbox-spec.md §11) ---
+  //
+  // A separate book owned by this ledger. Nothing below writes a transaction,
+  // and nothing here is read by the dashboard: the pot's spending is family
+  // money, and the owner's own share already left the ledger as a recurring
+  // entry.
+
+  /**
+   * The pot, its members and the latest bank check. `today` comes from the
+   * caller's timezone for the same reason as the dashboard's: "this month"
+   * must not flip at 08:00 local.
+   */
+  app.get("/api/fund", async (c) => {
+    const scope = c.get("scope");
+    return c.json(await c.get("repos").fund.summary(todayIn(scope.timezone)));
+  });
+
+  /** One year of contributions, for the grid. Defaults to the caller's year. */
+  app.get("/api/fund/grid", async (c) => {
+    const scope = c.get("scope");
+    const { year } = fundGridQuery.parse(
+      Object.fromEntries(new URL(c.req.url).searchParams.entries()),
+    );
+    const thisYear = Number(todayIn(scope.timezone).slice(0, 4));
+    return c.json(await c.get("repos").fund.grid(year ?? thisYear));
+  });
+
+  /** Everything that is not a contribution: spending, refunds, the opening balance. */
+  app.get("/api/fund/entries", async (c) => c.json(await c.get("repos").fund.entries()));
+
+  app.get("/api/fund/entries/:id", async (c) =>
+    c.json(await c.get("repos").fund.getEntry(c.req.param("id"))),
+  );
+
+  app.post("/api/fund/entries", async (c) => {
+    const input = fundEntryCreateBody.parse(await c.req.json());
+    return c.json(await c.get("repos").fund.createEntry(input), 201);
+  });
+
+  /**
+   * A contribution posted by a recurring entry is read-only here (422): it is
+   * the same payment as a ledger row, so it is edited or deleted in one place,
+   * and the CASCADE on fund_entries.transaction_id carries the delete across.
+   */
+  app.patch("/api/fund/entries/:id", async (c) => {
+    const patch = fundEntryPatch.parse(await c.req.json());
+    return c.json(await c.get("repos").fund.updateEntry(c.req.param("id"), patch));
+  });
+
+  app.delete("/api/fund/entries/:id", async (c) => {
+    await c.get("repos").fund.removeEntry(c.req.param("id"));
+    return c.body(null, 204);
+  });
+
+  app.post("/api/fund/members", async (c) => {
+    const input = fundMemberCreate.parse(await c.req.json());
+    return c.json(await c.get("repos").fund.createMember(input), 201);
+  });
+
+  /** No DELETE: a member who leaves is `isActive: false`, and their money stays in the pot. */
+  app.patch("/api/fund/members/:id", async (c) => {
+    const patch = fundMemberPatch.parse(await c.req.json());
+    return c.json(await c.get("repos").fund.updateMember(c.req.param("id"), patch));
+  });
+
+  /** What the bank says. Compared with the pot, never applied to it. */
+  app.post("/api/fund/checks", async (c) => {
+    const input = fundCheckCreate.parse(await c.req.json());
+    return c.json(await c.get("repos").fund.createCheck(input), 201);
+  });
 }
+
+const fundGridQuery = z.object({
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+});
 
 /**
  * NOTE: there is no assertCanWrite() here, unlike Odometry.

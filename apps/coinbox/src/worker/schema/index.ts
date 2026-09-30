@@ -156,3 +156,65 @@ export const importRows = sqliteTable("import_rows", {
   sourceLine: integer("source_line").notNull(),
   transactionId: text("transaction_id"),
 });
+
+// ------------------------------------------------------------ family fund
+//
+// Migration 0020, docs/coinbox-spec.md §11. A SEPARATE BOOK: nothing here is
+// a transaction, and no view reads these tables, so the pot's spending can
+// never reach the personal ledger's totals.
+//
+// Only `funds` carries a ledger id. The child tables reach the tenant through
+// fund_id, and FundRepo resolves the fund under the ledger predicate before
+// touching any of them -- the way recurring_postings reaches it through rule_id.
+
+export const funds = sqliteTable("funds", {
+  id: text("id").primaryKey(),
+  ledgerId: text("ledger_id").notNull(),
+  name: text("name").notNull().default("Family fund"),
+  createdAt: text("created_at").notNull(),
+});
+
+/** Names, not users: the siblings never sign in. */
+export const fundMembers = sqliteTable("fund_members", {
+  id: text("id").primaryKey(),
+  fundId: text("fund_id").notNull(),
+  name: text("name").notNull(),
+  /** Pre-fills the entry sheet. Never used to compute anything owed. */
+  defaultSen: integer("default_sen").notNull().default(0),
+  recurringRuleId: text("recurring_rule_id"),
+  isActive: integer("is_active").notNull().default(1),
+  createdAt: text("created_at").notNull(),
+});
+
+/**
+ * A row with a member is a contribution; without one, anything else. No `kind`
+ * column -- it would restate member_id and be free to disagree with it.
+ *
+ * `signed_sen` is absent for the reason spelled out on `transactions`: Drizzle
+ * names every declared column on insert, and a generated one rejects that.
+ */
+export const fundEntries = sqliteTable("fund_entries", {
+  id: text("id").primaryKey(),
+  fundId: text("fund_id").notNull(),
+  occurredOn: text("occurred_on").notNull(),
+  item: text("item").notNull(),
+  description: text("description"),
+  amountSen: integer("amount_sen").notNull(),
+  direction: text("direction").notNull().$type<"in" | "out">(),
+  memberId: text("member_id"),
+  /** 'YYYY-MM' the contribution pays for -- not always the month it was paid in. */
+  forMonth: text("for_month"),
+  /** Set when a recurring rule in the personal ledger posted this row. */
+  transactionId: text("transaction_id"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+/** Compared with the recorded pot, never applied to it. */
+export const fundBalanceChecks = sqliteTable("fund_balance_checks", {
+  id: text("id").primaryKey(),
+  fundId: text("fund_id").notNull(),
+  checkedOn: text("checked_on").notNull(),
+  balanceSen: integer("balance_sen").notNull(),
+  createdAt: text("created_at").notNull(),
+});

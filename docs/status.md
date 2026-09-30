@@ -8,7 +8,7 @@ The dated log of how it got here -- every build, finding and decision with its
 reasoning -- is **`docs/history.md`**. Search it before changing something
 whose *why* is not obvious.
 
-**Last updated:** 2026-09-20.
+**Last updated:** 2026-09-30.
 
 **Keep this file current, and keep it short.** When a change lands, update the
 section it affects here and add a dated entry to the top of `docs/history.md`.
@@ -18,8 +18,9 @@ Do not append narrative to this file; that is how it grew to 1,600 lines.
 
 ## Start here
 
-**Everything on `main` is deployed.** There is no work in flight and the only
-branch is `main`.
+**Everything on `main` is deployed.** Work in flight: the **Family fund**, on
+branch `family-fund`, built and verified locally, **not deployed** -- see the
+first trap below.
 
 | | |
 |---|---|
@@ -96,6 +97,7 @@ in the app's `CLAUDE.md`, the spec section, or `docs/history.md`.
 | Home dashboard: year chart with running total, month breakdown by category, coming up (next 30 days), staleness | §10 |
 | Fuel consumption card: each vehicle's average L/100km and km/L; opens a drill-down with price per litre, trend chart and every fill | §10.5; money only behind the ledger predicate |
 | Cross-portal links in each header | §7 decision 4 |
+| **Family fund** (branch `family-fund`, not deployed): pot, contribution grid, spending list, bank check; the owner's share auto-linked to the recurring entry; workbook history imported | §11; migration `0020`; `data/fund.ts`, `routes/Fund.tsx`, `scripts/import-fund.mjs` |
 
 ### Both
 
@@ -110,6 +112,12 @@ tree. See the root `CLAUDE.md`.
 
 Ranked. The owner decides the order; this is the recommendation.
 
+0. **Ship the Family fund** (owner says "deploy"): merge `family-fund`,
+   `npm run deploy -w coinbox` (applies `0020` remotely), row counts before and
+   after, then -- separately approved -- `node scripts/import-fund.mjs fund.csv
+   --bank-check=YYYY-MM-DD:RM --remote --i-mean-it`. Regenerate `fund.csv` with
+   `py -3.12 scripts/fund-xlsx-to-csv.py`. The importer re-checks that no typed
+   "Family fund" row shares a month with a posting.
 1. **Backup failure alerting.** A failed nightly run writes to the log and
    tells nobody. It needs an email provider chosen by the owner (fleet spec
    §12) -- ask before building.
@@ -133,7 +141,10 @@ Ranked. The owner decides the order; this is the recommendation.
    deferred.
 6. **Coinbox year chart: ghost columns for future months**, showing what the
    recurring rules already commit. Optional; needs no new table.
-7. **Fill the maker columns** for the Waja, City and RS150R from the three
+7. **Instalment plans for the Coinbox ledger** (coinbox spec §11.6). Pay-later
+   series are typed and numbered by hand every month -- 8+ in the ledger, and the
+   fund's "2/3" appears twice. Deferred by the owner, 2026-09-30.
+8. **Fill the maker columns** for the Waja, City and RS150R from the three
    manuals (owner's Desktop PDFs) -- by hand on the Schedule tab, or a
    reviewed SQL file; production writes need the owner's go-ahead.
    `maker_intervals` is live and empty, so every maker cell reads "--" until
@@ -172,6 +183,16 @@ not a cleanup. The reasoning is in the linked place.
 These are the live ones. Resolved traps are in `docs/history.md`. Permanent
 ones are in the root and app `CLAUDE.md` files.
 
+- **Migration `0020` is applied LOCALLY ONLY** (2026-09-30), on branch
+  `family-fund`. Deploying any Coinbox code from that branch without
+  `npm run deploy` (which migrates first) is a live 500 on `/api/fund` -- and,
+  worse, on the nightly recurring run, which now reads `fund_members`.
+  `npx wrangler d1 migrations list fleet --remote -c wrangler.jsonc` is the check.
+- **Until the fund is imported in production, the owner's monthly "Family
+  fund" postings are NOT linked to the pot.** The importer's link step picks up
+  every posting made before it runs, so nothing is lost -- but do not add fund
+  members by hand in production first, or the link step will stop on a
+  conflict.
 - **Two crons, and their order matters.** Coinbox posts recurring entries at
   17:00 UTC; fleet-portal backs up at 18:00 UTC, so the night's posts are in
   that night's dump. A newly deployed cron takes ~15 minutes to start firing.

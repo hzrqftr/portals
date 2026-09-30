@@ -19,6 +19,7 @@ their reasoning survives.
 
 ## Contents
 
+- The Family fund, built and verified locally — 2026-09-30, NOT DEPLOYED
 - The schedule is the owner's: a Schedule tab, the maker reference — 2026-09-20, DEPLOYED
 - Vehicle page: Details | Grant tabs — 2026-09-20
 - Docs split into status and history; loose ends tied — 2026-09-19
@@ -38,6 +39,69 @@ their reasoning survives.
 - Snapshot: "What is deliberately NOT built", as it stood on 2026-09-19
 - Snapshot: "Blocked on the owner", as it stood on 2026-09-19
 - Snapshot: "Traps in the current state", as it stood on 2026-09-19
+
+## The Family fund, built and verified locally — 2026-09-30, NOT DEPLOYED
+
+The owner's `Family Fund.xlsx` -- a sibling pot, RM 200 a month each -- became
+a Coinbox module on branch `family-fund`. Design and decisions are
+`docs/coinbox-spec.md` §11; this is how it went.
+
+**Planned against the file and against production, not memory.** The workbook
+was read cell by cell (three blocks: a log, SUMIF totals, a hand-ticked grid
+that disagreed with the log in September 2026). A production backup
+(`fleet/2026-09-29.json`) then settled three things: fund spending was never in
+the personal ledger (so a separate book), August 2026 was paid twice in the
+ledger (typed 28 Aug and posted 31 Aug; the owner deleted the typed one), and
+the real account held RM 3,192.06 -- RM 26.65 above the workbook, which is
+dividends and is deliberately not modelled.
+
+**The owner simplified it twice.** A first design with "occasions" (grouped
+spending) and instalment plans was cut to a grid and a flat list; instalment
+plans moved to the ledger's backlog (spec §11.6). Contributions were then
+confirmed NOT fixed -- Kdik may skip months, amounts may change -- which
+removed every "expected" and "owed" figure and made an agreed skip a RM 0.00
+row.
+
+**Local first, by instruction.** Production was only read. The backup was
+restored into the local D1 (9,324 rows, FK check clean), the owner's 28 Aug
+deletion mirrored in that copy only, `0020` applied locally, and the importer
+run there: every figure reconciled on the first run -- 149 rows, RM 20,480.00
+in, RM 17,314.59 out, RM 3,165.41, Ayiq/Kdik/Kyon RM 6,400/6,600/6,600 -- then
+the link step attached August to the 31 Aug posting and created September from
+the 30 Sep one: RM 3,365.41, and the bank check RM 173.35 short. A second run
+inserted nothing. Home dashboard figures for June-September matched the
+backup to the sen and row count.
+
+**Every guard was seen to fail.** Seven breaks, each restored: the fund
+resolved without the ledger predicate (the stranger sweep and the new garage
+co-member test both failed); an entry read without the fund filter; a rule id
+accepted from another ledger; the bank check compared with today rather than
+its date; the contribution dropped from the recurring batch (5 failures); and
+the contribution written AFTER the batch instead of inside it -- which only the
+trigger-forced rollback test caught, which is why that test exists.
+
+**Found in the browser, not by a test:** at 375px the fourth nav link painted
+over the "Odometry" link. The shared header's nav strip now scrolls within its
+own space (`packages/core/src/client/layout.tsx`); Odometry passes no `nav` and
+is unaffected. On a phone, "Fund" is a short swipe along that strip.
+
+Tests: Coinbox 193 -> 230 (fund, fund-recurring, fund-grid-logic, plus three
+isolation cases), Odometry 208 unchanged, lint over 194 files.
+
+**Then the owner tested it and found Skip stacking** a RM 0.00 row on top of a
+RM 200 payment, and a second skip on the first. A month now holds one state:
+skip replaces a hand-entered payment (second tap, naming the amount), a payment
+replaces a skip, and skip is not offered on a skipped month. Server-side as
+`replaceMonth`, one batch; refused over a ledger-posted contribution. Both
+guards -- the member filter on the delete, and the ledger-link refusal -- were
+broken on purpose and failed their tests. Coinbox 230 -> 242.
+
+**The shared Sheet close button's outline** (both portals) drew a flat pill
+across the top of the X on click. Its row is zero-height so it does not push
+the title down, and a flex row stretches its children to its own height -- the
+button was squashed to its padding. `items-start` restores a 32x32 box; the
+ring is now `focus-visible` only, so keyboard users see it and mouse clicks do
+not leave it behind. Width unchanged, so every caller's `pr-9` still clears it.
 - Snapshot: "Live system" notes, as they stood on 2026-09-19
 - Snapshot: "What works" -- feature notes with their reasoning, up to 2026-09-11
 - Snapshot: "What is not built" gap tables, as they stood on 2026-09-19

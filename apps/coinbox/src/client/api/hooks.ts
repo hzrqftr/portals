@@ -245,6 +245,8 @@ export function usePatchRecurring() {
       api<RecurringRule>(`/recurring/${id}`, { method: "PATCH", json: patch }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["recurring"] });
+      // Pausing a rule changes whether its member's month reads "automatic".
+      qc.invalidateQueries({ queryKey: ["fund"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
@@ -255,6 +257,9 @@ export function useDeleteRecurring() {
   return useMutation({
     mutationFn: (id: string) => api<void>(`/recurring/${id}`, { method: "DELETE" }),
     onSuccess: () => {
+      // A member linked to this rule loses the link (SET NULL), and the grid
+      // stops showing their month as automatic.
+      qc.invalidateQueries({ queryKey: ["fund"] });
       qc.invalidateQueries({ queryKey: ["recurring"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
@@ -270,6 +275,9 @@ export function useDeleteTransaction() {
   return useMutation({
     mutationFn: (id: string) => api<void>(`/transactions/${id}`, { method: "DELETE" }),
     onSuccess: () => {
+      // A recurring "Family fund" entry is also a contribution in the pot, and
+      // the database removes that copy with it (ON DELETE CASCADE).
+      qc.invalidateQueries({ queryKey: ["fund"] });
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["summary"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -422,4 +430,144 @@ export function useVehicleFuel(vehicleId: string | null) {
     queryFn: () => api<VehicleFuel>(`/vehicles/${vehicleId}/fuel`),
     enabled: vehicleId !== null,
   });
+}
+
+// ------------------------------------------------------------ family fund
+//
+// docs/coinbox-spec.md §11. Every key starts with "fund", so one invalidation
+// of ["fund"] refreshes the tiles, the grid and the list together -- they are
+// three views of one pot and must never disagree on screen.
+
+export interface FundMember {
+  id: string;
+  name: string;
+  defaultSen: number;
+  isActive: boolean;
+  totalSen: number;
+  /** The personal-ledger recurring entry paying this share, if it still exists. */
+  rule: { id: string; item: string | null; dayOfMonth: number; isActive: boolean } | null;
+}
+
+export interface FundSummary {
+  today: string;
+  month: string;
+  firstMonth: string | null;
+  /** RECORDED money: contributions and spending, not bank dividends. */
+  balanceSen: number;
+  members: FundMember[];
+  latestCheck: {
+    checkedOn: string;
+    balanceSen: number;
+    recordedSen: number;
+    /** Bank minus recorded. Negative is the case the owner watches for. */
+    gapSen: number;
+  } | null;
+}
+
+export interface FundContribution {
+  id: string;
+  memberId: string;
+  forMonth: string;
+  occurredOn: string;
+  item: string;
+  description: string | null;
+  amountSen: number;
+  /** Set when a recurring entry posted it; then it is read-only here. */
+  transactionId: string | null;
+}
+
+export interface FundGrid {
+  year: number;
+  cells: { memberId: string; forMonth: string; paidSen: number; entries: number }[];
+  contributions: FundContribution[];
+}
+
+export interface FundEntry {
+  id: string;
+  occurredOn: string;
+  item: string;
+  description: string | null;
+  amountSen: number;
+  direction: "in" | "out";
+}
+
+export interface FundEntryDraft {
+  occurredOn: string;
+  item?: string;
+  description?: string | null;
+  amountSen: number;
+  direction: "in" | "out";
+  memberId?: string | null;
+  forMonth?: string | null;
+  /** Replace the member's hand-entered rows for that month. See fundEntryCreate. */
+  replaceMonth?: boolean;
+}
+
+export function useFund() {
+  return useQuery({ queryKey: ["fund"], queryFn: () => api<FundSummary>("/fund") });
+}
+
+export function useFundGrid(year: number | null) {
+  return useQuery({
+    queryKey: ["fund", "grid", year],
+    queryFn: () => api<FundGrid>(`/fund/grid?year=${year}`),
+    enabled: year !== null,
+  });
+}
+
+export function useFundEntries() {
+  return useQuery({ queryKey: ["fund", "entries"], queryFn: () => api<FundEntry[]>("/fund/entries") });
+}
+
+/**
+ * Every fund write refreshes the whole pot. Not optimistic, like every other
+ * money write in this app: an amount must not appear before the server agrees.
+ */
+function useFundMutation<TArgs>(fn: (args: TArgs) => Promise<unknown>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["fund"] }),
+  });
+}
+
+export function useCreateFundEntry() {
+  return useFundMutation((draft: FundEntryDraft) =>
+    api<unknown>("/fund/entries", { method: "POST", json: draft }),
+  );
+}
+
+export function usePatchFundEntry() {
+  return useFundMutation(({ id, patch }: { id: string; patch: Partial<FundEntryDraft> }) =>
+    api<unknown>(`/fund/entries/${id}`, { method: "PATCH", json: patch }),
+  );
+}
+
+export function useDeleteFundEntry() {
+  return useFundMutation((id: string) => api<void>(`/fund/entries/${id}`, { method: "DELETE" }));
+}
+
+export interface FundMemberDraft {
+  name?: string;
+  defaultSen?: number;
+  recurringRuleId?: string | null;
+  isActive?: boolean;
+}
+
+export function useCreateFundMember() {
+  return useFundMutation((draft: FundMemberDraft) =>
+    api<unknown>("/fund/members", { method: "POST", json: draft }),
+  );
+}
+
+export function usePatchFundMember() {
+  return useFundMutation(({ id, patch }: { id: string; patch: FundMemberDraft }) =>
+    api<unknown>(`/fund/members/${id}`, { method: "PATCH", json: patch }),
+  );
+}
+
+export function useCreateFundCheck() {
+  return useFundMutation((draft: { checkedOn: string; balanceSen: number }) =>
+    api<unknown>("/fund/checks", { method: "POST", json: draft }),
+  );
 }

@@ -82,6 +82,14 @@ export async function resetDb(): Promise<void> {
     // Child of BOTH transactions and odometer_readings, and a fill with a
     // null transaction_id cascades from neither. It goes first.
     "fuel_fills",
+    // The Family fund (0020). fund_entries references transactions AND
+    // fund_members, and fund_members references recurring_rules, so all of it
+    // goes before any of those -- children first within the fund too.
+    "fund_import_rows",
+    "fund_balance_checks",
+    "fund_entries",
+    "fund_members",
+    "funds",
     // Children before parents: transactions and the import tables reference
     // ledgers, so deleting ledgers first fails on foreign keys.
     //

@@ -38,6 +38,9 @@ const NAV = [
   { label: "Home", href: "/" },
   { label: "Ledger", href: "/ledger" },
   { label: "Recurring", href: "/recurring" },
+  // "Fund", not "Family fund": four links share a 375px bar with the wordmark.
+  // The page itself is titled in full.
+  { label: "Fund", href: "/fund" },
 ];
 
 export function AppHeader({ crumb }: { crumb?: string }) {

@@ -1,7 +1,7 @@
 # Coinbox — Technical Specification
 
 **Version:** 0.2
-**Status:** Live and in daily use. 4,505 transactions as of 2026-09-19 (a count, not a constant -- it grows weekly); recurring entries built 2026-08-29; Home dashboard built and deployed 2026-08-31 (§10)
+**Status:** Live and in daily use. 4,505 transactions as of 2026-09-19 (a count, not a constant -- it grows weekly); recurring entries built 2026-08-29; Home dashboard built and deployed 2026-08-31 (§10); Family fund built 2026-09-30, not yet deployed (§11)
 **Target:** Replace a Google Form + Sheet expense log
 
 ---
@@ -643,3 +643,108 @@ Deliberately absent from it: any colouring of points as good or bad. Higher
 consumption is worse, but at three segments a point above the mean is noise, not
 a verdict, and the status palette is reserved for states that ship with a word
 beside them.
+
+---
+
+## 11. The Family fund
+
+Built 2026-09-30, migration `0020`. Replaces `Family Fund.xlsx` (owner's
+Desktop): a pot the siblings -- Ayiq (the owner), Kdik, Kyon -- pay into
+monthly, spent on family meals, gifts, trips and events. Route `/fund`, nav
+label "Fund".
+
+### 11.1 Decisions, as settled with the owner
+
+| Decision | Choice |
+|---|---|
+| Where it lives | **A separate book owned by the ledger**, not rows in `transactions` and not a second ledger |
+| Who sees it | **Owner only.** Siblings are names, not users. `ledger_members` stays decided against |
+| The owner's share | **Auto-linked**: the "Family fund" recurring entry's posting writes the contribution in the same batch |
+| Which month a posting pays for | **Its own month** (31 Aug pays August) |
+| History | **Imported and reconciled** -- `scripts/import-fund.mjs` |
+| Shape | **A contribution grid plus a flat list.** No occasions/events, no instalment plans |
+| Contribution amounts | **Not fixed.** A per-member default only pre-fills; an agreed skip is a RM 0.00 contribution |
+| Bank dividends | **Not modelled.** The pot records contributions and spending; a bank check compares |
+
+**Why a separate book.** The fund's money sits in its own bank account, and
+its spending was never in the personal ledger (checked against production,
+2026-09-30: all 71 Family-category rows since 2024 are personal). The owner's
+RM 200 already leaves the ledger once, as the recurring entry. Pot rows in
+`transactions` would count family money as personal spending on top of the
+contribution that paid for it. So no view reads the fund tables.
+
+**Why not a second ledger.** `uq_ledger_owner` makes one ledger per person an
+invariant that `resolveLedgerScope()` and every repository assume. `funds`
+carries a `ledger_id` instead, and its children reach the tenant through
+`fund_id`.
+
+### 11.2 What the workbook taught
+
+- **Its "who has paid" grid disagreed with its own log** (September 2026:
+  ticked Ayiq, not Kdik; the log said the reverse). The grid is therefore
+  derived from contributions, never stored, and tapping it IS how a
+  contribution is entered.
+- **Paid-on is not paid-for.** Everyone paid twice in January 2025 and not in
+  February; the owner paid January and February 2024 together on 18 February.
+  Hence `for_month`, separate from `occurred_on`.
+- **Not every inflow is a contribution**: a RM 530 opening balance, a RM 350
+  homestay deposit refunded. Hence an in/out list rather than out-only.
+- **Its balance cell read `3165.4100000000008`** -- invariant 1, demonstrated.
+
+### 11.3 Schema rules that look like omissions
+
+- **No `kind` column.** A row with `member_id` is a contribution; CHECKs derive
+  the rest (member ⇔ `for_month`, member ⇒ `in`, only members link to the
+  ledger). A `kind` would restate `member_id` and be free to disagree -- the
+  `categories.direction` mistake. `tests/fund.test.ts` asserts its absence.
+- **Not unique on (member, month).** A month may hold a top-up; the grid sums.
+- **But a month holds ONE state.** Skipping a paid month REPLACES the hand-entered
+  payment (after a second tap naming the amount), paying a skipped month
+  replaces the skip, and a month is never skipped twice -- `replaceMonth` on
+  the create, one batch on the server, rules in `monthActions()`. A top-up on a
+  paid month still adds. Found by the owner in the browser, 2026-09-30: Skip
+  had stacked a RM 0.00 row on top of RM 200, twice over. A month paid from the
+  ledger cannot be skipped here (422).
+- **No "expected" or "owed".** Nothing is computed from `default_sen`, so
+  changing an agreed amount never rewrites a past cell.
+- **A linked contribution is read-only in the fund** (422). It is the same
+  payment as a ledger row; deleting that row cascades the pot's copy away.
+
+### 11.4 The bank check
+
+The owner's concern is the account holding LESS than recorded: money recorded
+as paid that never arrived, or spending nobody wrote down. More is normal --
+the account earns a dividend (about RM 26.65 by 2026-09-30) at a rate nobody
+tracks. A check is compared with the pot **as at its own date**, never applied.
+
+The first check (RM 3,192.06 on 2026-09-30) reads **RM 173.35 short**: the pot
+records the owner's September share from the 30 Sep posting, and the transfer
+had not reached the bank. That is exactly the auto-post-without-payment case
+§9.1 accepted, now visible.
+
+### 11.5 Import, for the record
+
+149 rows; in RM 20,480.00, out RM 17,314.59, balance RM 3,165.41; Ayiq
+RM 6,400, Kdik and Kyon RM 6,600 each -- written down before the importer
+existed, and it aborts on any difference. Contributions are allocated to months
+sequentially per member, fenced to within a month of the payment. The link step
+then attached the workbook's August row to the 31 Aug posting (the same
+payment) and created September from the 30 Sep posting: pot RM 3,365.41.
+
+Flagged and imported as written, for the owner: "Printer - SPayLater 2/3" and
+"Pen adapter - SPayLater 2/3" each twice with no 3/3; "Mozers's". Separately,
+the personal ledger has 28 Mar 2024 "Family fund" at RM 400 where the workbook
+has RM 200 for that month -- left alone, it is not this module's data.
+
+### 11.6 Future enhancement: instalment plans, in the LEDGER
+
+Deferred by the owner, 2026-09-30, and recorded here so it is not lost. Pay-later
+purchases are typed by hand every month and numbered by hand: the fund has
+"2/3" twice and no "3/3", and the personal ledger holds at least eight such
+series (Kopi Ala Kazim ×4, Moringa ×3, …). A plan would declare total and
+count once, post each instalment itself with its number, and let the Home
+dashboard's "Committed" include what remains.
+
+Build it for the ledger first, where it recurs. `recurring_rules` already has
+`interval_months` and `ends_on`, so extending it may beat a new table -- decide
+then, and keep §9.2's rule: no second column restating what another carries.

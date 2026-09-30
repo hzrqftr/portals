@@ -260,13 +260,14 @@ attribution fails in the safe direction.
 
 ## Pages
 
-Three top-level routes, in `src/client/App.tsx`:
+Four top-level routes, in `src/client/App.tsx`:
 
 | Route | Component | What it is |
 |---|---|---|
 | `/` | `routes/Home.tsx` | The dashboard. One `GET /api/dashboard` payload; see below |
 | `/ledger` | `routes/Ledger.tsx` | The log. Inline cell editing, filters, delete |
 | `/recurring` | `routes/Recurring.tsx` | Declared rules. Edit, pause/resume, delete |
+| `/fund` | `routes/Fund.tsx` | The Family fund. A separate book -- see below |
 
 The header comes from `@portals/core/client`. Coinbox passes `nav` (the three
 sections) and `crumbPlacement="below"`, which puts the breadcrumb on its own
@@ -366,6 +367,34 @@ merely unpricing them.
 the shared `fuelSegmentSql` with the same sums. A test asserts it. Two numbers
 on one screen path that are meant to be the same number can only stay equal on
 purpose.
+
+## The Family fund
+
+Built 2026-09-30, migration `0020`, `docs/coinbox-spec.md` §11. A pot the
+owner and siblings pay into, kept as a **separate book owned by the
+ledger**. Five things that are invisible when broken:
+
+- **Nothing in the fund may reach `transactions` or any view.** The owner's
+  share already leaves the ledger once, as the "Family fund" recurring entry;
+  pot spending in `transactions` would count family money as personal
+  spending. `tests/fund.test.ts` asserts `/api/summary` stays empty.
+- **Only `funds` carries `ledger_id`.** `FundRepo.fundId()` resolves the fund
+  under `this.where(funds)` and every child query filters on that id. A query
+  that reaches `fund_entries` or `fund_members` without it has no tenant
+  predicate at all. The isolation suite sweeps `/api/fund*` with seeded markers
+  and was seen to fail with the predicate removed.
+- **The owner's contribution is written INSIDE the recurring batch**
+  (`linkedContribution()` in `data/fund.ts`, called from
+  `RecurringRepo.postOne`), after the transaction insert for the foreign key.
+  `tests/fund-recurring.test.ts` forces each statement to fail with a trigger
+  and proves nothing else survives -- and fails if the contribution is written
+  after the batch instead.
+- **No `kind` column, no "expected" amount.** Member ⇒ contribution, by CHECK.
+  `default_sen` only pre-fills the sheet; an agreed skip is a RM 0.00 row. The
+  grid (`src/shared/fundGrid.ts`) states what happened and draws no "owed".
+- **A linked contribution is read-only in the fund (422).** It is the same
+  payment as a ledger row; delete that row and the CASCADE takes the pot's
+  copy with it.
 
 ## Style
 

@@ -43,6 +43,12 @@ const readEndpoints = [
   "/api/summary",
   "/api/recurring",
   "/api/dashboard",
+  // The Family fund (0020). The grid takes an explicit year so the seeded
+  // contribution is inside the window -- a default year could drift away from
+  // the seed and sweep an empty grid vacuously.
+  "/api/fund",
+  "/api/fund/grid?year=2026",
+  "/api/fund/entries",
 ];
 
 /**
@@ -65,6 +71,9 @@ const ALICE_NOTE = "ALICE_PRIVATE_NOTE";
  *  sweep loops only look for these strings -- a new resource whose content is
  *  never seeded would be swept vacuously and prove nothing. */
 const ALICE_RULE = "ALICE_SECRET_STANDING_ORDER";
+/** The fund carries its own text too: a member name and a spending line. */
+const ALICE_FUND_MEMBER = "ALICE_SECRET_SIBLING";
+const ALICE_FUND_SPEND = "ALICE_SECRET_FAMILY_DINNER";
 
 async function seedTransaction(email: string, item: string, description: string) {
   const res = await as(email)("/api/transactions", {
@@ -101,6 +110,38 @@ async function seedRecurring(email: string, item: string) {
   return res.body.id as string;
 }
 
+/**
+ * Alice's fund, with every kind of row the fund endpoints can return: a
+ * member, a contribution in 2026 (so the grid sweep is not empty), a spending
+ * line, and a bank check.
+ */
+async function seedFund(email: string) {
+  const member = await as(email)("/api/fund/members", {
+    method: "POST",
+    json: { name: ALICE_FUND_MEMBER, defaultSen: 20_000 },
+  });
+  expect(member.status).toBe(201);
+  for (const json of [
+    { memberId: member.body.id, forMonth: "2026-09", amountSen: 20_000, direction: "in", occurredOn: "2026-09-01" },
+    { item: ALICE_FUND_SPEND, amountSen: 54_330, direction: "out", occurredOn: "2026-09-02" },
+  ]) {
+    const res = await as(email)("/api/fund/entries", { method: "POST", json });
+    expect(res.status).toBe(201);
+  }
+  const check = await as(email)("/api/fund/checks", {
+    method: "POST",
+    json: { checkedOn: "2026-09-30", balanceSen: 777_777 },
+  });
+  expect(check.status).toBe(201);
+}
+
+/** Every marker a sweep must never find in someone else's response. */
+function expectNoAliceData(text: string, path: string, who: string) {
+  for (const marker of [ALICE_ITEM, ALICE_NOTE, ALICE_RULE, ALICE_FUND_MEMBER, ALICE_FUND_SPEND, "777777"]) {
+    expect(text, `Alice's ${marker} leaked to ${who} from GET ${path}`).not.toContain(marker);
+  }
+}
+
 beforeAll(migrate);
 beforeEach(resetDb);
 
@@ -134,6 +175,7 @@ describe("cross-tenant isolation: separate people", () => {
   it("never returns another person's transactions on any read endpoint", async () => {
     await seedTransaction(ALICE, ALICE_ITEM, ALICE_NOTE);
     await seedRecurring(ALICE, ALICE_RULE);
+    await seedFund(ALICE);
     await giveGarage(ALICE);
     // ALICE's vehicle id, deliberately: it is exactly what a caller who once
     // shared a garage would still be holding.
@@ -146,6 +188,7 @@ describe("cross-tenant isolation: separate people", () => {
       expect(res.text, `Alice's item leaked from GET ${path}`).not.toContain(ALICE_ITEM);
       expect(res.text, `Alice's note leaked from GET ${path}`).not.toContain(ALICE_NOTE);
       expect(res.text, `Alice's rule leaked from GET ${path}`).not.toContain(ALICE_RULE);
+      expectNoAliceData(res.text, path, "a stranger");
     }
   });
 
@@ -351,6 +394,27 @@ describe("cross-user isolation: co-members of one garage", () => {
         aliceLedger,
       );
     }
+  });
+
+  /**
+   * The case the two-axis design exists for, extended to the fund: sharing a
+   * garage with Alice must not show Carol the family pot either. A fund keyed
+   * on the garage "because it is a household thing" would pass every other
+   * test in this file.
+   */
+  it("never shows a garage co-member the owner's Family fund", async () => {
+    await seedFund(ALICE);
+    const vehicleId = await giveVehicle(ALICE, "SHARED_WAJA");
+    const request = as(CAROL);
+
+    for (const path of readEndpointsFor(vehicleId)) {
+      const res = await request(path);
+      expect([200, 404]).toContain(res.status);
+      expectNoAliceData(res.text, path, "a garage co-member");
+    }
+    const pot = await request("/api/fund");
+    expect(pot.body.balanceSen).toBe(0);
+    expect(pot.body.members).toEqual([]);
   });
 
   it("DOES show a co-member the garage's vehicles -- that is the point of a garage", async () => {
